@@ -1,0 +1,13 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     12:25:59      CREATED BY USER: apache                  
+ATOM      1  N   GLY G   1      -0.287  -1.214   0.688  1.00  0.00      GLY3
+ATOM      2  CA  GLY G   1      -0.076  -0.033  -0.254  1.00  0.00      GLY3
+ATOM      3  C   GLY G   1       1.352   0.493  -0.582  1.00  0.00      GLY3
+ATOM      4  O   GLY G   1       2.149   0.646   0.384  1.00  0.00      GLY3
+ATOM      5  OXT GLY G   1       1.575   0.730  -1.801  1.00  0.00      GLY3
+ATOM      6  H1  GLY G   1       0.634  -1.576   0.934  1.00  0.00      GLY3
+ATOM      7  H2  GLY G   1      -0.779  -1.985   0.258  1.00  0.00      GLY3
+ATOM      8  HA1 GLY G   1      -0.597   0.841   0.194  1.00  0.00      GLY3
+ATOM      9  HA2 GLY G   1      -0.573  -0.247  -1.222  1.00  0.00      GLY3
+TER      10      GLY3     1
+END

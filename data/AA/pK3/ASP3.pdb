@@ -1,0 +1,19 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     10:27: 7      CREATED BY USER: apache                  
+ATOM      1  N   ASP A   1       2.196  -0.949  -0.043  1.00  0.00      ASP3
+ATOM      2  CA  ASP A   1       1.139  -0.086  -0.644  1.00  0.00      ASP3
+ATOM      3  CB  ASP A   1      -0.069  -0.014   0.325  1.00  0.00      ASP3
+ATOM      4  CG  ASP A   1      -1.297   0.608  -0.325  1.00  0.00      ASP3
+ATOM      5  OD1 ASP A   1      -2.245   0.832   0.466  1.00  0.00      ASP3
+ATOM      6  OD2 ASP A   1      -1.260   0.774  -1.571  1.00  0.00      ASP3
+ATOM      7  C   ASP A   1       1.850   1.244  -0.994  1.00  0.00      ASP3
+ATOM      8  O   ASP A   1       2.885   1.115  -1.707  1.00  0.00      ASP3
+ATOM      9  OXT ASP A   1       1.388   2.305  -0.506  1.00  0.00      ASP3
+ATOM     10  H1  ASP A   1       1.894  -1.933   0.037  1.00  0.00      ASP3
+ATOM     11  H2  ASP A   1       2.410  -0.533   0.886  1.00  0.00      ASP3
+ATOM     12  HA  ASP A   1       0.831  -0.570  -1.598  1.00  0.00      ASP3
+ATOM     13  HB1 ASP A   1       0.183   0.571   1.231  1.00  0.00      ASP3
+ATOM     14  HB2 ASP A   1      -0.390  -1.035   0.626  1.00  0.00      ASP3
+ATOM     15  H3  ASP A   1       3.026  -0.828  -0.665  1.00  0.00      ASP3
+TER      16      ASP3     1
+END

@@ -1,0 +1,111 @@
+; Include forcefield parameters
+;#include "charmm27.ff/ffnonbonded.itp"
+;#include "charmm27.ff/ffbonded.itp"
+;#include "charmm27.ff/cmap.itp"
+
+[ moleculetype ]
+; Name            nrexcl
+ALA            3
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   2 ALA rtp ALA  q -1.0
+     1        NH2      2    ALA      N      1      -0.96     14.007   ; qtot -0.96
+     2          H      2    ALA    HT1      2       0.34      1.008   ; qtot -0.62
+     3          H      2    ALA    HT2      3       0.34      1.008   ; qtot -0.28
+     4        CT1      2    ALA     CA      4       0.19     12.011   ; qtot -0.09
+     5         HB      2    ALA     HA      5       0.09      1.008   ; qtot 0
+     6        CT3      2    ALA     CB      6      -0.27     12.011   ; qtot -0.27
+     7         HA      2    ALA    HB1      7       0.09      1.008   ; qtot -0.18
+     8         HA      2    ALA    HB2      8       0.09      1.008   ; qtot -0.09
+     9         HA      2    ALA    HB3      9       0.09      1.008   ; qtot 0
+    10         CC      2    ALA      C     10       0.34     12.011   ; qtot 0.34
+    11         OC      2    ALA    OT1     11      -0.67     15.999   ; qtot -0.33
+    12         OC      2    ALA    OT2     12      -0.67     15.999   ; qtot -1
+
+[ bonds ]
+;  ai    aj funct            c0            c1            c2            c3
+    1     2     1 
+    1     3     1 
+    1     4     1 
+    4     5     1 
+    4     6     1 
+    4    10     1 
+    6     7     1 
+    6     8     1 
+    6     9     1 
+   10    11     1 
+   10    12     1 
+
+[ pairs ]
+;  ai    aj funct            c0            c1            c2            c3
+    1     7     1 
+    1     8     1 
+    1     9     1 
+    1    11     1 
+    1    12     1 
+    2     5     1 
+    2     6     1 
+    2    10     1 
+    3     5     1 
+    3     6     1 
+    3    10     1 
+    5     7     1 
+    5     8     1 
+    5     9     1 
+    5    11     1 
+    5    12     1 
+    6    11     1 
+    6    12     1 
+    7    10     1 
+    8    10     1 
+    9    10     1 
+
+[ angles ]
+;  ai    aj    ak funct            c0            c1            c2            c3
+    2     1     3     5 
+    2     1     4     5 
+    3     1     4     5 
+    1     4     5     5 
+    1     4     6     5 
+    1     4    10     5  110.0000        365.6816        0.0     0.0 ;NH3 CT1 CC
+    5     4     6     5 
+    5     4    10     5 
+    6     4    10     5 
+    4     6     7     5 
+    4     6     8     5 
+    4     6     9     5 
+    7     6     8     5 
+    7     6     9     5 
+    8     6     9     5 
+    4    10    11     5 
+    4    10    12     5 
+   11    10    12     5 
+
+[ dihedrals ]
+;  ai    aj    ak    al funct            c0            c1            c2            c3            c4            c5
+    2     1     4     5     9 
+    2     1     4     6     9 
+    2     1     4    10     9 0.00    0.4184  3; X    CT1     NH3     X
+    3     1     4     5     9 
+    3     1     4     6     9 
+    3     1     4    10     9 0.00    0.4184  3; X    CT1     NH3     X
+    1     4     6     7     9 
+    1     4     6     8     9 
+    1     4     6     9     9 
+    5     4     6     7     9 
+    5     4     6     8     9 
+    5     4     6     9     9 
+   10     4     6     7     9 
+   10     4     6     8     9 
+   10     4     6     9     9 
+    1     4    10    11     9 
+    1     4    10    12     9 
+    5     4    10    11     9 
+    5     4    10    12     9 
+    6     4    10    11     9 
+    6     4    10    12     9 
+
+[ dihedrals ]
+;  ai    aj    ak    al funct            c0            c1            c2            c3
+   10     4    12    11     2 

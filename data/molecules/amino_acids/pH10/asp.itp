@@ -1,0 +1,130 @@
+;#include "charmm27.ff/ffnonbonded.itp"
+;#include "charmm27.ff/ffbonded.itp"
+;#include "charmm27.ff/cmap.itp"
+
+[ moleculetype ]
+; Name            nrexcl
+ASP           3
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   2 ASP rtp ASP  q -2.0
+     1        NH2      2    ASP      N      1      -0.96     14.007   ; qtot -0.96
+     2          H      2    ASP    HT1      2       0.34      1.008   ; qtot -0.62
+     3          H      2    ASP    HT2      3       0.34      1.008   ; qtot -0.28
+     4        CT1      2    ASP     CA      4       0.19     12.011   ; qtot -0.09
+     5         HB      2    ASP     HA      5       0.09      1.008   ; qtot 0
+     6        CT2      2    ASP     CB      6      -0.28     12.011   ; qtot -0.28
+     7         HA      2    ASP    HB1      7       0.09      1.008   ; qtot -0.19
+     8         HA      2    ASP    HB2      8       0.09      1.008   ; qtot -0.1
+     9         CC      2    ASP     CG      9       0.62     12.011   ; qtot 0.52
+    10         OC      2    ASP    OD1     10      -0.76     15.999   ; qtot -0.24
+    11         OC      2    ASP    OD2     11      -0.76     15.999   ; qtot -1
+    12         CC      2    ASP      C     12       0.34     12.011   ; qtot -0.66
+    13         OC      2    ASP    OT1     13      -0.67     15.999   ; qtot -1.33
+    14         OC      2    ASP    OT2     14      -0.67     15.999   ; qtot -2
+
+[ bonds ]
+;  ai    aj funct            c0            c1            c2            c3
+    1     2     1 
+    1     3     1 
+    1     4     1 
+    4     5     1 
+    4     6     1 
+    4    12     1 
+    6     7     1 
+    6     8     1 
+    6     9     1 
+    9    10     1 
+    9    11     1 
+   12    13     1 
+   12    14     1 
+
+[ pairs ]
+;  ai    aj funct            c0            c1            c2            c3
+    1     7     1 
+    1     8     1 
+    1     9     1 
+    1    13     1 
+    1    14     1 
+    2     5     1 
+    2     6     1 
+    2    12     1 
+    3     5     1 
+    3     6     1 
+    3    12     1 
+    4    10     1 
+    4    11     1 
+    5     7     1 
+    5     8     1 
+    5     9     1 
+    5    13     1 
+    5    14     1 
+    6    13     1 
+    6    14     1 
+    7    10     1 
+    7    11     1 
+    7    12     1 
+    8    10     1 
+    8    11     1 
+    8    12     1 
+    9    12     1 
+
+[ angles ]
+;  ai    aj    ak funct            c0            c1            c2            c3
+    2     1     3     5 
+    2     1     4     5 
+    3     1     4     5 
+    1     4     5     5 
+    1     4     6     5 
+    1     4    12     5 110.0000        365.6816        0.0     0.0 ;NH3 CT1 CC
+    5     4     6     5 
+    5     4    12     5 
+    6     4    12     5 
+    4     6     7     5 
+    4     6     8     5 
+    4     6     9     5 
+    7     6     8     5 
+    7     6     9     5 
+    8     6     9     5 
+    6     9    10     5 
+    6     9    11     5 
+   10     9    11     5 
+    4    12    13     5 
+    4    12    14     5 
+   13    12    14     5 
+
+[ dihedrals ]
+;  ai    aj    ak    al funct            c0            c1            c2            c3            c4            c5
+    2     1     4     5     9 
+    2     1     4     6     9 
+    2     1     4    12     9 0.00    0.4184  3; X    CT1     NH3     X
+    3     1     4     5     9 
+    3     1     4     6     9 
+    3     1     4    12     9 0.00    0.4184  3; X    CT1     NH3     X
+    1     4     6     7     9 
+    1     4     6     8     9 
+    1     4     6     9     9 
+    5     4     6     7     9 
+    5     4     6     8     9 
+    5     4     6     9     9 
+   12     4     6     7     9 
+   12     4     6     8     9 
+   12     4     6     9     9 
+    1     4    12    13     9 
+    1     4    12    14     9 
+    5     4    12    13     9 
+    5     4    12    14     9 
+    6     4    12    13     9 
+    6     4    12    14     9 
+    4     6     9    10     9 
+    4     6     9    11     9 
+    7     6     9    10     9 
+    7     6     9    11     9 
+    8     6     9    10     9 
+    8     6     9    11     9 
+
+[ dihedrals ]
+;  ai    aj    ak    al funct            c0            c1            c2            c3
+    9     6    11    10     2 
+   12     4    14    13     2 
