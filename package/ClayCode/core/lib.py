@@ -35,9 +35,9 @@ from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
 from numpy.typing import NDArray
 
-from ClayAnalysis import SOL, SOL_DENSITY, IONS, MDP, FF, DATA, AA, UCS
-from ClayAnalysis import gmx
-from ClayAnalysis.analysisbase import analysis_class
+from ClayCode.config._consts import SOL, SOL_DENSITY, IONS, MDP, FF, DATA, AA, UCS
+from ClayCode.core import gmx
+# from ClayCode.analysisbase import analysis_class
 
 # from ClayAnalysis.gmx import run_gmx_convert_tpr
 from ClayAnalysis.utils import change_suffix, grep_file
@@ -68,61 +68,6 @@ __all__ = [
 ]
 
 logger = logging.getLogger("lib")
-
-
-# def init_log(
-#     logname,
-#     level: Union[
-#         Literal[20],
-#         Literal[10],
-#         Dict[
-#             Union[Literal["file"], Literal["stream"]],
-#             Union[Literal[20], Literal[10]],
-#         ],
-#     ] = None,
-#     handlers: Union[
-#         Literal["file"],
-#         Literal["stream"],
-#         List[Union[Literal["file"], Literal["stream"]]],
-#     ] = ["file", "stream"],
-#     runname=None,
-#     fpath=None,
-# ):
-#     logger = logging.getLogger(logname)
-#     format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
-#     if isinstance(handlers, str):
-#         handlers = [handlers]
-#     if isinstance(level, str):
-#         level = [level * len(handlers)]
-#         level = dict(zip(handlers, level))
-#     elif level is None:
-#         level = {"file": 20, "stream": 10}
-#     assert isinstance(level, dict), f"Unexpected type for level: {type(level)}"
-#     for key in level.keys():
-#         assert key in handlers
-#     logger.setLevel(np.min(list(level.values())))
-#     if "stream" in handlers:
-#         logger.debug("stream", level["stream"])
-#         shandler = logging.StreamHandler()
-#         shandler.setLevel(level["stream"])
-#         shandler.setFormatter(format)
-#         logger.addHandler(shandler)
-#
-#     if "file" in handlers:
-#         logger.debug("file")
-#         if runname is None:
-#             pass
-#         elif runname == "__main__":
-#             runname = None
-#         fhandler = logging.FileHandler(
-#             get_logfname(logname, runname, time=exec_date, logpath=fpath), mode="w"
-#         )
-#         fhandler.setLevel(level["file"])
-#         fhandler.setFormatter(format)
-#         logger.addHandler(fhandler)
-#
-#     return logger
-
 
 def init_temp_inout(
     inf: Union[str, Path],
@@ -1003,6 +948,8 @@ def get_mol_prms(
         )
         prop_dict = dict_func(atom_u)
         if write is True:
+            if not prop_file.parent.is_dir():
+                os.makedirs(itp_file.parent)
             with open(prop_file, "wb") as prop_file:
                 pkl.dump(prop_dict, prop_file)
     else:

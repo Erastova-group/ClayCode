@@ -1,0 +1,82 @@
+# =============================================================================
+# Default specifications for clay model construction
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# General specifications 
+# -----------------------------------------------------------------------------
+
+# new - a new clay model is constructed
+BUILD: new
+
+
+# -----------------------------------------------------------------------------
+# Clay Sheet and Interlayer Specifications
+# -----------------------------------------------------------------------------
+
+# number of unit cells in x direction
+X_CELLS: 5
+
+# number of unit cells in y direction
+Y_CELLS: 5
+
+# number of unit cells in z direction
+N_SHEETS: 3
+
+# ----------------------------------------------------------------------------
+# Optional Unit Cell Composition and Ratios input
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+
+# interlayer solvent present or not
+# IL_SOLV: True
+
+# -----------------------------------------------------------------------------
+# Interlayer Ion Specification Options (comment the other options!)
+# -----------------------------------------------------------------------------
+
+# 3. OR per unit cell (BOX_WATERS)
+UC_WATERS: 20
+
+# -----------------------------------------------------------------------------
+# Simulation Box Specifications
+# -----------------------------------------------------------------------------
+
+# full simulation box height in nm
+BOX_HEIGHT: 15.0
+
+# -----------------------------------------------------------------------------
+# Solvation and Bulk Ions Specifications
+# -----------------------------------------------------------------------------
+
+# Bulk solvent added or not
+BULK_SOLV: True
+
+# Ion species and concentration in mol/L name to add in bulk solvent
+BULK_IONS:
+  'Na': 0.1
+  'Cl': 0.1
+
+
+# -----------------------------------------------------------------------------
+# Simulation Runs Specifications
+# -----------------------------------------------------------------------------
+
+# select where EM and EQ should be run
+MDRUNS_REMOTE: False
+
+# Target d-spacing in A
+D_SPACE: 19.5
+
+# -----------------------------------------------------------------------------
+# Force Field Specifications
+# -----------------------------------------------------------------------------
+
+# force field selections
+FF:
+  CLAY: ClayFF_Fe
+  IONS: AmberIons
+  AA: charmm36
+  # SPC water from ClayFF
+  WATER: SPC

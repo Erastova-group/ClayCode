@@ -1,11 +1,13 @@
+from __future__ import annotations
 import os
 import re
-from collections import UserList, UserString, UserDict
+from collections import UserList #, UserString, UserDict
 from collections.abc import Sequence
 from functools import (
     partialmethod,
     singledispatch,
-    wraps, cached_property,
+    wraps,
+    cached_property,
 )
 from io import StringIO
 from pathlib import Path as _Path, PosixPath as _PosixPath
@@ -13,25 +15,39 @@ from typing import (
     Union,
     List,
     Literal,
-    AnyStr, Iterable, Optional, Tuple, Dict, Any, NewType, NoReturn,
+    AnyStr,
+    Iterable,
+    Optional,
+    Tuple,
+    Dict,
+    Any,
+    NewType,
+    NoReturn, cast, Callable #, Type,
 )
 
-import MDAnalysis
-import MDAnalysis.units
+# import MDAnalysis
+# import MDAnalysis.units
 import numpy as np
 import pandas as pd
+from MDAnalysis import Universe
 from pandas.errors import EmptyDataError
 
-from config.consts import KWD_DICT as _KWD_DICT
+from ClayCode import UCS, FF
+from ClayCode.config._consts import KWD_DICT as _KWD_DICT
+from ClayCode.config.utils import select_named_file  # select_file,
 
+import logging
+
+logger = logging.getLogger(_Path(__file__).stem)
+logger.setLevel(logging.DEBUG)
 
 # -----------------------------------------------------------------------------
 # class decorators
 # -----------------------------------------------------------------------------
 
+
 def add_method(cls):
-    """Add new method to existing class
-    """
+    """Add new method to existing class"""
 
     def decorator(func):
         @wraps(func)
@@ -44,8 +60,7 @@ def add_method(cls):
 
 
 def add_property(cls):
-    """Add new property to existing class
-    """
+    """Add new property to existing class"""
 
     def decorator(func):
         @wraps(func)
@@ -60,6 +75,7 @@ def add_property(cls):
 # -----------------------------------------------------------------------------
 # string functions and classes
 # -----------------------------------------------------------------------------
+
 
 def split_fname(fname: str) -> List[Union[str, None]]:
     """Split a filename into stem and suffix.
@@ -91,7 +107,7 @@ def match_str(searchstr: str, pattern: str) -> Union[None, str]:
         return check
     elif type(pattern) == list:
         try:
-            check = re.search(rf"{match_pattern}", searchstr).group(0)
+            check = re.fullmatch(match_pattern, searchstr).group(0)
         except AttributeError:
             check = None
     return check
@@ -99,9 +115,8 @@ def match_str(searchstr: str, pattern: str) -> Union[None, str]:
 
 @singledispatch
 def get_match_pattern(pattern: Union[AnyStr, List[AnyStr]]):
-    """Generate search pattern from list, str, dict, int or float
-    """
-    raise TypeError(f'Unexpected type {type(pattern)!r}!')
+    """Generate search pattern from list, str, dict, int or float"""
+    raise TypeError(f"Unexpected type {type(pattern)!r}!")
 
 
 @get_match_pattern.register
@@ -111,7 +126,7 @@ def _(pattern: list) -> str:
     """
     pattern_list = pattern
     pattern_list = [get_match_pattern(item) for item in pattern_list]
-    return '|'.join(pattern_list)
+    return "|".join(pattern_list)
 
 
 @get_match_pattern.register
@@ -128,7 +143,7 @@ def _(pattern) -> str:
     """Get match pattern from float or int
     12 -> '12'
     """
-    return f'{pattern}'
+    return f"{pattern}"
 
 
 @get_match_pattern.register
@@ -138,17 +153,20 @@ def _(pattern: dict) -> str:
     """
     pattern_dict = pattern
     pattern_list = [get_match_pattern(item) for item in pattern_dict.keys()]
-    return '|'.join(pattern_list)
+    return "|".join(pattern_list)
 
 
-Kwd = NewType('Kwd', str)
+# Kwd = NewType("Kwd", str)
 
 
 class Kwd(str):
     """str container for '.itp' and '.top' file parameters"""
 
-    def match(self, pattern: Union[str, List[str], Dict[str, Any]],
-              mode: Literal["full", "parts"] = "full") -> Union[Kwd, None]:
+    def match(
+        self,
+        pattern: Union[str, List[str], Dict[str, Any]],
+        mode: Literal["full", "parts"] = "full",
+    ) -> Union[Kwd, None]:
         """Match keywords against a search pattern and return match"""
         if mode == "full":
             check = match_str(self, pattern)
@@ -162,7 +180,7 @@ class Kwd(str):
         return check
 
 
-KwdList = NewType('KwdList', UserList)
+# KwdList = NewType("KwdList", UserList)
 
 
 class KwdList(UserList):
@@ -181,10 +199,10 @@ class KwdList(UserList):
         return self.remove(other)
 
     def match(
-            self,
-            pattern: str,
-            mode: Literal["full", "parts"] = "full",
-            keep_dims: bool = False,
+        self,
+        pattern: str,
+        mode: Literal["full", "parts"] = "full",
+        keep_dims: bool = False,
     ) -> List[Union[Kwd, None]]:
         """Match keywords against a search pattern and return matching item or none"""
         match = [obj.match(pattern, mode) for obj in self.data]
@@ -216,10 +234,10 @@ class KwdList(UserList):
             self.data.append(item)
 
     def filter(
-            self,
-            pattern: str,
-            mode: Literal["full", "parts"] = "full",
-            keep_dims: bool = False,
+        self,
+        pattern: str,
+        mode: Literal["full", "parts"] = "full",
+        keep_dims: bool = False,
     ) -> List[Union[Kwd, None]]:
         """Match keywords against a search pattern and return matching items"""
         match_list = [obj.match(pattern, mode) for obj in self.data]
@@ -227,9 +245,9 @@ class KwdList(UserList):
             match_list = [obj for obj in match_list if obj is not None]
         return match_list
 
-    def concat(self, join='|') -> str:
+    def concat(self, join="|") -> str:
         """Concatenate items to string"""
-        return f'{join}'.join(self.data)
+        return f"{join}".join(self.data)
 
 
 # -----------------------------------------------------------------------------
@@ -270,22 +288,25 @@ class _PathParents(Sequence):
         return "<{}.parents>".format(self._pathcls.__name__)
 
 
-BasicPath = NewType('BasicPath', _Path)
+# BasicPath = NewType("BasicPath", _Path)
 
 
 # Extension of Path with PosixPath class from Lib/pathlib.py module
 # (imported as _Path and _PosixPath)
 class BasicPath(_Path):
     """Container for custom pathlib.Path objects"""
+
     _flavour = _PosixPath._flavour
     __slots__ = ()
 
     def _match_deorator(method):
         """Match name against seacrch pattern object"""
 
-        def wrapper(self, pattern: Union[str, List[str], int, float, Dict[str, Any]],
-                    mode: Literal["full", "stem", "ext", "suffix", "parts"] = "full") -> Union[BasicPath, None]:
-            print(pattern)
+        def wrapper(
+            self,
+            pattern: Union[str, List[str], int, float, Dict[str, Any]],
+            mode: Literal["full", "stem", "ext", "suffix", "parts"] = "full",
+        ) -> Union[BasicPath, None]:
             if mode == "full":
                 check = match_str(self.name, pattern)
             else:
@@ -294,8 +315,9 @@ class BasicPath(_Path):
                 elif mode in ["ext", "suffix"]:
                     check = match_str(self.name_split[1], pattern)
                 elif mode == "parts":
-                    print(self.name)
-                    check = re.match(rf"[a-zA-Z-_\d.]*{pattern}[a-zA-Z-_\d.]*", self.name)
+                    check = re.match(
+                        rf"[a-zA-Z-_\d.]*{pattern}[a-zA-Z-_\d.]*", self.name
+                    )
                 else:
                     raise ValueError(f'{mode!r} is not a valid value for {"mode"!r}')
             if check is not None:
@@ -316,11 +338,9 @@ class BasicPath(_Path):
     def check(self) -> NoReturn:
         """Check if file exists"""
         if not self.exists():
-            raise FileNotFoundError(r'{self.name} does not exist')
+            raise FileNotFoundError(r"{self.name} does not exist")
         else:
-            print(f'{self.name} exists')
-
-
+            logger.info(f"{self.name} exists")
 
     @property
     def name_split(self) -> Tuple[str, str]:
@@ -343,19 +363,21 @@ class BasicPath(_Path):
         return self
 
 
-Dir = NewType('Dir', _Path)
+Dir = NewType("Dir", _Path)
 
 
 class File(BasicPath):
-    _suffix = '*'
+    _suffix = "*"
 
     def check(self):
         if not self.is_file():
-            raise FileNotFoundError(f'{self.name} is not a file.')
-        if self._suffix != '*':
-            assert self.suffix == self._suffix, f'Expected {self._suffix}, found {self.suffix}'
+            raise FileNotFoundError(f"{self.name} is not a file.")
+        if self._suffix != "*":
+            assert (
+                self.suffix == self._suffix
+            ), f"Expected {self._suffix}, found {self.suffix}"
         else:
-            print('Correct file extension.')
+            logger.info("Correct file extension.")
 
     @property
     def parent(self) -> Dir:
@@ -363,10 +385,9 @@ class File(BasicPath):
         drv = self._drv
         root = self._root
         parts = self._parts
-        # print(drv, root, parts)
         if len(parts) == 1 and (drv or root):
-            return Dir(self)
-        return Dir(self._from_parsed_parts(drv, root, parts[:-1]))
+            return DirFactory(self)
+        return DirFactory(self._from_parsed_parts(drv, root, parts[:-1]))
 
     @property
     def parents(self) -> Dir:
@@ -377,6 +398,7 @@ class File(BasicPath):
 # ITP/TOP parameter classes
 # ----------------------------------------------------------------------------------------------------------------------
 
+
 class ParametersBase:
     kwd_list = []
 
@@ -384,11 +406,13 @@ class ParametersBase:
         def wrapper(self, other):
             if other.__class__ == self.__class__:
                 return method(self, other)
-            elif hasattr(other, 'collection'):
+            elif hasattr(other, "collection"):
                 if self.__class__ == other.collection:
                     return method(self, other)
-            raise TypeError('Only Parameters of the same class can be combined.\n'
-                            f'Found {self.__class__.__name__!r} and {other.__class__.__name__!r}')
+            raise TypeError(
+                "Only Parameters of the same class can be combined.\n"
+                f"Found {self.__class__.__name__!r} and {other.__class__.__name__!r}"
+            )
             return result
 
         return wrapper
@@ -397,13 +421,12 @@ class ParametersBase:
         self.data = {}
         self.__kwds = KwdList([])
         for prm in data:
-            if prm.kwd != 'None':
+            if prm.kwd != "None":
                 self._add_prm(prm)
         self.kwd_list = prm.kwd_list
-        # print(self.kwd_list)
 
     def _add_prm(self, prm):
-        if prm.kwd != 'None':
+        if prm.kwd != "None":
             setattr(self, prm.kwd, prm)
             self.kwds.append(prm.kwd)
 
@@ -412,7 +435,7 @@ class ParametersBase:
         return self.__kwds.sort_kwds(self.kwd_list)
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({list(self.kwds)!r})'
+        return f"{self.__class__.__name__}({list(self.kwds)!r})"
 
     @_arithmetic_type_check
     def __add__(self, other):
@@ -422,12 +445,14 @@ class ParametersBase:
                     new = self.prm + other.prm
                 else:
                     self._add_prm(prm)
-        elif hasattr(other, 'collection'):
+        elif hasattr(other, "collection"):
             if other.collection == self.__class__:
                 self._add_prm(other)
         else:
-            raise TypeError(f'Expected instance of {self.__class__.name!r} or single parameter, '
-                            f'found {other.__class__.__name__!r}')
+            raise TypeError(
+                f"Expected instance of {self.__class__.name!r} or single parameter, "
+                f"found {other.__class__.__name__!r}"
+            )
         return self
 
     def __mul__(self, other: int):
@@ -439,7 +464,10 @@ class ParametersBase:
         if self.__class__ == other.__class__:
             if self.kwds == other.kwds:
                 for kwd in self.kwds:
-                    if self.__getattribute__(kwd).df.sort_values() == other.__getattribute__(kwd).df.sort_values():
+                    if (
+                        self.__getattribute__(kwd).full_df.sort_values()
+                        == other.__getattribute__(kwd).full_df.sort_values()
+                    ):
                         return True
         return False
 
@@ -449,10 +477,9 @@ class SystemParameters(ParametersBase):
 
 
 class MoleculeParameters(ParametersBase):
-
     @property
     def name(self):
-        if 'moleculetype' in self.kwds:
+        if "moleculetype" in self.kwds:
             name = self.moleculetype
         else:
             name = None
@@ -469,7 +496,9 @@ class ParametersFactory:
             data_list = []
             for key in data:
                 if key != None:
-                    data_list.append(ParameterFactory({key: data[key]}, *args, **kwargs))
+                    data_list.append(
+                        ParameterFactory({key: data[key]}, *args, **kwargs)
+                    )
         data_list = data
         _cls = data_list[0].collection
         self = _cls(data_list)
@@ -478,7 +507,7 @@ class ParametersFactory:
 
 class ParameterBase:
     kwd_list = []
-    suffix = '.itp'
+    suffix = ".itp"
     collection = ParametersBase
 
     def _arithmetic_type_check(method):
@@ -487,38 +516,41 @@ class ParameterBase:
                 if other.__class__ == self.__class__.collection:
                     return other + self
                 else:
-                    raise TypeError('Only Parameters of the same class can be combined.\n'
-                                    f'Found {self.__class__.__name__!r} and {other.__class__.__name__!r}')
+                    raise TypeError(
+                        "Only Parameters of the same class can be combined.\n"
+                        f"Found {self.__class__.__name__!r} and {other.__class__.__name__!r}"
+                    )
             else:
                 return method(self, other)
 
         return wrapper
 
     def __init__(self, kwd, data, path=None):
-        self.__string = data
-        self.__kwd = Kwd(kwd)
-        self._df = pd.DataFrame()
+        self.__string: str = data
+        self.__kwd: Kwd = Kwd(kwd)
+        self._df: pd.DataFrame = pd.DataFrame()
         self.init_df()
         self.update_df()
-        self.__path = path
+        self.__path: ITPFile = path
 
     def __str__(self):
-        return self.__string
+        return f"{self.__class__.__name__}({self.kwd!r})\n\n{self._df}\n"
+        # return self.__string
 
     def __repr__(self):
-        return f'{self._df}\n{self.__class__.__name__}({self.kwd!r})'
+        return f"{self.__class__.__name__}({self.kwd!r})\n{self._df}"
 
     # def __getitem__(self, df_loc: Optional = None):
     #     if df_loc == None:
     #         df_loc = ":,:"
-    #     return eval(f'self.df.loc[{df_loc}]')
+    #     return eval(f'self.full_df.loc[{df_loc}]')
 
     @_arithmetic_type_check
     def __add__(self, other):
         if other.__class__ == self.collection:
             new = other + self
         elif other.kwd == self.kwd:
-            new_str = self.__string + f'\n{other.__string}'
+            new_str = self.__string + f"\n{other.__string}"
             new = self.__class__(self.kwd, new_str, self.__path)
         else:
             new = self.collection(self, other)
@@ -529,8 +561,10 @@ class ParameterBase:
         if other.__class__ == self.collection:
             new = other - self
         elif other.kwd == self.kwd:
-            new_str = re.search(f'(.*){other.string}(.*)', self.__string, flags=re.MULTILINE | re.DOTALL)
-            new_str = ''.join([new_str.group(1), new_str.group(2)])
+            new_str = re.search(
+                f"(.*){other.string}(.*)", self.__string, flags=re.MULTILINE | re.DOTALL
+            )
+            new_str = "".join([new_str.group(1), new_str.group(2)])
             new = self.__class__(self.kwd, new_str, self.__path)
         else:
             new = self.__string
@@ -541,29 +575,28 @@ class ParameterBase:
         for i in range(other):
             yield self
 
-    def update_df(self):
+    def update_df(self) -> None:
         try:
-            df = pd.read_csv(StringIO(self.__string), sep='\s+', comment=';', header=None)
+            df = pd.read_csv(
+                StringIO(self.__string), sep="\s+", comment=";", header=None
+            )
             column_names = list(_KWD_DICT[self.suffix][self.kwd].keys())
-            # print(len(column_names), len(df.columns))
             if len(column_names) > len(df.columns):
                 max_len = len(df.columns)
             else:
                 max_len = len(column_names)
             df = df.iloc[:, :max_len]
             df.columns = column_names[:max_len]
-            # print(max_len, len(column_names))
             self._df = pd.concat([self._df, df])
-            # print(self._df)
             self._df.drop_duplicates(inplace=True)
         except EmptyDataError:
             pass
 
     @property
-    def df(self):
+    def df(self) -> pd.DataFrame:
         return self._df.dropna(axis=1)
 
-    def init_df(self):
+    def init_df(self) -> None:
         try:
             df = pd.DataFrame(columns=list(_KWD_DICT[self.suffix][self.__kwd].keys()))
             df = df.astype(dtype=_KWD_DICT[self.suffix][self.kwd])
@@ -573,13 +606,13 @@ class ParameterBase:
 
     @property
     def ff(self):
-        if self.__path != None and self.__path.parent == '.ff':
+        if self.__path is not None and self.__path.parent.suffix == ".ff":
             return self.__path.parent
         else:
             return None
 
     def itp(self):
-        if self.__path != None:
+        if self.__path is not None and self.suffix == '.itp':
             return self.__path.name
         else:
             return None
@@ -598,32 +631,44 @@ class ParameterBase:
 
 
 class Parameter(ParameterBase):
-    kwd_list = ['defaults', 'atomtypes',
-                'bondtypes', 'pairtypes',
-                'angletypes', 'dihedraltypes',
-                'constrainttypes']
+    kwd_list = [
+        "defaults",
+        "atomtypes",
+        "bondtypes",
+        "pairtypes",
+        "angletypes",
+        "dihedraltypes",
+        "constrainttypes",
+    ]
     collection = Parameters
 
 
 class MoleculeParameter(ParameterBase):
-    kwd_list = ['moleculetype', 'atoms',
-                'bonds', 'pairs',
-                'pairs_nb', 'angles',
-                'dihedrals', 'exclusions',
-                'constraints', 'settles']
+    kwd_list = [
+        "moleculetype",
+        "atoms",
+        "bonds",
+        "pairs",
+        "pairs_nb",
+        "angles",
+        "dihedrals",
+        "exclusions",
+        "constraints",
+        "settles",
+    ]
     collection = MoleculeParameters
 
     # def __init__(self, name: Optional[str]=None, **kwargs):
-    #     self.data = {}
+    #     self._data = {}
     #     if name is not None:
-    #         self.data[name] = {**kwargs}
+    #         self._data[name] = {**kwargs}
 
-    # def append(self, name, data):
-    #     self.data[name] = data
+    # def append(self, name, _data):
+    #     self._data[name] = _data
 
 
 class SystemParameter(ParameterBase):
-    kwd_list = ['system', 'molecules']
+    kwd_list = ["system", "molecules"]
     collection = SystemParameters
 
     # def __repr__(self):
@@ -634,21 +679,21 @@ class ParameterFactory:
     _prm_types = [Parameter, MoleculeParameter, SystemParameter]
     default = ParameterBase
 
-    def __new__(cls, kwd, data):
+    def __new__(cls, kwd, data, path):
         for prm_type in cls._prm_types:
             if kwd in prm_type.kwd_list:
-                return prm_type(kwd, data)
+                return prm_type(kwd, data, path)
         return cls.default(kwd, data)
 
 
 # class ParameterCollectionFactory(ParameterFactory):
 #     default = ParametersBase
 #
-#     def __new__(cls, data):
+#     def __new__(cls, _data):
 #         for prm_type in cls._prm_types:
 #             if kwd in prm_type.kwd_list:
-#                 return prm_type.collection(kwd, data)
-#         return cls.default(kwd, data)
+#                 return prm_type.collection(kwd, _data)
+#         return cls.default(kwd, _data)
 
 
 # class ITPString:
@@ -674,7 +719,7 @@ class ParameterFactory:
 # get_defs = partialmethod(__get_def_sections, ifstr='')
 # get_ndfs = partialmethod(__get_def_sections, ifstr='n')
 
-Definition = NewType('Definition', Any)
+Definition = NewType("Definition", Any)
 
 
 class Definition:
@@ -705,8 +750,10 @@ class Definition:
             self._defs[1] += prm
 
     def __repr__(self):
-        return (f'{self.__class__.__name__}({self.name!r}: ({self.ifdef.__class__.__name__}, '
-                f'{self.ifndef.__class__.__name__}))')
+        return (
+            f"{self.__class__.__name__}({self.name!r}: ({self.ifdef.__class__.__name__}, "
+            f"{self.ifndef.__class__.__name__}))"
+        )
 
     def __eq__(self, other):
         if self.name == other.name:
@@ -714,13 +761,15 @@ class Definition:
 
     @property
     def string(self):
-        return (f'\n#ifdef {self.name}\n'
-                f'{self.ifdef}\n'
-                f'#else\n{self.ifndef}\n#endif\n')
+        return (
+            f"\n#ifdef {self.name}\n"
+            f"{self.ifdef}\n"
+            f"#else\n{self.ifndef}\n#endif\n"
+        )
 
     @property
     def default_str(self):
-        return '\n'.join([d.string for d in self.ifndefs])
+        return "\n".join([d.string for d in self.ifndefs])
 
 
 class DefinitionList(UserList):
@@ -731,7 +780,7 @@ class DefinitionList(UserList):
 
     @property
     def string(self):
-        return '\n'.join([d.string for d in self.data])
+        return "\n".join([d.string for d in self.data])
 
     @property
     def defaults(self):
@@ -768,50 +817,90 @@ class Molecule:
 
 # TODO: add FE parameters to index
 # TODO: add Molecule class (name it differently bc of mda)
-class UnitCell:
-    def __init__(self, crds: Union[str, BasicPath],
-                 ff: Optional[Union[str, BasicPath]]=None):
-        crds = File(crds)
-        assert crds.suffix == '.gro', f'Expected ".gro" file, found {crds.suffix!r}'
-        self.gro = crds
-        self.u = MDAnalysis.Universe(str(self.gro))
-        self._ff = None
-        if ff != None:
-            self.ff = ff
 
+# PRM_INFO_DICT = {
+#     "n_atoms": cast(
+#         Callable[[Universe], Dict[str, int]],
+#         lambda u: dict(
+#             [(r, u.select_atoms(f"moltype {r}").n_atoms) for r in u.atoms.moltypes]
+#         ),
+#     ),
+#     "charges": cast(
+#         Callable[[Universe], Dict[str, float]],
+#         lambda u: dict(zip(u.atoms.moltypes, np.round(u.atoms.residues.charges, 4))),
+#     ),
+# }
 
-    def get_ff_prms(self, ff: Optional[Union[str, BasicPath]]=None):
-        if ff != None:
-            print(ff)
-            ff = FFDir(ff)
-            assert ff.suffix == '.ff', \
-                f'Expected ".ff" directory, found {ff.suffix!r}'
-        else:
-            ff = self.ff
-        nbfile = ff.itp_filelist.filter('ffnonbonded', mode='stem')[0]
-        return nbfile
-        # print(type(nbfile))
-        # ff_u = MDAnalysis.Universe(str(nbfile), topology_format='ITP',
-        #     include_dir=str(ff), infer_system=True)
-        # print(ff_u)
-
-
-    def __repr__(self):
-        return f'{self.__class__.__name__}({self.gro.stem!r})'
-
-    @property
-    def ff(self):
-        if self._ff != None:
-            return self._ff
-        else:
-            print('No force field specified.')
-
-    @ff.setter
-    def ff(self, ff: Optional[Union[str, BasicPath]]=None):
-        ff = FFDir(ff, check=True)
-        self._ff = ff
-
-
+# class UnitCell:
+#     def __init__(
+#         self, name: Union[str, BasicPath],
+#             include_dir: Optional[Union[str, BasicPath]] = None
+#     ):
+#         name = File(name)
+#         if name.suffix != '':
+#             name = name.stem
+#         self.name = name
+#         self.gro = GROFile(name.with_suffix('.gro'))
+#         self.itp = ITPFile(name.with_suffix('.itp'))
+#         self.idx = self.name[-2:]
+#         assert self.gro.suffix == ".gro", f'Expected ".gro" file, found {crds.suffix!r}'
+#         self.u = MDAnalysis.Universe(str(self.gro))
+#         self._ff = None
+#         if include_dir is not None:
+#             self.ff = include_dir
+#
+#     def get_uc_prms(self, prm_str: str,
+#     include_dir: Optional[Union[ForceField, str]],
+#     write=False,
+#     force_update=False,
+# ) -> dict:
+#         dict_func = PRM_INFO_DICT[prm_str]
+#         residue_itp = self.itp
+#         prop_file = self.itp.parent / f".saved/{residue_itp.stem}_{prm_str}.p"
+#
+#         if (force_update is True) or (not prop_file.is_file()):
+#             atom_u = Universe(
+#                 str(residue_itp),
+#                 topology_format="ITP",
+#                 include_dir=str(include_dir),
+#                 infer_system=True,
+#             )
+#             prop_dict = dict_func(atom_u)
+#             if write is True:
+#                 with open(prop_file, "wb") as prop_file:
+#                     pkl.dump(prop_dict, prop_file)
+#         else:
+#             with open(prop_file, "rb") as prop_file:
+#                 prop_dict = pkl.read(prop_file)
+#         return prop_dict
+#         if ff is not None:
+#             ff = ForceField(ff)
+#             assert ff.suffix == ".ff", f'Expected ".ff" directory, found {ff.suffix!r}'
+#         else:
+#             ff = self.ff
+#         print(ff.itp_filelist)
+#         nbfile = ff.itp_filelist.filter("ffnonbonded", mode="stem")[0]
+#         return nbfile
+#         # print(type(nbfile))
+#         # ff_u = MDAnalysis.Universe(str(nbfile), topology_format='ITP',
+#         #     include_dir=str(include_dir), infer_system=True)
+#         # print(ff_u)
+#
+#     def __repr__(self):
+#         return f"{self.__class__.__name__}({self.gro.stem!r})"
+#
+#     @property
+#     def ff(self):
+#         if self._ff is not None:
+#             return self._ff
+#         else:
+#             print("No force field specified.")
+#
+#     @ff.setter
+#     def ff(self, ff: Optional[Union[str, BasicPath]] = None, include = 'all', exclude = None):
+#         if type(ff) != ForceField:
+#             ff = ForceField(ff, include=include, exclude=exclude)
+#         self._ff = ff
 
 
 class ITPFile(File):
@@ -824,21 +913,23 @@ class ITPFile(File):
         `parameters`: force field parameters (atomtypes, bondtypes, angletypes, dihedraltypes)
         `molecules`: name, atoms, bonds, angles, dihedrals
         `system`: system parameters"""
-    suffix = '.itp'
+
+    suffix = ".itp"
     _kwd_dict = _KWD_DICT[suffix]
     _prm_types = [Parameter, Parameters]
     _mol_types = [MoleculeParameter, MoleculeParameters]  # , Molecules]
     _sys_types = [SystemParameter, SystemParameters]  # , Systems]
-    _kwd_pattern = re.compile(r"(?<=\[ )[a-zA-Z_-]+(?= \])",
-                              flags=re.MULTILINE | re.DOTALL)
-    collections_map = {'moleculetype': 'moleculetypes'}
+    _kwd_pattern = re.compile(
+        r"(?<=\[ )[a-zA-Z_-]+(?= \])", flags=re.MULTILINE | re.DOTALL
+    )
+    collections_map = {"moleculetype": "moleculetypes"}
 
     def __init__(self, *args, **kwargs):
         # check if file exists
         super(ITPFile, self).__init__(*args, **kwargs)
         self.string = self.process_string(self.read_text())
         self._prm_str_dict = {}
-        if self.parent.suffix == '.ff':
+        if self.parent.suffix == ".ff":
             self.ff = self.parent.name
         self.__kwds = []
         self._definitions = {}
@@ -849,31 +940,40 @@ class ITPFile(File):
     @staticmethod
     def process_string(string):
         """Remove comments from raw string."""
-        new_str = re.sub(r"\s*;[~<>?|`@$£%&*!{}()#^/\[\]\\a-zA-Z\d\s_.+=\"\',-]*?\n",
-                         "\n", string, flags=re.MULTILINE)
-        new_str = re.sub(r'\n+', '\n', new_str, flags=re.MULTILINE)
+        new_str = re.sub(
+            r"\s*;[~<>?|`@$£%&*!{}()#^/\[\]\\a-zA-Z\d\s_.+=\"\',-]*?\n",
+            "\n",
+            string,
+            flags=re.MULTILINE,
+        )
+        new_str = re.sub(r"\n+", "\n", new_str, flags=re.MULTILINE)
         return new_str
 
-    def _split_str(self, section: Literal['system', 'molecules', 'parameters']):
+    def _split_str(self, section: Literal["system", "molecules", "parameters"]):
         """Split file string into 'parameters', 'moleculetype', 'system' sections"""
-        if section == 'parameters':
+        if section == "parameters":
             prms_str = self.string.split(sep="[ moleculetype")[0]
             return prms_str
         else:
             if section in self.kwds:
-                if section == 'system':
-                    sys_str = re.search(r'\[ system \]([#\[\]a-zA-Z\d\s_.+-]*)',
-                                        self.string,
-                                        flags=re.MULTILINE | re.DOTALL).group(0)
+                if section == "system":
+                    sys_str = re.search(
+                        r"\[ system \]([#\[\]a-zA-Z\d\s_.+-]*)",
+                        self.string,
+                        flags=re.MULTILINE | re.DOTALL,
+                    ).group(0)
                     return sys_str
-                elif section == 'moleculetype':
-                    mol_str = re.search(r'\[ moleculetype \][#\[\]a-zA-Z\d\s_.+-]+(?<=\[ system \])*',
-                                        self.string, flags=re.MULTILINE | re.DOTALL).group(0)
+                elif section == "moleculetype":
+                    mol_str = re.search(
+                        r"\[ moleculetype \][#\[\]a-zA-Z\d\s_.+-]+(?<=\[ system \])*",
+                        self.string,
+                        flags=re.MULTILINE | re.DOTALL,
+                    ).group(0)
                     return mol_str
             else:
-                return ''
+                return ""
 
-    def get_section(self, prm: Literal['parameters', 'molecules', 'system']):
+    def get_section(self, prm: Literal["parameters", "molecules", "system"]):
         try:
             return self._prm_str_dict[prm]
         except KeyError:
@@ -881,32 +981,33 @@ class ITPFile(File):
         try:
             return self._prm_str_dict[prm]
         except KeyError:
-            return ''
+            return ""
 
     def _get_str_sections(self, section):
-        """Dictionary of string sections for 'parameter', 'moleculetype', 'system'
-        """
+        """Dictionary of string sections for 'parameter', 'moleculetype', 'system'"""
         if section not in self._prm_str_dict.keys():
             self._prm_str_dict[section] = self._split_str(section)
 
-    def __get_def_sections(self, ifstr: Literal['', 'n'] = ''):
-        for section in ['parameter', 'moleculetype', 'system']:
-            defs = re.findall(rf'\s*#if{ifstr}def\s*([\[\]a-zA-Z\d\s_.+-]+?)\n(.*?)#endif',
-                              self.get_section(section),
-                              flags=re.MULTILINE | re.DOTALL)
+    def __get_def_sections(self, ifstr: Literal["", "n"] = ""):
+        for section in ["parameter", "moleculetype", "system"]:
+            defs = re.findall(
+                rf"\s*#if{ifstr}def\s*([\[\]a-zA-Z\d\s_.+-]+?)\n(.*?)#endif",
+                self.get_section(section),
+                flags=re.MULTILINE | re.DOTALL,
+            )
             n_defs = len(defs)
             definition_list = DefinitionList([])
             if n_defs > 0:
                 for d in defs:
                     name, text = d
                     # self._definitions.append(name)
-                    textsplit = text.split('#else')
+                    textsplit = text.split("#else")
                     print(textsplit)
                     prm_list = []
                     for split in textsplit:
                         prms = self.__parse_str(string=split)
                         prm_list.append(prms)
-                    if ifstr == 'n':
+                    if ifstr == "n":
                         prm_list.reverse()
                     definition_list.append(Definition(name, *prm_list))
             self._definitions[section] = definition_list
@@ -915,8 +1016,8 @@ class ITPFile(File):
         self.get_defs()
         self.get_ndefs()
 
-    get_defs = partialmethod(__get_def_sections, ifstr='')
-    get_ndefs = partialmethod(__get_def_sections, ifstr='n')
+    get_defs = partialmethod(__get_def_sections, ifstr="")
+    get_ndefs = partialmethod(__get_def_sections, ifstr="n")
 
     @property
     def definitions(self):
@@ -935,9 +1036,7 @@ class ITPFile(File):
         if kwd_list is None:
             kwd_list = []
         self.__kwds.extend(kwd_list)
-        kwds = re.findall(self._kwd_pattern,
-                          self.read_text()
-                          )
+        kwds = re.findall(self._kwd_pattern, self.read_text())
         self.__kwds.extend(kwds)
         self.__kwds = KwdList(self.__kwds)
         self.__kwds.sort_kwds(list(self._kwd_dict.keys()))
@@ -978,16 +1077,19 @@ class ITPFile(File):
     #                 prms += prm
     #     return prms
 
+    def __getitem__(self, item: str):
+        if item in self.kwds:
+            return self.__parse_str(self.string, item)
+
     def get_parameter(self, prm_name: str):
         if prm_name in self.kwds:
             return self.__parse_str(self.string, prm_name)
 
-
-    @staticmethod
-    def __parse_str(string, kwds: Optional[str]=None):
+    # @staticmethod
+    def __parse_str(self, string, kwds: Optional[str] = None):
         prms = None
-        kwd_dict = _KWD_DICT['.itp']
-        sections = string.split(sep='[ ')
+        kwd_dict = _KWD_DICT[".itp"]
+        sections = string.split(sep="[ ")
         if kwds == None:
             kwds = get_match_pattern(kwd_dict)
         else:
@@ -996,15 +1098,16 @@ class ITPFile(File):
             elif type(kwds) == str:
                 kwds = Kwd(kwds)
             kwds = get_match_pattern(kwds)
-        section_pattern = re.compile(rf"\s*({kwds}) ]\s*\n([\sa-zA-Z\d#_.-]*)",
-                                     flags=re.MULTILINE | re.DOTALL)
+        section_pattern = re.compile(
+            rf"\s*({kwds}) ]\s*\n([\sa-zA-Z\d#_.-]*)", flags=re.MULTILINE | re.DOTALL
+        )
         for section in sections:
             match = re.search(section_pattern, section)
             if match is None:
                 pass
             else:
                 kwd = match.group(1)
-                prm = ParameterFactory(kwd, match.group(2))
+                prm = ParameterFactory(kwd, match.group(2), self.resolve())
                 if prms == None:
                     prms = prm
                 else:
@@ -1014,16 +1117,15 @@ class ITPFile(File):
     @staticmethod
     def _get_def(definition: (Tuple[str])):
         name, text = definition
-        text = text.split('#else')
+        text = text.split("#else")
 
     def _add_attrs(self):
         if len(self.data) == 0:
             self.data = None
         # kwd_sel = self.kwds.filter_list(['atomtypes', 'moleculetype', 'molecules'])
-        # print(kwd_sel)
         kwd_sel = self.kwds
         for kwd in kwd_sel:
-            print('setting', kwd)
+            print("setting", kwd)
             self.__setattr__(kwd, self.get_df(kwd))
 
     # TODO: make Parameters UserDict (or not)
@@ -1052,25 +1154,29 @@ class MDPFile(File):
 class TOPFile(ITPFile):
     pass
 
+
 class Dir(BasicPath):
-    _suffices = '*'
-    _suffix = '*'
+    _suffices = "*"
+    _suffix = "*"
 
     def check(self):
         if not self.is_dir():
-            raise FileNotFoundError(f'{self.name} is not a directory.')
-        if self._suffix != '*':
-            assert self.suffix == self._suffix,\
-                f'Expected {self._suffix!r}, found {self.suffix!r}'
+            raise FileNotFoundError(f"{self.name} is not a directory.")
+        if self._suffix != "*":
+            assert (
+                self.suffix == self._suffix
+            ), f"Expected {self._suffix!r}, found {self.suffix!r}"
 
-    def _get_filelist(self, ext: Union[str, list]=_suffices):
-        assert type(ext) in [str, list],\
-            f"'ext': Expected 'str' or 'list' instance, found {ext.__class__.__name__!r}"
-        if ext == '*':
+    def _get_filelist(self, ext: Union[str, list] = _suffices):
+        assert type(ext) in [
+            str,
+            list,
+        ], f"'ext': Expected 'str' or 'list' instance, found {ext.__class__.__name__!r}"
+        if ext == "*":
             filelist = [file for file in self.iterdir()]
         else:
-            format_ext = lambda x: '.' + x.strip('.')
-            ext_match_list = lambda x: list(self.glob(f'*{x}'))
+            format_ext = lambda x: "." + x.strip(".")
+            ext_match_list = lambda x: list(self.glob(f"*{x}"))
             if type(ext) == str:
                 ext = format_ext(ext)
                 filelist = ext_match_list(ext)
@@ -1091,16 +1197,24 @@ class Dir(BasicPath):
 
 
 class FFDir(Dir):
-    _suffix = '.ff'
-    _suffices = '.itp'
+    _suffix = ".ff"
+    _suffices = ".itp"
     pass
 
+    def check(self):
+        if not self.is_dir():
+            raise FileNotFoundError(f"{self.name} is not a directory.")
+        assert self.suffix == ".ff", f"Expected {self._suffix!r}, found {self.suffix!r}"
+
     def _get_ff_parameter(self, prm_name: str):
-        assert prm_name in _KWD_DICT['.itp'], f'{prm_name!r} is not a recognised parameter.'
-        # df = pd.DataFrame(columns=  )
+        assert (
+            prm_name in _KWD_DICT[".itp"]
+        ), f"{prm_name!r} is not a recognised parameter."
+        # full_df = pd.DataFrame(columns=  )
         for itp in self.itp_filelist:
-            if 'atomtypes' in itp.kwds:
-                split_str = itp.get_parameter('atomtypes')
+            if "atomtypes" in itp.kwds:
+                # split_str = itp.get_parameter("atomtypes")
+                split_str = itp['atomtypes']
         return split_str
 
     # def atomtypes(self):
@@ -1112,41 +1226,59 @@ class FFDir(Dir):
 
 
 class BasicPathList(UserList):
-    def __init__(self, path: Union[BasicPath, Dir], ext='*', check=False):
+    def __init__(self, path: Union[BasicPath, Dir], ext="*", check=False):
         self.path = DirFactory(path)
         files = self.path._get_filelist(ext=ext)
-        self.data = []
+        self._data = []
         for file in files:
-            self.data.append(PathFactory(file, check=check))
+            self._data.append(PathFactory(file, check=check))
+        self.data = self._data
+
+    def _reset_paths(f):
+        def wrapper(self, *args, pre_reset=True, post_reset=True, **kwargs):
+            if pre_reset is True:
+                self.data = self._data
+            result = f(self, *args, **kwargs)
+            return result
+            if post_reset is True:
+                self.data = self._data
+        return wrapper
 
     @property
-    def names(self):
+    def names(self) -> List[str]:
         return self.extract_fnames()
 
     @property
-    def stems(self):
+    def stems(self) -> List[str]:
         return self.extract_fstems()
 
     @property
-    def suffices(self):
+    def suffices(self) -> List[str]:
         return self.extract_fsuffices()
 
-    def _extract_parts(self, part="name"):
-        data_list = self.data
+    @_reset_paths
+    def _extract_parts(self, part="name",
+                       pre_reset=True,
+                       post_reset=True) -> List[Tuple[str, str]]:
+        data_list = self._data
         data_list = [getattr(obj, part) for obj in data_list]
-        return data_list
+        self.data = data_list
+        return self
 
+    @_reset_paths
     def filter(
-            self,
-            pattern: Union[List[str], str],
-            mode: Literal["full", "parts"] = "parts",
-            keep_dims: bool = False,
-    ) -> List[Union[Kwd, None]]:
+        self,
+        pattern: Union[List[str], str],
+        mode: Literal["full", "parts"] = "parts",
+        keep_dims: bool = False,
+            pre_reset=False,
+            post_reset=False
+    ):
         match = [obj.filter(pattern, mode=mode) for obj in self.data]
         if not keep_dims:
-            match = [obj for obj in match if obj != None]
-        return match
-
+            match = [obj for obj in match if obj is not None]
+        self.data = match
+        return self
 
     extract_fstems = partialmethod(_extract_parts, part="stem")
     extract_fnames = partialmethod(_extract_parts, part="name")
@@ -1154,14 +1286,16 @@ class BasicPathList(UserList):
 
 
 class FileList(BasicPathList):
-    _ext = '*'
+    _ext = "*"
 
     def __init__(self, path: Union[BasicPath, Dir], check=False):
-        self.path = Dir(path)
+        self.path = DirFactory(path)
         files = self.path._get_filelist(ext=self.__class__._ext)
-        self.data = []
+        self._data = []
         for file in files:
-            self.data.append(FileFactory(file, check=check))
+            self._data.append(FileFactory(file, check=check))
+        self.data = self._data
+
 
 
 class PathList(FileList):
@@ -1169,79 +1303,114 @@ class PathList(FileList):
 
 
 class ITPList(FileList):
-    _ext = '.itp'
+    _ext = ".itp"
     pass
 
     def __copy__(self):
         return self
 
+
 class GROList(FileList):
-    _ext = '.gro'
+    _ext = ".gro"
     pass
 
 
 class MDPList(FileList):
-    _ext = '.mdp'
+    _ext = ".mdp"
     pass
 
 
 class TOPList(FileList):
-    _ext = '.top'
+    _ext = ".top"
     pass
 
 
 class DirList(BasicPathList):
-    _ext = '*'
+    _ext = "*"
 
     def __init__(self, path: Union[BasicPath, Dir], check=False):
         self.path = DirFactory(path)
         files = self.path._get_filelist(ext=self.__class__._ext)
-        self.data = []
+        self._data = []
         for file in files:
             self.data.append(DirFactory(file, check=check))
+        self.data = self._data
 
 
 class FFList(DirList):
-    _ext = '.ff'
+    _ext = ".ff"
+    _prm_info_dict = {
+        "n_atoms": cast(
+            Callable[[Universe], Dict[str, int]],
+            lambda u: dict(
+                [(r, u.select_atoms(f"moltype {r}").n_atoms) for r in u.atoms.moltypes]
+            ),
+        ),
+        "charges": cast(
+            Callable[[Universe], Dict[str, float]],
+            lambda u: dict(zip(u.atoms.moltypes, np.round(u.atoms.residues.charges, 4))),
+        ),
+    }
     pass
 
 
 class ForceField:
-    def __init__(self,
-                path: Union[BasicPath, Dir],
-                check=False,
-                include='all',
-                exclude=None):
-        self.path = FFDir(path)
-        self.name = self.path.name
-        self._itp_list = self.itp_filelist = ITPList(self.path)
-        print(type(self._itp_list), type(self.itp_filelist))
+
+    def __init__(self, path: Union[BasicPath, Dir], include="all", exclude=None):
+        self._init_path(path)
         self.include(include)
         self.exclude(exclude)
 
+    def _init_path(self, path):
+        if type(path) == ForceField:
+            self.__dict__ = path.__dict__
+        else:
+            if type(path) == FFDir:
+                self.path = path
+            else:
+                self.path = FFDir((FF / path).with_suffix('.ff'))
+            self.name: str = self.path.name
+            self._itp_list = self.itp_filelist = ITPList(self.path)
+
     def include(self, itp_names):
-        if itp_names == 'all':
+        self.itp_filelist = self._itp_list
+        if itp_names == "all":
             pass
         else:
-            self.itp_filelist.filter(itp_names, mode='stem', keep_dims=False)
+            self.itp_filelist = self.itp_filelist.filter(
+                itp_names, mode="stem", keep_dims=False
+            )
         return self.itp_filelist
 
     def exclude(self, itp_names):
-        if itp_names == None:
+        if itp_names is None:
             pass
         else:
             exclude_list = self.itp_filelist
-            exclude_list = exclude_list.filter(itp_names, mode='stem', keep_dims=False)
-            self.itp_filelist = [item for item in self.itp_filelist if item not in exclude_list]
+            exclude_list = exclude_list.filter(itp_names, mode="stem", keep_dims=False)
+            self.itp_filelist = [
+                item for item in self.itp_filelist if item not in exclude_list
+            ]
+            print(type(self.itp_filelist))
         return self.itp_filelist
 
     def __repr__(self):
-        return f'{self.path.name}: [' + ', '.join([itp.stem for itp in self.itp_filelist]) + ']'
+        return (
+            f"{self.path.name}: ["
+            + ", ".join([itp.stem for itp in self.itp_filelist])
+            + "]"
+        )
+
+    def __getitem__(self, item):
+        prm = self.path._get_ff_parameter(item)
+        return prm
+
 
 
 # -----------------------------------------------------------------------------
 # Path object factories
 # -----------------------------------------------------------------------------
+
 
 class _PathFactoryBase(BasicPath):
     _file_types = {}
@@ -1262,12 +1431,12 @@ class _PathFactoryBase(BasicPath):
 
 
 class DirFactory(_PathFactoryBase):
-    _file_types = {'.ff': FFDir}
+    _file_types = {".ff": FFDir}
     _default = Dir
 
 
 class FileFactory(_PathFactoryBase):
-    _file_types = {'.itp': ITPFile, '.gro': GROFile, '.top': TOPFile, '.mdp': MDPFile}
+    _file_types = {".itp": ITPFile, ".gro": GROFile, ".top": TOPFile, ".mdp": MDPFile}
     _default = File
 
 
@@ -1286,15 +1455,20 @@ class PathFactory(BasicPath):
 
 
 class PathListFactory(BasicPathList):
-    _file_types = {'.itp': ITPList, '.gro': GROList, '.mdp': MDPList, '.top': TOPList, '.ff': FFList}
+    _file_types = {
+        ".itp": ITPList,
+        ".gro": GROList,
+        ".mdp": MDPList,
+        ".top": TOPList,
+        ".ff": FFList,
+    }
     _default = BasicPathList
 
-    def __new__(cls, dir, ext='*', check=False):
-        if ext == '*':
+    def __new__(cls, dir, ext="*", check=False):
+        if ext == "*":
             path_list = cls._default(dir, ext, check)
             suffix = np.unique(path_list.suffices)
             if len(suffix) != 1:
-                print(2)
                 return path_list
             else:
                 suffix = suffix[0]
@@ -1304,3 +1478,701 @@ class PathListFactory(BasicPathList):
             return cls._file_types[suffix](dir, check)
         else:
             return cls._default(dir, suffix, check)
+
+
+class SimDir(Dir):
+    _suffix = ""
+    _suffices = [".gro", ".top", ".trr", ".log", ".tpr"]
+    _trr_sel = "largest"
+    _subfolder = False
+
+    @property
+    def idx(self) -> Tuple[str, str, str]:
+        """
+        Extracts run information from path and returns as pd.MultiIndex
+        :return: clay, ion, aa
+        :rtype: Tuple(str, str, str)
+        """
+        idsl = pd.IndexSlice
+        if self.subfolder is False:
+            idsl = idsl[[*str(self.resolve()).split("/")[-3:]]]
+        else:
+            logger.info("subfolder")
+            idsl = idsl[[*str(self.resolve()).split("/")[-4:-1]]]
+        return idsl
+
+    @cached_property
+    def gro(self) -> _PosixPath:
+        suffix = "gro"
+        searchlists = [["_n", "_06", "_7"], ["_neutral", "_setup"]]
+        for searchlist in searchlists:
+            f = select_named_file(
+                self.resolve(),
+                searchlist=searchlist,  # ["_n", "_06", "_neutral", "_setup", "_7"],
+                suffix=suffix,
+                how="latest",
+            )
+            if f is None:
+                continue
+            else:
+                break
+        try:
+            logger.info(f"{suffix!r}: {f.name!r}")
+        except AttributeError:
+            logger.info(f"{suffix!r}: No file found")
+        return f
+        # return select_named_file(
+        #     path=self.resolve(), suffix="gro", searchlist=FILE_SEARCHSTR_LIST
+        # )
+
+    @cached_property
+    def tpr(self) -> _PosixPath:
+        suffix = "tpr"
+        searchlists = [["_n", "_06", "_7"], ["_em", "_neutral", "_setup"]]
+        for searchlist in searchlists:
+            f = select_named_file(
+                self.resolve(),
+                searchlist=searchlist,  # ["_n", "_06", "_neutral", "_setup", "_7"],
+                suffix=suffix,
+                how="latest",
+            )
+            logger.info(f"{f}")
+            if f is None:
+                continue
+                # f = select_named_file(self.resolve(),
+                #                       searchlist=[''])
+            else:
+                break
+        try:
+            logger.debug(f"{suffix!r}: {f.name!r}")
+        except AttributeError:
+            logger.debug(f"{suffix!r}: No file found")
+        return f
+        # return select_named_file(
+        #     path=self.resolve(), suffix="gro", searchlist=FILE_SEARCHSTR_LIST
+        # )
+
+    @cached_property
+    def top(self) -> _PosixPath:
+        suffix = "top"
+        searchlists = [["_n", "_06", "_neutral", "_setup", "_7"], ["em"]]
+        for searchlist in searchlists:
+            f = select_named_file(
+                self.resolve(),
+                searchlist=searchlist,  # ["_n", "_06", "_neutral", "_setup", "_7"],
+                suffix=suffix,
+                how="latest",
+            )
+            if f is None:
+                continue
+            else:
+                break
+        try:
+            logger.info(f"{suffix!r}: {f.name!r}")
+        except AttributeError:
+            logger.info(f"{suffix!r}: No file found")
+        return f
+        # return select_named_file(
+        #     path=self.resolve(), suffix="top", searchlist=FILE_SEARCHSTR_LIST
+        # )
+
+    @cached_property
+    def trr(self) -> _PosixPath:
+        suffix = "trr"
+        f = select_named_file(
+            self.resolve(),
+            searchlist=["_n", "_06", "_7"],
+            suffix=suffix,
+            how="largest",
+        )
+        try:
+            logger.debug(f"{suffix!r}: {f.name!r}")
+        except AttributeError:
+            logger.debug(f"{suffix!r}: No file found")
+        return f
+        # return select_named_file(
+        #     path=self.resolve(), suffix="trr", searchlist=FILE_SEARCHSTR_LIST
+        # )
+
+    @cached_property
+    def log(self) -> _PosixPath:
+        suffix = "log"
+        f = select_named_file(
+            self.resolve(),
+            searchlist=["_n", "_06", "_neutral", "_setup", "_7"],
+            suffix=suffix,
+            how="latest",
+        )
+        try:
+            logger.debug(f"{suffix!r}: {f.name!r}")
+        except AttributeError:
+            logger.debug(f"{suffix!r}: No file found")
+        return f
+        # return select_named_file(
+        #     path=self.resolve(), suffix="log", searchlist=FILE_SEARCHSTR_LIST
+        # )
+
+    # @cached_property
+    # def suffices(self):
+    #     return self._suffices
+
+    # @cached_property
+    # def __pathlist = [self.gro, self.top, self.log, self.trr]
+
+    @property
+    def pathdict(self):
+        file_dict = dict(
+            [(k, getattr(self, k)) for k in ["gro", "top", "trr", "log", "tpr"]]
+        )
+        return file_dict
+
+    @property
+    def missing(self):
+        suffices = [
+            path_type for path_type, path in self.pathdict.items() if path is None
+        ]
+        return suffices
+
+    @property
+    def suffices(self):
+        suffices = [
+            path_type for path_type, path in self.pathdict.items() if path is not None
+        ]
+        return suffices
+
+    @property
+    def trr_sel(self) -> Literal["largest", "latest"]:
+        return self._trr_sel
+
+    @trr_sel.setter
+    def trr_sel(self, trr_sel: Literal["largest", "latest"]):
+        self._trr_sel = trr_sel
+
+    @property
+    def subfolder(self) -> bool:
+        return self._subfolder
+
+    @subfolder.setter
+    def subfolder(self, subfolder: bool):
+        self._subfolder = subfolder
+
+    @property
+    def base_dir(self):
+        if self.subfolder is True:
+            base = SimDir(self.parent, check=False)
+        else:
+            base = self
+        return base
+
+class UnitCell(ITPFile):
+    @property
+    def idx(self):
+        return self.stem[2:]
+
+    @property
+    def clay_type(self):
+        return self.parent.name
+
+    @property
+    def uc_stem(self):
+        return self.stem[:2]
+
+    @property
+    def atoms(self):
+        return self.data
+
+
+class UCData(Dir):
+    _suffices = ['.gro', '.itp']
+
+    def __init__(self, path, uc_stem=None, ff=None):
+        if uc_stem is None:
+            self.uc_stem = self.name[-2:]
+        else:
+            self.uc_stem = uc_stem
+        self.ff = ForceField(ff)
+        id_cols = list(map(lambda x: str(x[-2:]), self.available))
+        self.atomtypes = self.ff['atomtypes'].df
+        idx = self.atomtypes.iloc[:, 0]
+        cols = [*id_cols, 'charge', 'sheet']
+        self.full_df = pd.DataFrame(index=idx,
+                                    columns=cols)
+        self.full_df['charge'].update(self.atomtypes.set_index('at-type')['charge'])
+        self.get_df_sheet_annotations()
+        self.full_df['sheet'].fillna('X', inplace=True)
+        self.full_df.fillna(0, inplace=True)
+        self.uc_list = [UnitCell(itp) for itp in self.itp_filelist]
+        self.read_ucs()
+        self.occ = self.full_df.groupby('sheet').sum()
+        self.full_df.set_index('sheet', append=True, inplace=True)
+        self.full_df.sort_index(inplace=True, level=1, sort_remaining=True)
+        self.full_df.index = self.full_df.index.reorder_levels(['sheet', 'at-type'])
+        charge = self.full_df[id_cols].copy()
+        charge = charge.apply(lambda x: x * self.full_df['charge'], raw=True)
+        self.total_charge = charge[id_cols].sum().round(2).convert_dtypes()
+        self.total_charge.name = 'charge'
+        # self.total_charge.index = pd.MultiIndex.from_tuples([('C', 'tot')], names=['sheet', 'at-type'])
+        self.df = self.full_df.reset_index('at-type').filter(regex=r'^(?![X].*)', axis=0)
+        self.df = self.df.reset_index().set_index(['sheet', 'at-type'])
+        # self.uc_df = pd.concat(self.df[id_cols], self.total_charge)
+        # self.full_df = pd.concat(self.full_df)
+        ...
+
+    @property
+    def uc_composition(self):
+        return self.full_df.reindex(self.atomtypes, fill_value=0).filter(regex=r'^(?![oOhH].*)', axis=0)
+
+    @property
+    def idxs(self):
+        return self.full_df.columns
+
+    def check(self):
+        if not self.is_dir():
+            raise FileNotFoundError(f"{self.name} is not a directory.")
+
+    def read_ucs(self):
+        for uc in self.uc_list:
+            atoms = uc['atoms'].df
+            self.full_df[f'{uc.idx}'].update(atoms.value_counts('at-type'))
+        # self.full_df.loc[pd.IndexSlice[:], pd.IndexSlice[f'{uc.idx}', 'charge']].update(atoms.groupby('at-type').mean()['charge'])
+
+    def get_df_sheet_annotations(self):
+        old_index = self.full_df.index
+        regex_dict = {'T': r'[a-z]+t',
+                      'O': r'[a-z]*[a-gi-z][o2]',
+                      'C': 'charge'
+                      }
+        index_extension_list = []
+        for key in regex_dict.keys():
+            for element in old_index:
+                match = re.fullmatch(regex_dict[key], element)
+                if match is not None:
+                    index_extension_list.append((key, match.group(0)))
+        new_index = pd.MultiIndex.from_tuples(index_extension_list)
+        new_index = new_index.to_frame().set_index(1)
+        self.full_df['sheet'].update(new_index[0])
+
+    
+    @property
+    def available(self):
+        return self.itp_filelist.extract_fstems()
+
+    def __str__(self):
+        return
+
+# class ForceField(FileParser):
+#     def __init__(self, include='all', exclude=None):
+#         super().__init__(relpath=pp.FF_PATH, fname='')
+#         # self.__available = self._get_filelist()
+#         self.__atomtypes = pd.DataFrame()
+#         self.__moleculetypes = pd.DataFrame()
+#         self.__atomtypes = pd.DataFrame(columns=[*super().kwd_dict['atomtypes']]
+#                                         )
+#         self.__atomtypes = self.__atomtypes.astype(dtype=self._get_dtypes('atomtypes',
+#                                                                          [*super().kwd_dict['atomtypes']]
+#                                                                          )
+#                                                    )
+#         self.__moleculetypes = pd.DataFrame(columns=[*super().kwd_dict['atoms']]
+#                                             )
+#         self.__moleculetypes = self.__moleculetypes.astype(dtype=self._get_dtypes('atoms',
+#                                                                          [*super().kwd_dict['atoms']]
+#                                                                          )
+#                                                    )
+#         self.__ff_dict = {'atomtypes': self.__atomtypes,
+#                           'atoms': self.__moleculetypes
+#                           }
+#         self.__ff_selection = {}
+#         self.select_ff(include=include, exclude=exclude)
+#         self._read_ff()
+#         self.get_atomtypes()
+#         self.get_moleculetypes()
+#
+#     @property
+#     def available(self):
+#         return self.extract_fnames(self._get_filelist(path=self.path.parent, ext='.ff'))
+#
+#     @staticmethod
+#     def print_ff_not_found(ff, searchstr='include'):
+#         print(f'"{ff}" was listed in "{searchstr}" but was not '
+#               'found in force field selection.\n')
+#
+#     def __include_ff(self, sel_dict, include='all'):
+#         # Include all available ff
+#         if include == 'all':
+#             print(f'Including all force fields in "{self.path.name}".')
+#             include = self.available
+#         # include all ".itp" files for 1 selected ff
+#         elif isinstance(include, (str, os.PathLike)):
+#             print(f'Including {include}.')
+#             include = self.match_ff_pathname(include)
+#             sel_dict[include.stem] = 'all'
+#         # Include all available ".itp" files for a lift of available ff
+#         if isinstance(include, (list, np.ndarray)) and len(include) == 1:
+#             ff_sel = self.match_ff_pathname(include[0])
+#             sel_dict[ff_sel.stem] = 'all'
+#         elif isinstance(include, (list, np.ndarray)) and len(include) > 1:
+#             print('Including list:')
+#             for ff_sel in include:
+#                 print(f'{ff_sel}')
+#                 ff_sel = self.match_ff_pathname(ff_sel)
+#                 sel_dict[ff_sel.stem] = 'all'
+#         # Include specific ".itp" files fora selection of ff
+#         elif isinstance(include, dict):
+#             print('Including dict:')
+#             # sel_dict = {}
+#             for ff_sel in include.keys():
+#                 print(f'{ff_sel}')
+#                 avail_str = ''.join(np.unique(dt.extract_fname(self.available,
+#                                                                stem=True
+#                                                                )
+#                                               )
+#                                     )
+#                 print(f'available ff: {avail_str}')
+#                 sel_dict = include
+#                 try:
+#                     sel_dict = self.match_dict_keys(sel_dict,
+#                                                     ff_sel,
+#                                                     avail_str
+#                                                     )
+#                 except AttributeError:
+#                     self.print_ff_not_found(ff_sel)
+#                     break
+#             print(sel_dict)
+#
+#         # check itp files of selected ff
+#         for ff_sel in sel_dict.keys():
+#             print(f'Checking itp files: {sel_dict[ff_sel]}')
+#             ff_sel = dt.extract_fname(ff_sel, stem=True)
+#             print(self.path.parent)
+#             avail_fnames = dt.extract_fname(self._get_filelist(path=self.path.parent / f'{ff_sel}.ff',
+#                                                                ext='itp'
+#                                                                )
+#                                             )
+#             avail_stems = dt.extract_fname(self._get_filelist(path=self.path.parent / f'{ff_sel}.ff',
+#                                                               ext='itp'),
+#                                            stem=True
+#                                            )
+#             print(f'All available itp files: {avail_fnames}')
+#             if isinstance(sel_dict[ff_sel], (str, pl.Path)):
+#                 sel_dict[ff_sel] = [sel_dict[ff_sel]]
+#             else:
+#                 sel_dict[ff_sel] = list(sel_dict[ff_sel])
+#             print(len(sel_dict[ff_sel]), type(sel_dict[ff_sel]),[*sel_dict[ff_sel]])
+#             if sel_dict[ff_sel][0] == 'all':
+#                 print(f'list of len 1: {sel_dict[ff_sel]}')
+#                 sel_dict[ff_sel] =  avail_stems
+#             sel_dict[ff_sel] = self.match_fname_list(sel_dict[ff_sel],
+#                                                      avail_fnames,
+#                                                      ext='.itp'
+#                                                      )
+#         print(sel_dict)
+#         return sel_dict
+#
+#     def select_ff(self, include='all', exclude=None):
+#         # Initialise dictionary for ff selection
+#         old_sel = self.__ff_selection
+#         sel_dict = {}
+#         incl_dict = {}
+#         excl_dict = {}
+#         incl_dict = self.__include_ff(incl_dict, include)
+#         if exclude != None:
+#             excl_dict = self.__include_ff(excl_dict, exclude)
+#         print(incl_dict, excl_dict)
+#         for ff_sel in incl_dict.keys():
+#             if ff_sel not in excl_dict.keys():
+#                 sel_dict[ff_sel] = incl_dict[ff_sel]
+#             else:
+#                 sel_dict[ff_sel] = list(filter(lambda incl: incl not in excl_dict[ff_sel],
+#                                                incl_dict[ff_sel]
+#                                                )
+#                                         )
+#         sel_dict = dict(filter(lambda ff_item: len(ff_item[1]) != 0,
+#                                sel_dict.items()
+#                                )
+#                         )
+#         self.__ff_selection = sel_dict
+#         if old_sel != self.__ff_selection:
+#             self._read_ff()
+#         #return sel_dict
+#
+#     @property
+#     def ff_selection(self) -> dict:
+#         print(self.__ff_selection)
+#         if len(self.__ff_selection.keys()) != 0:
+#             return self.__ff_selection
+#         else:
+#             raise KeyError('No force field was selected.')
+#
+#     def _read_ff(self):
+#         print(self.ff_selection)
+#         try:
+#             ff_sel_dict = self.ff_selection
+#             print(ff_sel_dict.keys())
+#         except AttributeError:
+#             print('No force field was selected.')
+#         for ff_sel in ff_sel_dict.keys():
+#             for itp_num, itp in enumerate(ff_sel_dict[ff_sel]):
+#                 try:
+#                     print(self.path.parent / f'{ff_sel}.ff',
+#                                           f'{itp}.itp')
+#                     itp_file = FileParser(self.path.parent / f'{ff_sel}.ff',
+#                                           f'{itp}.itp'
+#                                           )
+#                     print(f'reading {itp_file.name}')
+#                 except IOError:
+#                     print(f'could not open {itp}')
+#                 itp_file.parse_itp(self.__ff_dict)
+#             print(self.__ff_dict)
+#         return self.__ff_dict
+#
+#     def get_atomtypes(self, ff_sel='all'):
+#         if ff_sel == 'all':
+#             ff_sel = self.ff_selection.keys()
+#         if isinstance(ff_sel, (str, pl.Path)):
+#             ff_sel = [dt.extract_fname(ff_sel, stem=True)]
+#         elif isinstance(ff_sel, (np.ndarray, t.Sequence)):
+#             ff_sel = dt.extract_fname(ff_sel, stem=True)
+#         elif isinstance(ff_sel, dict):
+#             ff_sel = dt.extract_fname(ff_sel.keys(), stem=True)
+#         print(ff_sel, self.__ff_dict['atomtypes'].loc[self.__ff_dict['atomtypes']['ff'].isin(ff_sel)])
+#         ids = pd.IndexSlice
+#         if len(self.__ff_dict['atomtypes']) != 0:
+#             self.__atomtypes = self.__ff_dict['atomtypes'].loc[self.__ff_dict['atomtypes']['ff'].isin(ff_sel),
+#                                                                ['ff', 'itp', 'at_type', 'mass', 'charge', 'sigma', 'epsilon']
+#                                                                ].drop_duplicates(keep='first')
+#             return self.__atomtypes
+#
+#     def get_moleculetypes(self, ff_sel='all'):
+#         if ff_sel == 'all':
+#             ff_sel = self.ff_selection.keys()
+#         if isinstance(ff_sel, (str, pl.Path)):
+#             ff_sel = [dt.extract_fname(ff_sel, stem=True)]
+#         elif isinstance(ff_sel, (np.ndarray, t.Sequence)):
+#             ff_sel = dt.extract_fname(ff_sel, stem=True)
+#         elif isinstance(ff_sel, dict):
+#             ff_sel = dt.extract_fname(ff_sel.keys(), stem=True)
+#         print(ff_sel, self.__ff_dict['atoms'].loc[self.__ff_dict['atoms']['ff'].isin(ff_sel)])
+#         # ids = pd.IndexSlice
+#         if len(self.__ff_dict['atoms']) != 0:
+#             self.__moleculetypes = self.__ff_dict['atoms'].loc[self.__ff_dict['atoms']['ff'].isin(ff_sel),
+#                                                                ['ff', 'itp', 'res_name', 'at_type', 'at_name', 'mass', 'charge']
+#                                                                ].drop_duplicates(keep='first')
+#             # self.__moleculetypes = self.__moleculetypes.loc[self.__moleculetypes.is_unique()]
+#             print(type(self.__moleculetypes), self.__moleculetypes.size, self.__moleculetypes)
+#         return self.__moleculetypes
+#
+#     @property
+#     def atomtypes(self):
+#         if len(self.__atomtypes) > 0:
+#             return self.__atomtypes.set_index(['ff', 'itp'])['at_type'].drop_duplicates(keep='first')
+#
+#
+#     @property
+#     def moleculetypes(self):
+#         if len(self.__moleculetypes) > 0:
+#             return self.__moleculetypes.set_index(['ff', 'itp'])['res_name'].drop_duplicates(keep='first')
+#
+#     @property
+#     def atomic_charges(self):
+#         if len(self.__atomtypes) > 0:
+#             return self.__atomtypes.set_index(['ff', 'itp', 'at_type'])['charge']
+#
+#     @property
+#     def atomic_masses(self):
+#         if len(self.__atomtypes) > 0:
+#             return self.__atomtypes.set_index(['ff', 'itp', 'at_type'])['mass']
+#
+#     @property
+#     def sigma_epsilon(self):
+#         if len(self.__atomtypes) > 0:
+#             return self.__atomtypes.set_index(['ff', 'itp', 'at_type'])['sigma', 'epsilon']
+#
+#     @property
+#     def __molecule_sums(self):
+#         if len(self.__moleculetypes) > 0 and len(self.__atomtypes) > 0:
+#             mols = self.__moleculetypes.set_index(['ff', 'at_type'])
+#             atoms = self.__atomtypes.set_index(['ff', 'at_type'])
+#             mols.update(atoms)
+#             mols.reset_index(inplace=True)
+#             mols.dropna(inplace=True)
+#             mols = mols.loc[:, ['ff','res_name', 'mass', 'charge']]
+#             mols_grouper = mols.groupby(['ff', 'res_name'])
+#             return mols_grouper.sum()
+#             # mol_masses = pd.merge(self.__moleculetypes, self.__atomtypes.loc[:, ['ff', 'itp']], how='outer', on=['ff', 'itp'])#, 'at_type'])#.groupby(['ff', 'itp', 'res_name'])
+#             # return mol_masses
+#
+#     @property
+#     def molecule_masses(self):
+#         if len(self.__molecule_sums) > 0:
+#             return self.__molecule_sums['mass']
+#
+#     @property
+#     def molecule_charges(self):
+#         if len(self.__molecule_sums) > 0:
+#             return self.__molecule_sums['charge']
+#
+#
+# class UCData(FileParser):
+#     #exclude_dict = {'O': []}
+#     # print(clay_atom_types)
+#     def __init__(self, clay_type, ff='ClayFF_Fe'):
+#         super().__init__(fname=clay_type, relpath=pp.UC_PATH.parent)
+#         print(f'path: {self.full_path} name {self.name}')
+#         self.__clay_selection = {}
+#         self.select_clay_type(clay_type)
+#         print(f'clay selection {self.__clay_selection}')
+#         self.__moleculetypes = pd.DataFrame()
+#         self.__moleculetypes = pd.DataFrame(columns=[*super().kwd_dict['atoms']]
+#                                             )
+#         self.__moleculetypes = self.__moleculetypes.astype(dtype=self._get_dtypes('atoms',
+#                                                                                   [*super().kwd_dict['atoms']]
+#                                                                                   )
+#                                                            )
+#         self.__clay_dict = {'atoms': self.__moleculetypes
+#                            }
+#         #self.select_ff(include=include, exclude=exclude)
+#         self._read_ucs()
+#         self.__ff = ff
+#         # self.get_atomtypes()
+#         # self.get_moleculetypes()
+#         self.__atomtypes = ForceField(include='ClayFF_Fe').atomtypes
+#         self.get_uc_composition()
+#         self.get_uc_charges()
+#
+#
+#     @property
+#     def clay_type_selection(self) -> dict:
+#         print(self.__clay_selection)
+#         if len(self.__clay_selection.keys()) != 0:
+#             return self.__clay_selection
+#         else:
+#             raise KeyError('No clay type was selected.')
+#
+#     def select_clay_type(self, clay_type):
+#         print(self.path.is_dir())
+#         print(self.path)
+#         if (self.path / clay_type).is_dir():
+#             self.name = clay_type
+#             print(f'name {self.name}')
+#             self.__clay_selection[self.name] = self.available
+#             print(self.__clay_selection)
+#         else:
+#             print(f'{self.path} is not dir')
+#
+#     def read_ucs(self):
+#         pass
+#
+#     @property
+#     def available(self):
+#         print(self._get_filelist(path=self.path))
+#         return self.extract_fnames(self._get_filelist(path=self.full_path, ext='itp'))
+#
+#     def _read_ucs(self):
+#         print(self.clay_type_selection)
+#         try:
+#             ff_sel_dict = self.clay_type_selection
+#             print(ff_sel_dict.keys())
+#         except AttributeError:
+#             print('No force field was selected.')
+#         for ff_sel in ff_sel_dict.keys():
+#             print(ff_sel)
+#             for itp_num, itp in enumerate(ff_sel_dict[ff_sel]):
+#                 print(ff_sel_dict[ff_sel], self.path, ff_sel, itp)
+#                 # print(+'\n'+self.full_path / f'{ff_sel}',
+#                 #                           f'{itp}')
+#                 try:
+#                     itp_file = FileParser(self.path / f'{ff_sel}',
+#                                           f'{itp}'
+#                                           )
+#                     print(f'reading {itp_file.full_path}')
+#                 except IOError:
+#                     print(self.path)
+#                     print(f'could not open {itp}')
+#                 print(self.__clay_dict)
+#                 itp_file.parse_itp(self.__clay_dict)
+#             print(self.__clay_dict)
+#         return self.__clay_dict
+#
+#     # def parse_itp(self, ff_dict: dict, kwd_dict=kwd_dict):
+#
+#     def get_uc_charges(self):
+#         print(self.__clay_dict['atoms'].groupby('res_name').sum())
+#         self.__uc_charges =  self.__clay_dict['atoms'].groupby('res_name').sum()['charge'].round(0)\
+#             .astype(np.int32)#.apply(lambda count: count / 2)
+#
+#     @property
+#     def uc_charges(self):
+#         return self.__uc_charges.round(2)
+#
+#     @staticmethod
+#     def extract_uc_numbers(uc_list):
+#         try:
+#             uc_list = list(uc_list)
+#             print(uc_list)
+#             match =  list(map(lambda uc_name: int(re.search(rf'{c.UC_STEM}([0-9]*)', uc_name).group(1)), uc_list))
+#             print(match)
+#             return match
+#         except TypeError:
+#             print('Unit cell names must be in a list of format "[a-zA-A]+\d+".')
+#         except AttributeError:
+#             print(match)
+#             print('Unit cell names must be in a list.')
+#
+#
+#     def get_uc_composition(self):
+#         #print(pd.crosstab(self.__clay_dict['atoms']['at_type'], self.__clay_dict['atoms']['res_name'], dropna=False))
+#         self.__uc_composition = self.__clay_dict['atoms'].loc[:,['res_name', 'at_type', 'id']].reset_index()\
+#             .pivot_table(index='at_type',
+#                          columns='res_name',
+#                          aggfunc='size',
+#                          fill_value=0).astype(np.int32)#.apply(lambda count: count / 2)
+#         #col_names = self.extract_uc_numbers(self.__uc_composition.columns)
+#         #col_names = list(map(lambda uc_name: int(re.search('[a-zA-Z]+(\d+)', uc_name).group(1)), col_names))
+#         #self.__uc_composition.columns = col_names
+#         #self.__uc_composition = self.__clay_dict['atoms'].groupby(['res_name', 'at_type']).count()['id'].reset_index()
+#         #self.__uc_composition['id'].name = 'uc_composition'
+#         # self.__uc_composition['atom_type_count'] = \
+#         #self.__uc_composition = self.__uc_composition.pivot(index='at_type', columns='res_name').fillna(0)#groupby(['res_name', 'at_type']).count())
+#         # self.__uc_composition.
+#             #.groupby(['res_name', 'at_type']).count()
+#
+#     @property
+#     def uc_composition(self):
+#         return self.__uc_composition.reindex(self.atomtypes, fill_value=0).filter(regex=r'^(?![oOhH].*)', axis=0)
+#
+#     @property
+#     def atomtypes(self):
+#         return self.__atomtypes.values
+#
+#     @property
+#     def uc_df(self):
+#         print(self.uc_composition)
+#         print(self.uc_charges)
+#         uc_df = self.uc_composition.append(self.uc_charges)
+#         uc_df.columns = self.extract_uc_numbers(uc_df.columns)
+#         uc_df = uc_df.reset_index().set_index('at_type')
+#         uc_df.index.name = 'element'
+#         return uc_df
+#
+#     def transform_uc_df_index(self):
+#         old_index = self.uc_df.index
+#         regex_dict = {'T': r'[a-z]+t',
+#                       'O': r'[a-z]+[o2]',
+#                       'C': 'charge'
+#                       }
+#         index_extension_list = []
+#         for key in regex_dict.keys():
+#             for element in old_index:
+#                 match = re.match(regex_dict[key], element)
+#                 if match != None:
+#                     index_extension_list.append((key, match.group(0)))
+#         new_index = pd.MultiIndex.from_tuples(index_extension_list)
+#         print(new_index)
+#         self.uc_df.reindex(new_index)
+#         print(self.uc_df)
+#         extra_index = []
+
+ucs = UCData(UCS / 'D21', ff='ClayFF_Fe')
+print(ucs.available)
+print(ucs.uc_composition)
+...

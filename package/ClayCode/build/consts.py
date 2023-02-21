@@ -15,7 +15,7 @@ __all__ = ['BUILD_DEFAULTS',
            'UC_CHARGE_OCC']
 
 # BUILD_DEFAULTS: default parameters for model setup from 'defaults.yaml'
-defaults_file = Path('defaults.yaml')
+defaults_file = Path(__file__).parent / 'defaults.yaml'
 with open(defaults_file, 'r') as file:
     BUILD_DEFAULTS = yaml.safe_load(file)
 
