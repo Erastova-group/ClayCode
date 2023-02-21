@@ -23,6 +23,7 @@ from os import PathLike
 
 # __all__ = ['get_vars', 'get_params', 'get_paths', '']
 
+
 class AttrChecks:
     def check_build(self):
         pass
@@ -60,10 +61,12 @@ class AttrChecks:
 #
 # extract_fstem = partial(extract_fname, stem=True)
 
+
 def read_yaml(file):
-    with open(file, 'r') as yaml_file:
+    with open(file, "r") as yaml_file:
         yaml_data = yaml.safe_load(yaml_file)
     return yaml_data
+
 
 def get_vars_decorator(func):
     def wrapper(module):
@@ -134,30 +137,30 @@ def check_bool_false(instance, attribute, value):
 def check_build(instance, attribute, value):
     if type(value) == str and value != "new" and value != "load":
         raise ValueError(
-            "Invalid option for builder!\n"
+            "Invalid option for build!\n"
             'Specify "new" to build new clay model or "load" to load existing files.'
         )
     elif type(value) == dict:
         if list(value.keys())[0] != "load":
-            raise ValueError(f"{value} is invalid option for builder!")
+            raise ValueError(f"{value} is invalid option for build!")
         elif value["load"][0] not in ["np", "gro"]:
             print(value["load"][0])
             raise ValueError(
-                "Invalid option for builder!\n"
+                "Invalid option for build!\n"
                 'Use "np" or "gro" to specify which file type should be loaded.'
             )
         elif np.array(
-                list(
-                    map(
-                        lambda fname: Path(fname).suffix not in ["", ".gro", ".npy"],
-                        value["load"][1:],
-                    )
+            list(
+                map(
+                    lambda fname: Path(fname).suffix not in ["", ".gro", ".npy"],
+                    value["load"][1:],
                 )
+            )
         ).any():
             print(
                 np.array(list(map(lambda fname: Path(fname).suffix, value["load"][1:])))
             )
-            raise ValueError("Invalid option for builder!\n" "Wrong file extension.")
+            raise ValueError("Invalid option for build!\n" "Wrong file extension.")
     else:
         pass
 
@@ -166,12 +169,12 @@ def assign_prms_decorator(func):
     def wrapper(instance):
         for prm_key in instance.prm_dict:
             try:
-                print(f'Setting {func(prm_key)} to {instance.prm_dict[prm_key]}')
+                print(f"Setting {func(prm_key)} to {instance.prm_dict[prm_key]}")
                 print(instance, func(prm_key), instance.prm_dict[prm_key])
                 setattr(instance, func(prm_key), instance.prm_dict[prm_key])
-                print('set')
+                print("set")
             except AttributeError:
-                print('\nerror\n')
+                print("\nerror\n")
                 continue
 
     return wrapper
@@ -269,7 +272,7 @@ def get_uc_numbers(instance):
 
 def set_il_solv(instance):
     if (hasattr(instance, "il_solv") and instance.il_solv != False) or not hasattr(
-            instance, "il_solv"
+        instance, "il_solv"
     ):
         attr_list = []
         for attribute in ["_il_waters", "_uc_waters", "_spacing_waters"]:
@@ -303,12 +306,12 @@ class ForceFieldSelection:
 
 
 #
-# from package.builder.base import ForceField, UCData
+# from package.build.base import ForceField, UCData
 
 
 @singledispatch
 def convert_to_list(object):
-    raise TypeError(f'Function not defined for type {type(object)!r}!')
+    raise TypeError(f"Function not defined for type {type(object)!r}!")
     pass
 
 
@@ -321,6 +324,7 @@ def _(object):
 @convert_to_list.register(np.ndarray)
 def _(object):
     return list(object)
+
 
 @convert_to_list.register(list)
 def _(object):
@@ -350,45 +354,67 @@ def _(object):
 #
 # print(convert_to_list(a), convert_to_list(b))
 
+
 def process_ff(instance):
     temp_ff = instance.ff
     print(temp_ff)
     ff_sel = ForceFieldSelection()
     for ff_type in ["clay", "ions"]:
-        new_ff = {"selection": 'all', "exclude": None}
+        new_ff = {"selection": "all", "exclude": None}
         try:
             print(instance.ff)
             ff = instance.ff[ff_type]
             print(ff_type)
             try:
-                new_ff['exclude'] = ff['exclude']
+                new_ff["exclude"] = ff["exclude"]
             except KeyError:
                 pass
             try:
-                new_ff['selection'] = ff['selection']
+                new_ff["selection"] = ff["selection"]
             except KeyError:
-                new_ff['selection'] = ff
+                new_ff["selection"] = ff
             print(ff, instance.ff_dir)
-            setattr(ff_sel, ff_type, ForceField(instance.ff_dir, include=new_ff['selection'],
-                                                exclude=new_ff['exclude']))
+            setattr(
+                ff_sel,
+                ff_type,
+                ForceField(
+                    instance.ff_dir,
+                    include=new_ff["selection"],
+                    exclude=new_ff["exclude"],
+                ),
+            )
 
-            print(f'\n\nsetting {ff_type}_ff')
-            setattr(instance, f'{ff_type}_ff', ForceField(instance.ff_dir, include=new_ff['selection'],
-                                                          exclude=new_ff['exclude']))
-            print(eval(f'instance.{ff_type}_ff'))
+            print(f"\n\nsetting {ff_type}_ff")
+            setattr(
+                instance,
+                f"{ff_type}_ff",
+                ForceField(
+                    instance.ff_dir,
+                    include=new_ff["selection"],
+                    exclude=new_ff["exclude"],
+                ),
+            )
+            print(eval(f"instance.{ff_type}_ff"))
         except KeyError:
-            print('except')
+            print("except")
 
 
 def process_ucs(instance):
     print(instance.clay_ff.atomtypes)
-    uc = UCData(path=instance.clay_units_dir,
-                       clay_type=instance.clay_type,
-                                           atomtypes_df=instance.clay_ff.atomtypes)
+    uc = UCData(
+        path=instance.clay_units_dir,
+        clay_type=instance.clay_type,
+        atomtypes_df=instance.clay_ff.atomtypes,
+    )
     print(uc.uc_charges, uc.atomtypes)
-    setattr(instance, 'clay_units', UCData(path=instance.clay_units_dir,
-                                           clay_type=instance.clay_type,
-                                           atomtypes_df=instance.clay_ff.atomtypes))
-    setattr(instance, 'uc_charges', uc.uc_charges)
+    setattr(
+        instance,
+        "clay_units",
+        UCData(
+            path=instance.clay_units_dir,
+            clay_type=instance.clay_type,
+            atomtypes_df=instance.clay_ff.atomtypes,
+        ),
+    )
+    setattr(instance, "uc_charges", uc.uc_charges)
     print(instance.clay_units)
-
