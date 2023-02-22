@@ -9,7 +9,9 @@ import yaml
 from typing import Dict
 
 from ClayCode import UCS, FF
-from ClayCode.config.classes import File, Dir, ForceField, UCData
+from ClayCode.build.exp import ClayComposition
+from ClayCode.config.classes import File, Dir
+from ClayCode.core.utils import init_path
 
 logger = logging.getLogger(File(__file__).stem)
 
@@ -45,7 +47,7 @@ buildparser.add_argument(
     help="CSV file with clay composition",
     metavar="csv_file",
     dest="csv_file",
-    required=False
+    required=False,
 )
 
 # Clay model modification parser
@@ -94,6 +96,7 @@ class _Args(ABC, UserDict):
     def check(self):
         pass
 
+
 class BuildArgs(_Args):
     """Parameters for clay model setup with :mod:`ClayCode.build`"""
 
@@ -118,7 +121,7 @@ class BuildArgs(_Args):
         "BULK_IONS",
         "CLAY_COMP",
         "OUTPATH",
-        "FF"
+        "FF",
     ]
 
     def __init__(self, data) -> None:
@@ -143,8 +146,8 @@ class BuildArgs(_Args):
         self.read_yaml()
         self.check()
         self.process()
-        self.get_uc_info()
-        self.load_csv()
+        self.get_uc_data()
+        self.get_exp_data()
 
     def read_yaml(self) -> None:
         """Read clay model build specifications from yaml file."""
@@ -158,11 +161,11 @@ class BuildArgs(_Args):
             else:
                 raise KeyError(f"Unrecognised argument {k!r}!")
         try:
-            csv_file = File(self.data["csv_file"])
+            csv_file = File(self.data["csv_file"], check=True)
         except TypeError:
             self.data.pop("csv_file")
         try:
-            yaml_csv_file = File(self.data["CLAY_COMP"])
+            yaml_csv_file = File(self.data["CLAY_COMP"], check=True)
         except KeyError:
             pass
         if "csv_file" in self.data.keys() and "CLAY_COMP" in self.data.keys():
@@ -191,7 +194,9 @@ class BuildArgs(_Args):
             raise KeyError(f"Clay system name must be given")
         try:
             uc_type = self.data["CLAY_TYPE"]
-            if (uc_type in self._charge_occ_df.index.get_level_values("value").unique()) and (UCS / uc_type).is_dir():
+            if (
+                uc_type in self._charge_occ_df.index.get_level_values("value").unique()
+            ) and (UCS / uc_type).is_dir():
                 self._uc_name = uc_type
                 self._uc_stem = self._uc_name[:2]
                 logger.info(f"Setting UC type = {self._uc_name!r}")
@@ -214,7 +219,7 @@ class BuildArgs(_Args):
             "UC_WATERS",
             "BOX_HEIGHT",
             "BULK_IONS",
-            "FF"
+            "FF",
         ]:
             try:
                 prm_value = self.data[prm]
@@ -222,46 +227,43 @@ class BuildArgs(_Args):
                 prm_value = self._build_defaults[prm]
             setattr(self, prm.lower(), prm_value)
         try:
-            outpath = self.data['OUTPATH']
+            outpath = self.data["OUTPATH"]
             self.outpath = Dir(outpath, check=False)
 
         except KeyError:
-            raise KeyError(f'No output directory specified')
+            raise KeyError(f"No output directory specified")
 
     def process(self):
-        water_sel_dict = {'SPC': ['ClayFF_Fe', ['spc', 'interlayer_spc']]}
-        self.filestem = f'{self.name}_{self.x_cells}_{self.y_cells}'
+        self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         self.outpath = self.outpath / self.name
-        if not self.outpath.is_dir():
-            os.makedirs(self.outpath)
-            logger.info(f'Creating output directory {self.outpath!r}')
+        init_path(self.outpath)
+        self.get_ff_data()
+        self.get_uc_data()
+
+    def get_ff_data(self):
+        from ClayCode.config.classes import ForceField
+        water_sel_dict = {"SPC": ["ClayFF_Fe", ["spc", "interlayer_spc"]]}
         ff_dict = {}
         for ff_key, ff_sel in self.ff.items():
-            if ff_key == 'WATER':
+            if ff_key == "WATER":
                 ff_sel = water_sel_dict[ff_sel][0]
             ff_dict[ff_key.lower()] = ForceField(FF / ff_sel)
         self.ff = ff_dict
 
-    def get_uc_info(self):
-        uc_data = UCData(UCS / self._uc_name,
-                         uc_stem=self._uc_stem,
-                         ff=self.ff['clay'])
-        self.uc_df = uc_data.df
-        self.uc_charges = uc_data.total_charge
-        self.ucs = self.uc_df.columns.tolist()
+    def get_uc_data(self):
+        from ClayCode.build.exp import UCData
+        self.uc_data = UCData(UCS / self._uc_name, uc_stem=self._uc_stem, ff=self.ff["clay"])
 
-    def load_csv(self):
-        from ClayCode.build.exp import ExpComposition
-        csv_fname = self.data['CLAY_COMP']
-        clay_atoms = self.uc_df.index
-        clay_atoms.append(pd.MultiIndex.from_tuples([('O', 'fe_tot')]))
+    def get_exp_data(self):
+        from ClayCode.build.exp import ClayComposition
+        csv_fname = self.data["CLAY_COMP"]
+        clay_atoms = self.uc_data.df.index
+        clay_atoms.append(pd.MultiIndex.from_tuples([("O", "fe_tot")]))
 
-        exp_comp = ExpComposition(self.name,
-                                  )
-        exp_comp = pd.read_csv()
-
-
-
+        exp_comp = ClayComposition(self.name, self.data['CLAY_COMP'], self.uc_data
+        )
+        # exp_comp = pd.read_csv()
+        ...
 
 class AnalysisArgs(_Args):
     option = "analysis"
@@ -305,7 +307,9 @@ class ArgsFactory:
         return _cls(data)
 
 
-p = parser.parse_args(["build", "-f", "build/tests/data/input.yaml"])#, "-comp", "a.csv"])
+p = parser.parse_args(
+    ["build", "-f", "build/tests/data/input.yaml"]
+)  # , "-comp", "a.csv"])
 args = ArgsFactory()
 b = args.get_subclass(p)
 ...

@@ -1,7 +1,10 @@
 from __future__ import annotations
+
+import copy
+import logging
 import os
 import re
-from collections import UserList #, UserString, UserDict
+from collections import UserList  # , UserString, UserDict
 from collections.abc import Sequence
 from functools import (
     partialmethod,
@@ -22,13 +25,16 @@ from typing import (
     Dict,
     Any,
     NewType,
-    NoReturn, cast, Callable #, Type,
+    NoReturn,
+    cast,
+    Callable,  # , Type,
 )
 
 # import MDAnalysis
 # import MDAnalysis.units
 import numpy as np
 import pandas as pd
+import yaml
 from MDAnalysis import Universe
 from pandas.errors import EmptyDataError
 
@@ -36,10 +42,9 @@ from ClayCode import UCS, FF
 from ClayCode.config._consts import KWD_DICT as _KWD_DICT
 from ClayCode.config.utils import select_named_file  # select_file,
 
-import logging
-
 logger = logging.getLogger(_Path(__file__).stem)
 logger.setLevel(logging.DEBUG)
+
 
 # -----------------------------------------------------------------------------
 # class decorators
@@ -163,9 +168,9 @@ class Kwd(str):
     """str container for '.itp' and '.top' file parameters"""
 
     def match(
-        self,
-        pattern: Union[str, List[str], Dict[str, Any]],
-        mode: Literal["full", "parts"] = "full",
+            self,
+            pattern: Union[str, List[str], Dict[str, Any]],
+            mode: Literal["full", "parts"] = "full",
     ) -> Union[Kwd, None]:
         """Match keywords against a search pattern and return match"""
         if mode == "full":
@@ -199,10 +204,10 @@ class KwdList(UserList):
         return self.remove(other)
 
     def match(
-        self,
-        pattern: str,
-        mode: Literal["full", "parts"] = "full",
-        keep_dims: bool = False,
+            self,
+            pattern: str,
+            mode: Literal["full", "parts"] = "full",
+            keep_dims: bool = False,
     ) -> List[Union[Kwd, None]]:
         """Match keywords against a search pattern and return matching item or none"""
         match = [obj.match(pattern, mode) for obj in self.data]
@@ -234,10 +239,10 @@ class KwdList(UserList):
             self.data.append(item)
 
     def filter(
-        self,
-        pattern: str,
-        mode: Literal["full", "parts"] = "full",
-        keep_dims: bool = False,
+            self,
+            pattern: str,
+            mode: Literal["full", "parts"] = "full",
+            keep_dims: bool = False,
     ) -> List[Union[Kwd, None]]:
         """Match keywords against a search pattern and return matching items"""
         match_list = [obj.match(pattern, mode) for obj in self.data]
@@ -301,11 +306,11 @@ class BasicPath(_Path):
 
     def _match_deorator(method):
         """Match name against seacrch pattern object"""
-
+        @wraps(method)
         def wrapper(
-            self,
-            pattern: Union[str, List[str], int, float, Dict[str, Any]],
-            mode: Literal["full", "stem", "ext", "suffix", "parts"] = "full",
+                self,
+                pattern: Union[str, List[str], int, float, Dict[str, Any]],
+                mode: Literal["full", "stem", "ext", "suffix", "parts"] = "full",
         ) -> Union[BasicPath, None]:
             if mode == "full":
                 check = match_str(self.name, pattern)
@@ -367,6 +372,7 @@ Dir = NewType("Dir", _Path)
 
 
 class File(BasicPath):
+    """pathlib.Path subclass for file objects"""
     _suffix = "*"
 
     def check(self):
@@ -374,7 +380,7 @@ class File(BasicPath):
             raise FileNotFoundError(f"{self.name} is not a file.")
         if self._suffix != "*":
             assert (
-                self.suffix == self._suffix
+                    self.suffix == self._suffix
             ), f"Expected {self._suffix}, found {self.suffix}"
         else:
             logger.info("Correct file extension.")
@@ -394,15 +400,17 @@ class File(BasicPath):
         return _PathParents(self)
 
 
-# ----------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------
 # ITP/TOP parameter classes
-# ----------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------
 
 
 class ParametersBase:
+    """Base class for GROMACS topology parameter collections."""
     kwd_list = []
 
     def _arithmetic_type_check(method):
+        @wraps(method)
         def wrapper(self, other):
             if other.__class__ == self.__class__:
                 return method(self, other)
@@ -465,18 +473,20 @@ class ParametersBase:
             if self.kwds == other.kwds:
                 for kwd in self.kwds:
                     if (
-                        self.__getattribute__(kwd).full_df.sort_values()
-                        == other.__getattribute__(kwd).full_df.sort_values()
+                            self.__getattribute__(kwd).full_df.sort_values()
+                            == other.__getattribute__(kwd).full_df.sort_values()
                     ):
                         return True
         return False
 
 
 class SystemParameters(ParametersBase):
+    """GROMACS topology parameter collection class for system"""
     pass
 
 
 class MoleculeParameters(ParametersBase):
+    """GROMACS topology parameter collection class for molecules"""
     @property
     def name(self):
         if "moleculetype" in self.kwds:
@@ -487,10 +497,12 @@ class MoleculeParameters(ParametersBase):
 
 
 class Parameters(ParametersBase):
+    """General GROMACS topology parameter collection class"""
     pass
 
 
 class ParametersFactory:
+    """Factory class for GROMACS topology parameter collection classes"""
     def __new__(cls, data, *args, **kwargs):
         if type(data) == dict:
             data_list = []
@@ -506,11 +518,13 @@ class ParametersFactory:
 
 
 class ParameterBase:
+    """Base class for GROMACS topology parameters"""
     kwd_list = []
     suffix = ".itp"
     collection = ParametersBase
 
     def _arithmetic_type_check(method):
+        @wraps(method)
         def wrapper(self, other):
             if other.__class__ != self.__class__:
                 if other.__class__ == self.__class__.collection:
@@ -543,7 +557,7 @@ class ParameterBase:
     # def __getitem__(self, df_loc: Optional = None):
     #     if df_loc == None:
     #         df_loc = ":,:"
-    #     return eval(f'self.full_df.loc[{df_loc}]')
+    #     return eval(method'self.full_df.loc[{df_loc}]')
 
     @_arithmetic_type_check
     def __add__(self, other):
@@ -612,7 +626,7 @@ class ParameterBase:
             return None
 
     def itp(self):
-        if self.__path is not None and self.suffix == '.itp':
+        if self.__path is not None and self.suffix == ".itp":
             return self.__path.name
         else:
             return None
@@ -631,6 +645,7 @@ class ParameterBase:
 
 
 class Parameter(ParameterBase):
+    """Class for general GROMACS topology parameters"""
     kwd_list = [
         "defaults",
         "atomtypes",
@@ -644,6 +659,7 @@ class Parameter(ParameterBase):
 
 
 class MoleculeParameter(ParameterBase):
+    """Class for GROMACS molecule parameters"""
     kwd_list = [
         "moleculetype",
         "atoms",
@@ -668,14 +684,16 @@ class MoleculeParameter(ParameterBase):
 
 
 class SystemParameter(ParameterBase):
+    """Class for GROMACS system parameters"""
     kwd_list = ["system", "molecules"]
     collection = SystemParameters
 
     # def __repr__(self):
-    #     return f'{self.__class__.__name__}({self.name})'
+    #     return method'{self.__class__.__name__}({self.name})'
 
 
 class ParameterFactory:
+    """Factory class for GROMACS topology parameters"""
     _prm_types = [Parameter, MoleculeParameter, SystemParameter]
     default = ParameterBase
 
@@ -822,7 +840,7 @@ class Molecule:
 #     "n_atoms": cast(
 #         Callable[[Universe], Dict[str, int]],
 #         lambda u: dict(
-#             [(r, u.select_atoms(f"moltype {r}").n_atoms) for r in u.atoms.moltypes]
+#             [(r, u.select_atoms(method"moltype {r}").n_atoms) for r in u.atoms.moltypes]
 #         ),
 #     ),
 #     "charges": cast(
@@ -843,7 +861,7 @@ class Molecule:
 #         self.gro = GROFile(name.with_suffix('.gro'))
 #         self.itp = ITPFile(name.with_suffix('.itp'))
 #         self.idx = self.name[-2:]
-#         assert self.gro.suffix == ".gro", f'Expected ".gro" file, found {crds.suffix!r}'
+#         assert self.gro.suffix == ".gro", method'Expected ".gro" file, found {crds.suffix!r}'
 #         self.u = MDAnalysis.Universe(str(self.gro))
 #         self._ff = None
 #         if include_dir is not None:
@@ -856,7 +874,7 @@ class Molecule:
 # ) -> dict:
 #         dict_func = PRM_INFO_DICT[prm_str]
 #         residue_itp = self.itp
-#         prop_file = self.itp.parent / f".saved/{residue_itp.stem}_{prm_str}.p"
+#         prop_file = self.itp.parent / method".saved/{residue_itp.stem}_{prm_str}.p"
 #
 #         if (force_update is True) or (not prop_file.is_file()):
 #             atom_u = Universe(
@@ -875,7 +893,7 @@ class Molecule:
 #         return prop_dict
 #         if ff is not None:
 #             ff = ForceField(ff)
-#             assert ff.suffix == ".ff", f'Expected ".ff" directory, found {ff.suffix!r}'
+#             assert ff.suffix == ".ff", method'Expected ".ff" directory, found {ff.suffix!r}'
 #         else:
 #             ff = self.ff
 #         print(ff.itp_filelist)
@@ -887,7 +905,7 @@ class Molecule:
 #         # print(ff_u)
 #
 #     def __repr__(self):
-#         return f"{self.__class__.__name__}({self.gro.stem!r})"
+#         return method"{self.__class__.__name__}({self.gro.stem!r})"
 #
 #     @property
 #     def ff(self):
@@ -904,7 +922,7 @@ class Molecule:
 
 
 class ITPFile(File):
-    """.itp container.
+    """Container for .itp file contents.
     Attributes:
         `ff`: force field name
         `kwds`: keywords
@@ -1081,6 +1099,9 @@ class ITPFile(File):
         if item in self.kwds:
             return self.__parse_str(self.string, item)
 
+    def __contains__(self, item: str):
+        return item in self.kwds
+
     def get_parameter(self, prm_name: str):
         if prm_name in self.kwds:
             return self.__parse_str(self.string, prm_name)
@@ -1093,9 +1114,9 @@ class ITPFile(File):
         if kwds == None:
             kwds = get_match_pattern(kwd_dict)
         else:
-            if type(kwds) == list:
+            if isinstance(kwds, list):
                 kwds = KwdList(kwds)
-            elif type(kwds) == str:
+            elif isinstance(kwds, str):
                 kwds = Kwd(kwds)
             kwds = get_match_pattern(kwds)
         section_pattern = re.compile(
@@ -1164,7 +1185,7 @@ class Dir(BasicPath):
             raise FileNotFoundError(f"{self.name} is not a directory.")
         if self._suffix != "*":
             assert (
-                self.suffix == self._suffix
+                    self.suffix == self._suffix
             ), f"Expected {self._suffix!r}, found {self.suffix!r}"
 
     def _get_filelist(self, ext: Union[str, list] = _suffices):
@@ -1208,13 +1229,13 @@ class FFDir(Dir):
 
     def _get_ff_parameter(self, prm_name: str):
         assert (
-            prm_name in _KWD_DICT[".itp"]
+                prm_name in _KWD_DICT[".itp"]
         ), f"{prm_name!r} is not a recognised parameter."
         # full_df = pd.DataFrame(columns=  )
         for itp in self.itp_filelist:
             if "atomtypes" in itp.kwds:
                 # split_str = itp.get_parameter("atomtypes")
-                split_str = itp['atomtypes']
+                split_str = itp["atomtypes"]
         return split_str
 
     # def atomtypes(self):
@@ -1234,14 +1255,15 @@ class BasicPathList(UserList):
             self._data.append(PathFactory(file, check=check))
         self.data = self._data
 
-    def _reset_paths(f):
+    def _reset_paths(method):
+        @wraps(method)
         def wrapper(self, *args, pre_reset=True, post_reset=True, **kwargs):
             if pre_reset is True:
                 self.data = self._data
-            result = f(self, *args, **kwargs)
-            return result
+            result = copy.deepcopy(method(self, *args, **kwargs))
             if post_reset is True:
                 self.data = self._data
+            return result
         return wrapper
 
     @property
@@ -1257,9 +1279,9 @@ class BasicPathList(UserList):
         return self.extract_fsuffices()
 
     @_reset_paths
-    def _extract_parts(self, part="name",
-                       pre_reset=True,
-                       post_reset=True) -> List[Tuple[str, str]]:
+    def _extract_parts(
+            self, part="name", pre_reset=True, post_reset=True
+    ) -> List[Tuple[str, str]]:
         data_list = self._data
         data_list = [getattr(obj, part) for obj in data_list]
         self.data = data_list
@@ -1267,12 +1289,12 @@ class BasicPathList(UserList):
 
     @_reset_paths
     def filter(
-        self,
-        pattern: Union[List[str], str],
-        mode: Literal["full", "parts"] = "parts",
-        keep_dims: bool = False,
+            self,
+            pattern: Union[List[str], str],
+            mode: Literal["full", "parts"] = "parts",
+            keep_dims: bool = False,
             pre_reset=False,
-            post_reset=False
+            post_reset=False,
     ):
         match = [obj.filter(pattern, mode=mode) for obj in self.data]
         if not keep_dims:
@@ -1295,7 +1317,6 @@ class FileList(BasicPathList):
         for file in files:
             self._data.append(FileFactory(file, check=check))
         self.data = self._data
-
 
 
 class PathList(FileList):
@@ -1348,14 +1369,15 @@ class FFList(DirList):
         ),
         "charges": cast(
             Callable[[Universe], Dict[str, float]],
-            lambda u: dict(zip(u.atoms.moltypes, np.round(u.atoms.residues.charges, 4))),
+            lambda u: dict(
+                zip(u.atoms.moltypes, np.round(u.atoms.residues.charges, 4))
+            ),
         ),
     }
     pass
 
 
 class ForceField:
-
     def __init__(self, path: Union[BasicPath, Dir], include="all", exclude=None):
         self._init_path(path)
         self.include(include)
@@ -1368,7 +1390,7 @@ class ForceField:
             if type(path) == FFDir:
                 self.path = path
             else:
-                self.path = FFDir((FF / path).with_suffix('.ff'))
+                self.path = FFDir((FF / path).with_suffix(".ff"))
             self.name: str = self.path.name
             self._itp_list = self.itp_filelist = ITPList(self.path)
 
@@ -1396,15 +1418,14 @@ class ForceField:
 
     def __repr__(self):
         return (
-            f"{self.path.name}: ["
-            + ", ".join([itp.stem for itp in self.itp_filelist])
-            + "]"
+                f"{self.path.name}: ["
+                + ", ".join([itp.stem for itp in self.itp_filelist])
+                + "]"
         )
 
     def __getitem__(self, item):
         prm = self.path._get_ff_parameter(item)
         return prm
-
 
 
 # -----------------------------------------------------------------------------
@@ -1539,7 +1560,7 @@ class SimDir(Dir):
             logger.info(f"{f}")
             if f is None:
                 continue
-                # f = select_named_file(self.resolve(),
+                # method = select_named_file(self.resolve(),
                 #                       searchlist=[''])
             else:
                 break
@@ -1664,515 +1685,10 @@ class SimDir(Dir):
             base = self
         return base
 
-class UnitCell(ITPFile):
-    @property
-    def idx(self):
-        return self.stem[2:]
-
-    @property
-    def clay_type(self):
-        return self.parent.name
-
-    @property
-    def uc_stem(self):
-        return self.stem[:2]
-
-    @property
-    def atoms(self):
-        return self.data
 
 
-class UCData(Dir):
-    _suffices = ['.gro', '.itp']
 
-    def __init__(self, path, uc_stem=None, ff=None):
-        if uc_stem is None:
-            self.uc_stem = self.name[-2:]
-        else:
-            self.uc_stem = uc_stem
-        self.ff = ForceField(ff)
-        id_cols = list(map(lambda x: str(x[-2:]), self.available))
-        self.atomtypes = self.ff['atomtypes'].df
-        idx = self.atomtypes.iloc[:, 0]
-        cols = [*id_cols, 'charge', 'sheet']
-        self.full_df = pd.DataFrame(index=idx,
-                                    columns=cols)
-        self.full_df['charge'].update(self.atomtypes.set_index('at-type')['charge'])
-        self.get_df_sheet_annotations()
-        self.full_df['sheet'].fillna('X', inplace=True)
-        self.full_df.fillna(0, inplace=True)
-        self.uc_list = [UnitCell(itp) for itp in self.itp_filelist]
-        self.read_ucs()
-        self.occ = self.full_df.groupby('sheet').sum()
-        self.full_df.set_index('sheet', append=True, inplace=True)
-        self.full_df.sort_index(inplace=True, level=1, sort_remaining=True)
-        self.full_df.index = self.full_df.index.reorder_levels(['sheet', 'at-type'])
-        charge = self.full_df[id_cols].copy()
-        charge = charge.apply(lambda x: x * self.full_df['charge'], raw=True)
-        self.total_charge = charge[id_cols].sum().round(2).convert_dtypes()
-        self.total_charge.name = 'charge'
-        # self.total_charge.index = pd.MultiIndex.from_tuples([('C', 'tot')], names=['sheet', 'at-type'])
-        self.df = self.full_df.reset_index('at-type').filter(regex=r'^(?![X].*)', axis=0)
-        self.df = self.df.reset_index().set_index(['sheet', 'at-type'])
-        # self.uc_df = pd.concat(self.df[id_cols], self.total_charge)
-        # self.full_df = pd.concat(self.full_df)
-        ...
 
-    @property
-    def uc_composition(self):
-        return self.full_df.reindex(self.atomtypes, fill_value=0).filter(regex=r'^(?![oOhH].*)', axis=0)
 
-    @property
-    def idxs(self):
-        return self.full_df.columns
 
-    def check(self):
-        if not self.is_dir():
-            raise FileNotFoundError(f"{self.name} is not a directory.")
 
-    def read_ucs(self):
-        for uc in self.uc_list:
-            atoms = uc['atoms'].df
-            self.full_df[f'{uc.idx}'].update(atoms.value_counts('at-type'))
-        # self.full_df.loc[pd.IndexSlice[:], pd.IndexSlice[f'{uc.idx}', 'charge']].update(atoms.groupby('at-type').mean()['charge'])
-
-    def get_df_sheet_annotations(self):
-        old_index = self.full_df.index
-        regex_dict = {'T': r'[a-z]+t',
-                      'O': r'[a-z]*[a-gi-z][o2]',
-                      'C': 'charge'
-                      }
-        index_extension_list = []
-        for key in regex_dict.keys():
-            for element in old_index:
-                match = re.fullmatch(regex_dict[key], element)
-                if match is not None:
-                    index_extension_list.append((key, match.group(0)))
-        new_index = pd.MultiIndex.from_tuples(index_extension_list)
-        new_index = new_index.to_frame().set_index(1)
-        self.full_df['sheet'].update(new_index[0])
-
-    
-    @property
-    def available(self):
-        return self.itp_filelist.extract_fstems()
-
-    def __str__(self):
-        return
-
-# class ForceField(FileParser):
-#     def __init__(self, include='all', exclude=None):
-#         super().__init__(relpath=pp.FF_PATH, fname='')
-#         # self.__available = self._get_filelist()
-#         self.__atomtypes = pd.DataFrame()
-#         self.__moleculetypes = pd.DataFrame()
-#         self.__atomtypes = pd.DataFrame(columns=[*super().kwd_dict['atomtypes']]
-#                                         )
-#         self.__atomtypes = self.__atomtypes.astype(dtype=self._get_dtypes('atomtypes',
-#                                                                          [*super().kwd_dict['atomtypes']]
-#                                                                          )
-#                                                    )
-#         self.__moleculetypes = pd.DataFrame(columns=[*super().kwd_dict['atoms']]
-#                                             )
-#         self.__moleculetypes = self.__moleculetypes.astype(dtype=self._get_dtypes('atoms',
-#                                                                          [*super().kwd_dict['atoms']]
-#                                                                          )
-#                                                    )
-#         self.__ff_dict = {'atomtypes': self.__atomtypes,
-#                           'atoms': self.__moleculetypes
-#                           }
-#         self.__ff_selection = {}
-#         self.select_ff(include=include, exclude=exclude)
-#         self._read_ff()
-#         self.get_atomtypes()
-#         self.get_moleculetypes()
-#
-#     @property
-#     def available(self):
-#         return self.extract_fnames(self._get_filelist(path=self.path.parent, ext='.ff'))
-#
-#     @staticmethod
-#     def print_ff_not_found(ff, searchstr='include'):
-#         print(f'"{ff}" was listed in "{searchstr}" but was not '
-#               'found in force field selection.\n')
-#
-#     def __include_ff(self, sel_dict, include='all'):
-#         # Include all available ff
-#         if include == 'all':
-#             print(f'Including all force fields in "{self.path.name}".')
-#             include = self.available
-#         # include all ".itp" files for 1 selected ff
-#         elif isinstance(include, (str, os.PathLike)):
-#             print(f'Including {include}.')
-#             include = self.match_ff_pathname(include)
-#             sel_dict[include.stem] = 'all'
-#         # Include all available ".itp" files for a lift of available ff
-#         if isinstance(include, (list, np.ndarray)) and len(include) == 1:
-#             ff_sel = self.match_ff_pathname(include[0])
-#             sel_dict[ff_sel.stem] = 'all'
-#         elif isinstance(include, (list, np.ndarray)) and len(include) > 1:
-#             print('Including list:')
-#             for ff_sel in include:
-#                 print(f'{ff_sel}')
-#                 ff_sel = self.match_ff_pathname(ff_sel)
-#                 sel_dict[ff_sel.stem] = 'all'
-#         # Include specific ".itp" files fora selection of ff
-#         elif isinstance(include, dict):
-#             print('Including dict:')
-#             # sel_dict = {}
-#             for ff_sel in include.keys():
-#                 print(f'{ff_sel}')
-#                 avail_str = ''.join(np.unique(dt.extract_fname(self.available,
-#                                                                stem=True
-#                                                                )
-#                                               )
-#                                     )
-#                 print(f'available ff: {avail_str}')
-#                 sel_dict = include
-#                 try:
-#                     sel_dict = self.match_dict_keys(sel_dict,
-#                                                     ff_sel,
-#                                                     avail_str
-#                                                     )
-#                 except AttributeError:
-#                     self.print_ff_not_found(ff_sel)
-#                     break
-#             print(sel_dict)
-#
-#         # check itp files of selected ff
-#         for ff_sel in sel_dict.keys():
-#             print(f'Checking itp files: {sel_dict[ff_sel]}')
-#             ff_sel = dt.extract_fname(ff_sel, stem=True)
-#             print(self.path.parent)
-#             avail_fnames = dt.extract_fname(self._get_filelist(path=self.path.parent / f'{ff_sel}.ff',
-#                                                                ext='itp'
-#                                                                )
-#                                             )
-#             avail_stems = dt.extract_fname(self._get_filelist(path=self.path.parent / f'{ff_sel}.ff',
-#                                                               ext='itp'),
-#                                            stem=True
-#                                            )
-#             print(f'All available itp files: {avail_fnames}')
-#             if isinstance(sel_dict[ff_sel], (str, pl.Path)):
-#                 sel_dict[ff_sel] = [sel_dict[ff_sel]]
-#             else:
-#                 sel_dict[ff_sel] = list(sel_dict[ff_sel])
-#             print(len(sel_dict[ff_sel]), type(sel_dict[ff_sel]),[*sel_dict[ff_sel]])
-#             if sel_dict[ff_sel][0] == 'all':
-#                 print(f'list of len 1: {sel_dict[ff_sel]}')
-#                 sel_dict[ff_sel] =  avail_stems
-#             sel_dict[ff_sel] = self.match_fname_list(sel_dict[ff_sel],
-#                                                      avail_fnames,
-#                                                      ext='.itp'
-#                                                      )
-#         print(sel_dict)
-#         return sel_dict
-#
-#     def select_ff(self, include='all', exclude=None):
-#         # Initialise dictionary for ff selection
-#         old_sel = self.__ff_selection
-#         sel_dict = {}
-#         incl_dict = {}
-#         excl_dict = {}
-#         incl_dict = self.__include_ff(incl_dict, include)
-#         if exclude != None:
-#             excl_dict = self.__include_ff(excl_dict, exclude)
-#         print(incl_dict, excl_dict)
-#         for ff_sel in incl_dict.keys():
-#             if ff_sel not in excl_dict.keys():
-#                 sel_dict[ff_sel] = incl_dict[ff_sel]
-#             else:
-#                 sel_dict[ff_sel] = list(filter(lambda incl: incl not in excl_dict[ff_sel],
-#                                                incl_dict[ff_sel]
-#                                                )
-#                                         )
-#         sel_dict = dict(filter(lambda ff_item: len(ff_item[1]) != 0,
-#                                sel_dict.items()
-#                                )
-#                         )
-#         self.__ff_selection = sel_dict
-#         if old_sel != self.__ff_selection:
-#             self._read_ff()
-#         #return sel_dict
-#
-#     @property
-#     def ff_selection(self) -> dict:
-#         print(self.__ff_selection)
-#         if len(self.__ff_selection.keys()) != 0:
-#             return self.__ff_selection
-#         else:
-#             raise KeyError('No force field was selected.')
-#
-#     def _read_ff(self):
-#         print(self.ff_selection)
-#         try:
-#             ff_sel_dict = self.ff_selection
-#             print(ff_sel_dict.keys())
-#         except AttributeError:
-#             print('No force field was selected.')
-#         for ff_sel in ff_sel_dict.keys():
-#             for itp_num, itp in enumerate(ff_sel_dict[ff_sel]):
-#                 try:
-#                     print(self.path.parent / f'{ff_sel}.ff',
-#                                           f'{itp}.itp')
-#                     itp_file = FileParser(self.path.parent / f'{ff_sel}.ff',
-#                                           f'{itp}.itp'
-#                                           )
-#                     print(f'reading {itp_file.name}')
-#                 except IOError:
-#                     print(f'could not open {itp}')
-#                 itp_file.parse_itp(self.__ff_dict)
-#             print(self.__ff_dict)
-#         return self.__ff_dict
-#
-#     def get_atomtypes(self, ff_sel='all'):
-#         if ff_sel == 'all':
-#             ff_sel = self.ff_selection.keys()
-#         if isinstance(ff_sel, (str, pl.Path)):
-#             ff_sel = [dt.extract_fname(ff_sel, stem=True)]
-#         elif isinstance(ff_sel, (np.ndarray, t.Sequence)):
-#             ff_sel = dt.extract_fname(ff_sel, stem=True)
-#         elif isinstance(ff_sel, dict):
-#             ff_sel = dt.extract_fname(ff_sel.keys(), stem=True)
-#         print(ff_sel, self.__ff_dict['atomtypes'].loc[self.__ff_dict['atomtypes']['ff'].isin(ff_sel)])
-#         ids = pd.IndexSlice
-#         if len(self.__ff_dict['atomtypes']) != 0:
-#             self.__atomtypes = self.__ff_dict['atomtypes'].loc[self.__ff_dict['atomtypes']['ff'].isin(ff_sel),
-#                                                                ['ff', 'itp', 'at_type', 'mass', 'charge', 'sigma', 'epsilon']
-#                                                                ].drop_duplicates(keep='first')
-#             return self.__atomtypes
-#
-#     def get_moleculetypes(self, ff_sel='all'):
-#         if ff_sel == 'all':
-#             ff_sel = self.ff_selection.keys()
-#         if isinstance(ff_sel, (str, pl.Path)):
-#             ff_sel = [dt.extract_fname(ff_sel, stem=True)]
-#         elif isinstance(ff_sel, (np.ndarray, t.Sequence)):
-#             ff_sel = dt.extract_fname(ff_sel, stem=True)
-#         elif isinstance(ff_sel, dict):
-#             ff_sel = dt.extract_fname(ff_sel.keys(), stem=True)
-#         print(ff_sel, self.__ff_dict['atoms'].loc[self.__ff_dict['atoms']['ff'].isin(ff_sel)])
-#         # ids = pd.IndexSlice
-#         if len(self.__ff_dict['atoms']) != 0:
-#             self.__moleculetypes = self.__ff_dict['atoms'].loc[self.__ff_dict['atoms']['ff'].isin(ff_sel),
-#                                                                ['ff', 'itp', 'res_name', 'at_type', 'at_name', 'mass', 'charge']
-#                                                                ].drop_duplicates(keep='first')
-#             # self.__moleculetypes = self.__moleculetypes.loc[self.__moleculetypes.is_unique()]
-#             print(type(self.__moleculetypes), self.__moleculetypes.size, self.__moleculetypes)
-#         return self.__moleculetypes
-#
-#     @property
-#     def atomtypes(self):
-#         if len(self.__atomtypes) > 0:
-#             return self.__atomtypes.set_index(['ff', 'itp'])['at_type'].drop_duplicates(keep='first')
-#
-#
-#     @property
-#     def moleculetypes(self):
-#         if len(self.__moleculetypes) > 0:
-#             return self.__moleculetypes.set_index(['ff', 'itp'])['res_name'].drop_duplicates(keep='first')
-#
-#     @property
-#     def atomic_charges(self):
-#         if len(self.__atomtypes) > 0:
-#             return self.__atomtypes.set_index(['ff', 'itp', 'at_type'])['charge']
-#
-#     @property
-#     def atomic_masses(self):
-#         if len(self.__atomtypes) > 0:
-#             return self.__atomtypes.set_index(['ff', 'itp', 'at_type'])['mass']
-#
-#     @property
-#     def sigma_epsilon(self):
-#         if len(self.__atomtypes) > 0:
-#             return self.__atomtypes.set_index(['ff', 'itp', 'at_type'])['sigma', 'epsilon']
-#
-#     @property
-#     def __molecule_sums(self):
-#         if len(self.__moleculetypes) > 0 and len(self.__atomtypes) > 0:
-#             mols = self.__moleculetypes.set_index(['ff', 'at_type'])
-#             atoms = self.__atomtypes.set_index(['ff', 'at_type'])
-#             mols.update(atoms)
-#             mols.reset_index(inplace=True)
-#             mols.dropna(inplace=True)
-#             mols = mols.loc[:, ['ff','res_name', 'mass', 'charge']]
-#             mols_grouper = mols.groupby(['ff', 'res_name'])
-#             return mols_grouper.sum()
-#             # mol_masses = pd.merge(self.__moleculetypes, self.__atomtypes.loc[:, ['ff', 'itp']], how='outer', on=['ff', 'itp'])#, 'at_type'])#.groupby(['ff', 'itp', 'res_name'])
-#             # return mol_masses
-#
-#     @property
-#     def molecule_masses(self):
-#         if len(self.__molecule_sums) > 0:
-#             return self.__molecule_sums['mass']
-#
-#     @property
-#     def molecule_charges(self):
-#         if len(self.__molecule_sums) > 0:
-#             return self.__molecule_sums['charge']
-#
-#
-# class UCData(FileParser):
-#     #exclude_dict = {'O': []}
-#     # print(clay_atom_types)
-#     def __init__(self, clay_type, ff='ClayFF_Fe'):
-#         super().__init__(fname=clay_type, relpath=pp.UC_PATH.parent)
-#         print(f'path: {self.full_path} name {self.name}')
-#         self.__clay_selection = {}
-#         self.select_clay_type(clay_type)
-#         print(f'clay selection {self.__clay_selection}')
-#         self.__moleculetypes = pd.DataFrame()
-#         self.__moleculetypes = pd.DataFrame(columns=[*super().kwd_dict['atoms']]
-#                                             )
-#         self.__moleculetypes = self.__moleculetypes.astype(dtype=self._get_dtypes('atoms',
-#                                                                                   [*super().kwd_dict['atoms']]
-#                                                                                   )
-#                                                            )
-#         self.__clay_dict = {'atoms': self.__moleculetypes
-#                            }
-#         #self.select_ff(include=include, exclude=exclude)
-#         self._read_ucs()
-#         self.__ff = ff
-#         # self.get_atomtypes()
-#         # self.get_moleculetypes()
-#         self.__atomtypes = ForceField(include='ClayFF_Fe').atomtypes
-#         self.get_uc_composition()
-#         self.get_uc_charges()
-#
-#
-#     @property
-#     def clay_type_selection(self) -> dict:
-#         print(self.__clay_selection)
-#         if len(self.__clay_selection.keys()) != 0:
-#             return self.__clay_selection
-#         else:
-#             raise KeyError('No clay type was selected.')
-#
-#     def select_clay_type(self, clay_type):
-#         print(self.path.is_dir())
-#         print(self.path)
-#         if (self.path / clay_type).is_dir():
-#             self.name = clay_type
-#             print(f'name {self.name}')
-#             self.__clay_selection[self.name] = self.available
-#             print(self.__clay_selection)
-#         else:
-#             print(f'{self.path} is not dir')
-#
-#     def read_ucs(self):
-#         pass
-#
-#     @property
-#     def available(self):
-#         print(self._get_filelist(path=self.path))
-#         return self.extract_fnames(self._get_filelist(path=self.full_path, ext='itp'))
-#
-#     def _read_ucs(self):
-#         print(self.clay_type_selection)
-#         try:
-#             ff_sel_dict = self.clay_type_selection
-#             print(ff_sel_dict.keys())
-#         except AttributeError:
-#             print('No force field was selected.')
-#         for ff_sel in ff_sel_dict.keys():
-#             print(ff_sel)
-#             for itp_num, itp in enumerate(ff_sel_dict[ff_sel]):
-#                 print(ff_sel_dict[ff_sel], self.path, ff_sel, itp)
-#                 # print(+'\n'+self.full_path / f'{ff_sel}',
-#                 #                           f'{itp}')
-#                 try:
-#                     itp_file = FileParser(self.path / f'{ff_sel}',
-#                                           f'{itp}'
-#                                           )
-#                     print(f'reading {itp_file.full_path}')
-#                 except IOError:
-#                     print(self.path)
-#                     print(f'could not open {itp}')
-#                 print(self.__clay_dict)
-#                 itp_file.parse_itp(self.__clay_dict)
-#             print(self.__clay_dict)
-#         return self.__clay_dict
-#
-#     # def parse_itp(self, ff_dict: dict, kwd_dict=kwd_dict):
-#
-#     def get_uc_charges(self):
-#         print(self.__clay_dict['atoms'].groupby('res_name').sum())
-#         self.__uc_charges =  self.__clay_dict['atoms'].groupby('res_name').sum()['charge'].round(0)\
-#             .astype(np.int32)#.apply(lambda count: count / 2)
-#
-#     @property
-#     def uc_charges(self):
-#         return self.__uc_charges.round(2)
-#
-#     @staticmethod
-#     def extract_uc_numbers(uc_list):
-#         try:
-#             uc_list = list(uc_list)
-#             print(uc_list)
-#             match =  list(map(lambda uc_name: int(re.search(rf'{c.UC_STEM}([0-9]*)', uc_name).group(1)), uc_list))
-#             print(match)
-#             return match
-#         except TypeError:
-#             print('Unit cell names must be in a list of format "[a-zA-A]+\d+".')
-#         except AttributeError:
-#             print(match)
-#             print('Unit cell names must be in a list.')
-#
-#
-#     def get_uc_composition(self):
-#         #print(pd.crosstab(self.__clay_dict['atoms']['at_type'], self.__clay_dict['atoms']['res_name'], dropna=False))
-#         self.__uc_composition = self.__clay_dict['atoms'].loc[:,['res_name', 'at_type', 'id']].reset_index()\
-#             .pivot_table(index='at_type',
-#                          columns='res_name',
-#                          aggfunc='size',
-#                          fill_value=0).astype(np.int32)#.apply(lambda count: count / 2)
-#         #col_names = self.extract_uc_numbers(self.__uc_composition.columns)
-#         #col_names = list(map(lambda uc_name: int(re.search('[a-zA-Z]+(\d+)', uc_name).group(1)), col_names))
-#         #self.__uc_composition.columns = col_names
-#         #self.__uc_composition = self.__clay_dict['atoms'].groupby(['res_name', 'at_type']).count()['id'].reset_index()
-#         #self.__uc_composition['id'].name = 'uc_composition'
-#         # self.__uc_composition['atom_type_count'] = \
-#         #self.__uc_composition = self.__uc_composition.pivot(index='at_type', columns='res_name').fillna(0)#groupby(['res_name', 'at_type']).count())
-#         # self.__uc_composition.
-#             #.groupby(['res_name', 'at_type']).count()
-#
-#     @property
-#     def uc_composition(self):
-#         return self.__uc_composition.reindex(self.atomtypes, fill_value=0).filter(regex=r'^(?![oOhH].*)', axis=0)
-#
-#     @property
-#     def atomtypes(self):
-#         return self.__atomtypes.values
-#
-#     @property
-#     def uc_df(self):
-#         print(self.uc_composition)
-#         print(self.uc_charges)
-#         uc_df = self.uc_composition.append(self.uc_charges)
-#         uc_df.columns = self.extract_uc_numbers(uc_df.columns)
-#         uc_df = uc_df.reset_index().set_index('at_type')
-#         uc_df.index.name = 'element'
-#         return uc_df
-#
-#     def transform_uc_df_index(self):
-#         old_index = self.uc_df.index
-#         regex_dict = {'T': r'[a-z]+t',
-#                       'O': r'[a-z]+[o2]',
-#                       'C': 'charge'
-#                       }
-#         index_extension_list = []
-#         for key in regex_dict.keys():
-#             for element in old_index:
-#                 match = re.match(regex_dict[key], element)
-#                 if match != None:
-#                     index_extension_list.append((key, match.group(0)))
-#         new_index = pd.MultiIndex.from_tuples(index_extension_list)
-#         print(new_index)
-#         self.uc_df.reindex(new_index)
-#         print(self.uc_df)
-#         extra_index = []
-
-ucs = UCData(UCS / 'D21', ff='ClayFF_Fe')
-print(ucs.available)
-print(ucs.uc_composition)
-...
