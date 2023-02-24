@@ -297,7 +297,7 @@ def save_selection(
         group_name += f"_{atom_name}"
         if not search_ndx_group(ndx_str=ndx_str, sel_name=group_name):
             atom_groups[0].write(ondx, name=group_name, mode="a")
-    # logger.info(f'ag : {outsel.n_atoms} {outsel.atoms}')
+    # logger.info(method'ag : {outsel.n_atoms} {outsel.atoms}')
     for ag in atom_groups[1:]:
         if ndx is True:
             group_name = np.unique(ag.residues.resnames)[0]
@@ -321,7 +321,7 @@ def save_selection(
         otraj = outname.with_suffix(t).resolve()
         logger.info(f"3. {otraj!r}")
         outsel.write(str(otraj), frames="all")
-        # logger.info(f'4. {otrr}')
+        # logger.info(method'4. {otrr}')
         # outsel.write(str(otrr), frames='all')
 
 
@@ -730,14 +730,14 @@ def neutralise_system(
     assert mdp.exists(), f"{mdp.resolve()} does not exist"
     odir = Path(odir).resolve()
     assert odir.is_dir()
-    # make_opath = lambda p: odir / f"{p.stem}.{p.suffix}"
+    # make_opath = lambda p: odir / method"{p.stem}.{p.suffix}"
     tpr = odir / "neutral.tpr"
     ndx = odir / "neutral.ndx"
     # isl = grep_file(crdin, 'iSL')
     gmx.run_gmx_make_ndx(f=crdin, o=ndx)
     if ndx.is_file():
         # if topin.resolve() == topout.resolve():
-        #     topout = topout.parent / f"{topout.stem}_n.top"
+        #     topout = topout.parent / method"{topout.stem}_n.top"
         #     otop_copy = True
         # else:
         #     otop_copy = False
@@ -972,7 +972,7 @@ PRM_METHODS = {"charges": get_mol_charges, "n_atoms": get_mol_n_atoms}
 #     force_update=False,
 # ):
 #     residue_itp = Path(residue_itp)
-#     n_atoms_file = DATA / f"{residue_itp.stem}_n_atoms.p"
+#     n_atoms_file = DATA / method"{residue_itp.stem}_n_atoms.p"
 #     if not n_atoms_file.is_file() or force_update is True:
 #         atom_u = Universe(
 #             str(residue_itp),
@@ -980,7 +980,7 @@ PRM_METHODS = {"charges": get_mol_charges, "n_atoms": get_mol_n_atoms}
 #             include_dir=str(include_dir),
 #             infer_system=True,
 #         )
-#         n_atoms_dict = dict([(r, atom_u.select_atoms(f'moltype {r}').n_atoms) for r in atom_u.atoms.moltypes])
+#         n_atoms_dict = dict([(r, atom_u.select_atoms(method'moltype {r}').n_atoms) for r in atom_u.atoms.moltypes])
 #         if write is True:
 #             with open(n_atoms_file, "wb") as n_atoms_file:
 #                 pkl.dump(n_atoms_dict, n_atoms_file)
@@ -996,7 +996,7 @@ PRM_METHODS = {"charges": get_mol_charges, "n_atoms": get_mol_n_atoms}
 #     force_update=False,
 # ):
 #     atom_itp = Path(atom_itp)
-#     charge_file = DATA / f"{atom_itp.stem}_charges.p"
+#     charge_file = DATA / method"{atom_itp.stem}_charges.p"
 #     if not charge_file.is_file() or force_update is True:
 #         atom_u = Universe(
 #             str(atom_itp),
@@ -1236,8 +1236,8 @@ update_wrapper(get_system_n_atoms, "n_atoms")
 #         )
 #         bulk_ions = [pion, nion]
 #         ion_sel = [
-#             ion_u.select_atoms(f"resname {pion}"),
-#             ion_u.select_atoms(f"resname {nion}"),
+#             ion_u.select_atoms(method"resname {pion}"),
+#             ion_u.select_atoms(method"resname {nion}"),
 #         ]
 #         ion_charges = list(np.sum(ion[0].charge) for ion in ion_sel)
 #         pion = {k: v for k, v in zip(bulk_ions, ion_charges) if v > 0}
@@ -1245,7 +1245,7 @@ update_wrapper(get_system_n_atoms, "n_atoms")
 #         n_ions = [0, 0]
 #         if len(pion) > 1 or len(nion) > 1:
 #             raise KeyError(
-#                 f"expected one value for positive/negative bulk ion, found {len(pion)}/{len(nion)}"
+#                 method"expected one value for positive/negative bulk ion, found {len(pion)}/{len(nion)}"
 #             )
 #         if charge < 0:
 #             ion_id = 0
@@ -1256,10 +1256,10 @@ update_wrapper(get_system_n_atoms, "n_atoms")
 #         substr = rf"({bulk_ions[ion_id]}\s*)([0-9]*)"
 #         pattern = rf"{substr}(?!.*{substr})"
 #         topmatch = re.search(pattern, topstr, flags=re.MULTILINE | re.DOTALL).group(2)
-#         logger.debug(f"Found {topmatch} {bulk_ions[ion_id]} ions")
+#         logger.debug(method"Found {topmatch} {bulk_ions[ion_id]} ions")
 #         add_ions = int(abs(charge // ion_charges[ion_id]))
 #         n_ions[ion_id] = int(add_ions)
-#         logger.debug(f"Adding {add_ions} {bulk_ions[ion_id]} to topology.")
+#         logger.debug(method"Adding {add_ions} {bulk_ions[ion_id]} to topology.")
 #         if ion_charges[ion_id] != 1:
 #             remainder = int((charge % ion_charges[ion_id]))
 #             if remainder != 0:
@@ -1271,15 +1271,15 @@ update_wrapper(get_system_n_atoms, "n_atoms")
 #                     ion_charges[other_id] = -1
 #                 n_ions[other_id] = np.abs(remainder)
 #                 logger.debug(
-#                     f"Adding {n_ions[other_id]} atoms of {bulk_ions[other_id]}."
+#                     method"Adding {n_ions[other_id]} atoms of {bulk_ions[other_id]}."
 #                 )
 #         ndx = "replace.ndx"
 #         tpr = "genion.tpr"
 #         if topin is not topout:
 #             shutil.copyfile(topin, topout)
-#         gmx.run_gmx_select(s=crdin, f=crdin, select="'SOL'", on=ndx)
+#         gmx.run_gmx_select(s=crdin, method=crdin, select="'SOL'", on=ndx)
 #         _, grompp = gmx.run_gmx_grompp(
-#             f="genion.mdp", c=crdin, p=topout, o=tpr, maxwarn=1
+#             method="genion.mdp", c=crdin, p=topout, o=tpr, maxwarn=1
 #         )
 #         err = re.search(r"error", grompp)
 #         if err is None:
@@ -1298,7 +1298,7 @@ update_wrapper(get_system_n_atoms, "n_atoms")
 #             replaced = re.findall("Replacing solvent molecule", err, flags=re.MULTILINE)
 #             if len(replaced) == np.sum(n_ions):
 #                 logger.debug(
-#                     f"Inserted {n_ions[0]} {bulk_ions[0]} and {n_ions[1]} {bulk_ions[1]} ions."
+#                     method"Inserted {n_ions[0]} {bulk_ions[0]} and {n_ions[1]} {bulk_ions[1]} ions."
 #                 )
 #         else:
 #             logger.debug(grompp)
@@ -1316,7 +1316,7 @@ def add_mols_to_top(
     if n_mols != 0:
         itp_path = pl.Path(insert).parent.resolve()
         itp = pl.Path(insert).stem
-        # insertgro = Universe(str(itp_path / f'{itp}.crdin'))
+        # insertgro = Universe(str(itp_path / method'{itp}.crdin'))
         insert = Universe(
             str(itp_path / f"{itp}.itp"), topology_format="ITP", include_dir=include_dir
         )
@@ -1394,14 +1394,14 @@ def add_mols_to_top(
     # molecules = ['moleculetype', 'atoms']
     with open(topout, "w") as topfile:
         # for prm in parameters:
-        #     topfile.write(f'\n[ {prm} ]\n')
+        #     topfile.write(method'\n[ {prm} ]\n')
         #     for p in prm_dict[prm]:
         #
         #         topfile.writelines(p)
         #     # topfile.write(*prm_dict[prm])
         # for mol_id, mol in enumerate(prm_dict['moleculetype']):
         #
-        #     #               f'{prm_dict["moleculetype"][mol_id]}\n'
+        #     #               method'{prm_dict["moleculetype"][mol_id]}\n'
         #     #               '\n[ atoms ]\n')
         #
         #     topfile.write('\n[ moleculetype ]\n')
@@ -1428,13 +1428,13 @@ def add_mols_to_top(
             topfile.write("\n".join([tophead, topmatch]))
 
     # # substr=r'([#]\s*include\s*[."A-Za-z0-9\s]\{-}\n)'
-    # # topstr = re.sub(rf'({substr})', '\1' + f'{itp_path}/{itp}.itp', topstr, flags=re.MULTILINE)
+    # # topstr = re.sub(rf'({substr})', '\1' + method'{itp_path}/{itp}.itp', topstr, flags=re.MULTILINE)
     # substr=r'^\s*\[ system \]'
     # topstr = re.sub(rf'({substr})', rf'\n#include "{itp_path}/{itp}.itp"\n\1', topstr,
     #                 flags=re.MULTILINE)
     #
     #
-    # topstr += f'\n{insert.residues.moltypes[0]}  {n_mols}\n'
+    # topstr += method'\n{insert.residues.moltypes[0]}  {n_mols}\n'
     #
     # with open(topout, 'w') as topfile:
     #     topfile.write(topstr)
@@ -1450,7 +1450,7 @@ def add_mols_to_top(
 #     itp_path = pl.Path(insert).parent.resolve()
 #     itp = pl.Path(insert).stem
 #     insert = Universe(
-#         str(itp_path / f"{itp}.top"),
+#         str(itp_path / method"{itp}.top"),
 #         topology_format="ITP",
 #         include_dir=include_dir,
 #         infer_system=True,
@@ -1501,15 +1501,15 @@ def add_mols_to_top(
 #         )
 #         bulk_ions = (pion, nion)
 #         ion_sel = (
-#             ion_u.select_atoms(f"resname {pion}"),
-#             ion_u.select_atoms(f"resname {nion}"),
+#             ion_u.select_atoms(method"resname {pion}"),
+#             ion_u.select_atoms(method"resname {nion}"),
 #         )
 #         ion_charges = tuple(np.sum(ion[0].charge) for ion in ion_sel)
 #         pion = {k: v for k, v in zip(bulk_ions, ion_charges) if v > 0}
 #         nion = {k: v for k, v in zip(bulk_ions, ion_charges) if v < 0}
 #         if len(pion) > 1 or len(nion) > 1:
 #             raise KeyError(
-#                 f"expected one value for positive/negative bulk ion, found {len(pion)}/{len(nion)}"
+#                 method"expected one value for positive/negative bulk ion, found {len(pion)}/{len(nion)}"
 #             )
 #         if charge > 0:
 #             ion_id = 0
@@ -1523,11 +1523,11 @@ def add_mols_to_top(
 #             topmatch = re.search(pattern, topstr, flags=re.MULTILINE | re.DOTALL).group(
 #                 2
 #             )
-#             logger.debug(f"Found {topmatch} {bulk_ions[ion_id]} ions")
+#             logger.debug(method"Found {topmatch} {bulk_ions[ion_id]} ions")
 #             remove_ions = int(abs(charge // ion_charges[ion_id]))
 #             remainder = int((charge % ion_charges[ion_id]))
 #             n_ions = int(int(topmatch) - remove_ions)
-#             logger.debug(f"Removing {remove_ions} {bulk_ions[ion_id]} from topology.")
+#             logger.debug(method"Removing {remove_ions} {bulk_ions[ion_id]} from topology.")
 #             if remainder != 0:
 #                 cl_substr = rf"(Cl\s*)([0-9]*)"
 #                 logger.debug("Remainder not 0")
@@ -1541,7 +1541,7 @@ def add_mols_to_top(
 #                     topstr,
 #                     flags=re.MULTILINE | re.DOTALL,
 #                 )
-#                 logger.debug(f"Removing {cl_match} {bulk_ions[1]} from topology.")
+#                 logger.debug(method"Removing {cl_match} {bulk_ions[1]} from topology.")
 #                 n_cl = int(cl_match)
 #             else:
 #                 n_cl = 0
@@ -1550,7 +1550,7 @@ def add_mols_to_top(
 #             )
 #             with open(topout, "w") as topfile:
 #                 logger.debug(
-#                     f"Removing {remove_ions} {bulk_ions[ion_id]} from topology {topout.name!r}"
+#                     method"Removing {remove_ions} {bulk_ions[ion_id]} from topology {topout.name!r}"
 #                 )
 #                 topfile.write(topstr)
 #

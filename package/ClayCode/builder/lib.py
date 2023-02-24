@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 import logging
 import os
 import pathlib as pl
@@ -38,3 +39,4 @@ from numpy.typing import NDArray
 from ClayCode.config._consts import SOL, SOL_DENSITY, IONS, MDP, FF, DATA, AA, UCS
 from ClayCode.core import gmx
 
+def init_ff(ff: Dict[])

@@ -9,7 +9,7 @@ import yaml
 from typing import Dict
 
 from ClayCode import UCS, FF
-from ClayCode.build.exp import ClayComposition
+from ClayCode.builder.exp import ClayComposition
 from ClayCode.config.classes import File, Dir
 from ClayCode.core.utils import init_path
 
@@ -29,13 +29,13 @@ parser: ArgumentParser = ArgumentParser(
 subparsers = parser.add_subparsers(help="Select option.", dest="option")
 
 # Model setup parser
-buildparser = subparsers.add_parser("build", help="Setup clay models.")
+buildparser = subparsers.add_parser("builder", help="Setup clay models.")
 
-# Model build specifications
+# Model builder specifications
 buildparser.add_argument(
     "-f",
     type=File,
-    help="YAML file with build parameters",
+    help="YAML file with builder parameters",
     metavar="yaml_file",
     dest="yaml_file",
 )
@@ -61,7 +61,7 @@ checkparser = subparsers.add_parser("check", help="Check clay simulation _data."
 
 # TODO: add plotting?
 #
-# parser.add_argument('build',
+# parser.add_argument('builder',
 #                     required=False,
 #                     default=False,
 #                     nargs=0,
@@ -98,11 +98,11 @@ class _Args(ABC, UserDict):
 
 
 class BuildArgs(_Args):
-    """Parameters for clay model setup with :mod:`ClayCode.build`"""
+    """Parameters for clay model setup with :mod:`ClayCode.builder`"""
 
-    option = "build"
-    from ClayCode.build.consts import UC_CHARGE_OCC as _charge_occ_df
-    from ClayCode.build.consts import BUILD_DEFAULTS as _build_defaults
+    option = "builder"
+    from ClayCode.builder.consts import UC_CHARGE_OCC as _charge_occ_df
+    from ClayCode.builder.consts import BUILD_DEFAULTS as _build_defaults
 
     _arg_names = [
         "SYSNAME",
@@ -150,7 +150,7 @@ class BuildArgs(_Args):
         self.get_exp_data()
 
     def read_yaml(self) -> None:
-        """Read clay model build specifications from yaml file."""
+        """Read clay model builder specifications from yaml file."""
         with open(self.data["yaml_file"], "r") as file:
             self.__yaml_data = yaml.safe_load(file)
         logger.info(f"Reading {file.name!r}")
@@ -251,11 +251,15 @@ class BuildArgs(_Args):
         self.ff = ff_dict
 
     def get_uc_data(self):
-        from ClayCode.build.exp import UCData
+        from ClayCode.builder.exp import UCData
         self.uc_data = UCData(UCS / self._uc_name, uc_stem=self._uc_stem, ff=self.ff["clay"])
+        occ = self.uc_data.occupancies
+        ch = self.uc_data.oxidation_numbers
+        atc = self.uc_data.atomic_charges
+        ...
 
     def get_exp_data(self):
-        from ClayCode.build.exp import ClayComposition
+        from ClayCode.builder.exp import ClayComposition
         csv_fname = self.data["CLAY_COMP"]
         clay_atoms = self.uc_data.df.index
         clay_atoms.append(pd.MultiIndex.from_tuples([("O", "fe_tot")]))
@@ -288,7 +292,7 @@ class EditArgs(_Args):
 
 class ArgsFactory:
     _options = {
-        "build": BuildArgs,
+        "builder": BuildArgs,
         "edit": EditArgs,
         "check": CheckArgs,
         "analysis": AnalysisArgs,
@@ -308,7 +312,7 @@ class ArgsFactory:
 
 
 p = parser.parse_args(
-    ["build", "-f", "build/tests/data/input.yaml"]
+    ["builder", "-f", "builder/tests/data/input.yaml"]
 )  # , "-comp", "a.csv"])
 args = ArgsFactory()
 b = args.get_subclass(p)

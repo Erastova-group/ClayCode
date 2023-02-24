@@ -58,6 +58,7 @@ class UCData(Dir):
         self.__df = None
         self.__get_full_df()
         self.__get_df()
+        self.__atomic_charges = None
 
     @property
     def full_df(self) -> pd.DataFrame:
@@ -131,7 +132,8 @@ class UCData(Dir):
     @cached_property
     def oxidation_numbers(self) -> Dict[str, int]:
         """Get dictionary of T and O element oxidation numbers for 0 charge sheet"""
-        return self._get_oxidation_numbers(self.df)
+        ox_dict = self._get_oxidation_numbers(self.df, self.occupancies, self.tot_charge)[1]
+        return dict(zip(ox_dict.keys(), list(map(lambda x: int(x), ox_dict.values()))))
         # import yaml
         # from ClayCode import UCS
         # with open(UCS / 'clay_charges.yaml', 'r') as file:
@@ -167,35 +169,62 @@ class UCData(Dir):
     def __repr__(self):
         return f'{self.__class__.__name__}({self.name!r})'
 
+
     @staticmethod
     def _get_occupancies(df) -> Dict[str, int]:
         try:
-            occ = df.groupby('sheet').sum().aggregate("unique",
+            occ = df.sort_index(level='sheet', sort_remaining=True).groupby('sheet').sum().aggregate("unique",
                                                       axis='columns')
         except ValueError:
-            occ = df.groupby('sheet').sum().aggregate("unique")
-        idx = df.index.get_level_values('sheet').unique()
+            occ = df.sort_index(level='sheet', sort_remaining=True).groupby('sheet').sum().aggregate("unique")
+        idx = df.sort_index(level='sheet', sort_remaining=True).index.get_level_values('sheet').unique()
         occ_dict = dict(zip(idx, occ))
         return occ_dict
 
+
+    @property
+    def atomic_charges(self):
+        return self._get_oxidation_numbers(self.df,
+                                           self.occupancies,
+                                           self.tot_charge,
+                                           )[0]
+
+
     @staticmethod
-    def _get_oxidation_numbers(df, tot_charge, occupancies) -> Dict[str, int]:
+    def _get_oxidation_numbers(df, occupancies, tot_charge=None, sum_dict=True) -> Dict[str, int]:
         import yaml
         from ClayCode import UCS
         with open(UCS / 'clay_charges.yaml', 'r') as file:
             ox_dict: dict = yaml.safe_load(file)
+        # df = df.loc[['T','O']]
         ox_df: pd.DataFrame = df.copy()
-        ox_df = ox_df.loc[~(ox_df == 0).all(1), :]
-        ox_df = ox_df.loc[:, tot_charge == 0]
+        ox_df.sort_index(level='sheet', sort_remaining=True, inplace=True)
+        try:
+            ox_df = ox_df.loc[~(ox_df == 0).all(1), :]
+        except ValueError:
+            ox_df = ox_df.loc[~(ox_df == 0)]
+        if tot_charge is not None:
+            ox_df = ox_df.loc[:, tot_charge == 0]
         at_types: pd.DataFrame = ox_df.index.get_level_values('at-type').to_frame()
         at_types.index = ox_df.index
+        try:
+            at_types.drop(('O', 'fe_tot'), inplace=True)
+        except KeyError:
+            pass
         at_types = at_types.applymap(lambda x: ox_dict[x])
-        ox: np.ndarray = ox_df.apply(lambda x: x * at_types['at-type']).groupby('sheet').sum().aggregate('unique',
-                                                                                                         axis='columns')
-        idx: pd.Index = df.index.get_level_values('sheet').unique()
-        ox_dict: dict = dict(zip(idx, ox))
-        ox_dict: dict = dict(map(lambda x: (x, ox_dict[x] // occupancies[x]), ox_dict.keys()))
-        return ox_dict
+        if type(ox_df) == pd.DataFrame:
+            ox: pd.DataFrame = ox_df.apply(lambda x: x * at_types['at-type'])
+        else:
+            ox: pd.DataFrame = at_types.apply(lambda x: x * ox_df)
+        if sum_dict is True:
+            ox: np.ndarray = ox.groupby('sheet').sum().aggregate('unique',
+                                                                 axis='columns')
+            idx: pd.Index = ox_df.sort_index().index.get_level_values('sheet').unique()
+            ox_dict: dict = dict(zip(idx, ox))
+            ox_dict: dict = dict(map(lambda x: (x, ox_dict[x] / occupancies[x]), occupancies.keys()))
+        else:
+            ox_dict = ox.groupby('sheet').apply(lambda x: x / occupancies[x.name])
+        return at_types, ox_dict
 
 class ClayComposition:
 
@@ -217,18 +246,42 @@ class ClayComposition:
         self.correct_occupancies()
         self.match_df = self.match_df.reindex(match_idx)
         self.charge_df = None
-        self.get_match_charges()
+        self.sheet_charges
+        # self.get_match_charges()
         ...
         # uc_df.sort_index(inplace=True, sort_remaining=True)
         # uc_df['match'] = np.NaN
         # uc_df['match']
 
-    def get_match_charges(self):
-        ...
+    # def get_match_charges(self):
+        # ox_numbers = self.oxidation_states
+        # tot_charge = self.match_df.loc[['C', 'tot_chg']]
+        # uc_charges = UCData._get_oxidation_numbers(self.match_df, self.occupancies)
+        # charge_df = self.match_df.loc[['T', 'O'], :]
+        # atomic_charges = self.uc_data.atomic_charges
+        # atomic_charges['match_charge'] = atomic_charges.apply(lambda x: x * charge_df)
+        # charge_df['charge'] = charge_df.groupby('sheet').apply(lambda x: x * self.uc_data.).groupby('sheet').sum().aggregate('unique',
+        # ...                                                                                                         axis='columns')
+        # ...
+    @property
+    def sheet_charges(self):
+        ox_states = UCData._get_oxidation_numbers(self.match_df.loc[['T', 'O']], self.occupancies)[1]
+        charge_delta = dict(map(lambda x: (x, self.uc_data.oxidation_numbers[x] - ox_states[x]), ox_states.keys()))
+        sheet_df = self.match_df.copy()
+
+    @property
+    def oxidation_states(self):
+        return UCData._get_oxidation_numbers(self.match_df.loc[['T', 'O']], self.occupancies, sum_dict=False)[1]
+
+    @property
+    def atom_types(self):
+        return UCData._get_oxidation_numbers(self.match_df.loc[['T', 'O']], self.occupancies, sum_dict=False)[0]
 
     @property
     def occupancies(self):
-        return UCData._get_occupancies(self.match_df.dropna())
+        return UCData._get_occupancies(self.match_df.loc[['T', 'O']].dropna())
+
+
 
     def correct_occupancies(self, idx_sel=["T", "O"]):
         correct_uc_occ: pd.Series = pd.Series(self.uc_data.occupancies)
@@ -238,7 +291,7 @@ class ClayComposition:
         for sheet, occ in check_occ.iteritems():
             logger.info(f"Found {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.2f}/{correct_uc_occ[sheet]:.2f} ({occ:+.2f})")
         # exp_occ.apply(lambda x: print(f"{x.name}: {x.sum()}"))
-        sheet_df: pd.Series = self.match_df.loc[['T', 'O'], :]
+        sheet_df: pd.Series = self.match_df.loc[['T', 'O'], :].copy()
         sheet_df = sheet_df.loc[sheet_df != 0]
         if check_occ.values.any() != 0:
             logger.info("Adjusting values to match expected occupancies:")
