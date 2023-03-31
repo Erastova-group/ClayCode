@@ -3,13 +3,14 @@ import os
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserDict
+from functools import cached_property
 
 import pandas as pd
 import yaml
 from typing import Dict
 
 from ClayCode import UCS, FF
-from ClayCode.builder.exp import ClayComposition
+from ClayCode.builder.claycomp import TargetClayComposition, MatchClayComposition
 from ClayCode.config.classes import File, Dir
 from ClayCode.core.utils import init_path
 
@@ -17,7 +18,8 @@ logger = logging.getLogger(File(__file__).stem)
 
 logger.setLevel(logging.DEBUG)
 
-__all__ = ["ArgsFactory", "_Args", "parser"]
+__all__ = {"ArgsFactory", "parser", 'BuildArgs', 'EditArgs', 'CheckArgs', 'EquilibrateArgs', 'PlotArgs',
+           'AnalysisArgs'}
 
 parser: ArgumentParser = ArgumentParser(
     "ClayCode",
@@ -54,10 +56,25 @@ buildparser.add_argument(
 editparser = subparsers.add_parser("edit", help="Edit clay models.")
 
 # Clay simulation analysis parser
-analysisparser = subparsers.add_parser("analysis", help="Analyse clay simulations.")
+analysisparser = subparsers.add_parser("analyse", help="Analyse clay simulations.")
+
+# plot analysis results
+plotparser = subparsers.add_parser("plot", help='Plot simulation analysis results')
 
 # Clay simulation check parser
-checkparser = subparsers.add_parser("check", help="Check clay simulation _data.")
+checkparser = subparsers.add_parser("check", help="Check clay simulation data.")
+
+equilparser = subparsers.add_parser("equilibrate", help="Generate clay model equilibration run input files.")
+equilparser.add_argument('-d_space',
+                         help='d-spacing in A',
+                        metavar='d_spacing',
+                         dest='d_space',
+                         type=float)
+equilparser.add_argument('-n_wat',
+                         help='number of water molecules to remove per cycle per unit cell',
+                        metavar='n_waters',
+                         dest='n_wat',
+                         type=float)
 
 # TODO: add plotting?
 #
@@ -75,9 +92,25 @@ checkparser = subparsers.add_parser("check", help="Check clay simulation _data."
 #                     dest='SIMINP')
 #
 
+def read_yaml_decorator(f):
+    def wrapper(self: _Args):
+        assert isinstance(self, _Args), f'Wrong class for decorator'
+        with open(self.data["yaml_file"], "r") as file:
+            self.__yaml_data = yaml.safe_load(file)
+        logger.info(f"Reading {file.name!r}")
+        for k, v in self.__yaml_data.items():
+            if k in self._arg_names:
+                self.data[k] = v
+                logger.info(f"{k!r} = {v!r}")
+            else:
+                raise KeyError(f"Unrecognised argument {k!r}!")
+        return f(self)
+    return wrapper
 
 class _Args(ABC, UserDict):
     option = None
+
+    _arg_names = []
 
     def __init__(self, data: dict):
         self.data = data
@@ -97,6 +130,7 @@ class _Args(ABC, UserDict):
         pass
 
 
+
 class BuildArgs(_Args):
     """Parameters for clay model setup with :mod:`ClayCode.builder`"""
 
@@ -112,8 +146,8 @@ class BuildArgs(_Args):
         "Y_CELLS",
         "N_SHEETS",
         "IL_SOLV",
-        "UC_NUMLIST",
-        "UC_RATIOS",
+        "UC_NUMBERS_LIST",
+        "UC_RATIOS_LIST",
         "ION_WATERS",
         "UC_WATERS",
         "BOX_HEIGHT",
@@ -126,8 +160,10 @@ class BuildArgs(_Args):
 
     def __init__(self, data) -> None:
         super().__init__(data)
+        self._target_comp = None
+        self._uc_data = None
         self.filestem: str = None
-        self.uc_df: pd.DataFrame = None
+        # self.uc_df: pd.DataFrame = None
         self.uc_charges: pd.DataFrame = None
         self.x_cells: int = None
         self.y_cells: int = None
@@ -143,23 +179,13 @@ class BuildArgs(_Args):
         self.ff = None
         self.ucs = None
         self.il_solv = None
-        self.read_yaml()
-        self.check()
+        # self.read_yaml()
+        # self.check()
         self.process()
-        self.get_uc_data()
-        self.get_exp_data()
 
+    @read_yaml_decorator
     def read_yaml(self) -> None:
         """Read clay model builder specifications from yaml file."""
-        with open(self.data["yaml_file"], "r") as file:
-            self.__yaml_data = yaml.safe_load(file)
-        logger.info(f"Reading {file.name!r}")
-        for k, v in self.__yaml_data.items():
-            if k in self._arg_names:
-                self.data[k] = v
-                logger.info(f"{k!r} = {v!r}")
-            else:
-                raise KeyError(f"Unrecognised argument {k!r}!")
         try:
             csv_file = File(self.data["csv_file"], check=True)
         except TypeError:
@@ -220,6 +246,8 @@ class BuildArgs(_Args):
             "BOX_HEIGHT",
             "BULK_IONS",
             "FF",
+            'UC_NUMBERS_LIST',
+            'UC_RATIOS_LIST'
         ]:
             try:
                 prm_value = self.data[prm]
@@ -229,16 +257,20 @@ class BuildArgs(_Args):
         try:
             outpath = self.data["OUTPATH"]
             self.outpath = Dir(outpath, check=False)
-
         except KeyError:
             raise KeyError(f"No output directory specified")
 
     def process(self):
+        self.read_yaml()
+        self.check()
         self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         self.outpath = self.outpath / self.name
         init_path(self.outpath)
         self.get_ff_data()
         self.get_uc_data()
+        self.get_exp_data()
+        self.get_solvation_data()
+        self.match_uc_combination()
 
     def get_ff_data(self):
         from ClayCode.config.classes import ForceField
@@ -251,23 +283,65 @@ class BuildArgs(_Args):
         self.ff = ff_dict
 
     def get_uc_data(self):
-        from ClayCode.builder.exp import UCData
-        self.uc_data = UCData(UCS / self._uc_name, uc_stem=self._uc_stem, ff=self.ff["clay"])
-        occ = self.uc_data.occupancies
-        ch = self.uc_data.oxidation_numbers
-        atc = self.uc_data.atomic_charges
-        ...
+        from ClayCode.builder.claycomp import UCData
+        self._uc_data = UCData(UCS / self._uc_name, uc_stem=self._uc_stem, ff=self.ff["clay"])
+        occ = self._uc_data.occupancies
+        ch = self._uc_data.oxidation_numbers
+        atc = self._uc_data.atomic_charges
+        
 
     def get_exp_data(self):
-        from ClayCode.builder.exp import ClayComposition
-        csv_fname = self.data["CLAY_COMP"]
-        clay_atoms = self.uc_data.df.index
+        from ClayCode.builder.claycomp import TargetClayComposition
+        # csv_fname = self.data["CLAY_COMP"]
+        clay_atoms = self._uc_data.df.index
         clay_atoms.append(pd.MultiIndex.from_tuples([("O", "fe_tot")]))
 
-        exp_comp = ClayComposition(self.name, self.data['CLAY_COMP'], self.uc_data
-        )
-        # exp_comp = pd.read_csv()
-        ...
+        self._target_comp = TargetClayComposition(self.name, self.data['CLAY_COMP'], self._uc_data)
+        self._target_comp.write_csv(self.outpath)
+
+    def get_solvation_data(self):
+        if self.il_solv is True:
+            try:
+                self.waters = self.ion_waters
+            except AttributeError:
+                try:
+                    self.waters = self.box_waters
+                except AttributeError:
+                    raise AttributeError('Number of water molecules to add must be '
+                                         'specified through either "ION_WATERS" or '
+                                         '"BOX_WATERS".')
+            else:
+                try:
+                    self.waters = self.box_waters
+                except AttributeError:
+                    pass
+                else:
+                    raise AttributeError('Number of water molecules to add must be '
+                                         'specified through either "ION_WATERS" or '
+                                         '"BOX_WATERS".')
+
+    @property
+    def uc_df(self):
+        return self._uc_data.df
+
+    @property
+    def target_df(self):
+        return self._target_comp.df
+
+    @property
+    def match_df(self):
+        return self._match_comp.df
+
+    @property
+    def ion_df(self):
+        return self._target_comp.ion_df
+
+    @cached_property
+    def sheet_n_cells(self):
+        return self.x_cells * self.y_cells
+
+    def match_uc_combination(self):
+        self.match_comp = MatchClayComposition(self._target_comp, self.sheet_n_cells)
 
 class AnalysisArgs(_Args):
     option = "analysis"
@@ -282,13 +356,29 @@ class CheckArgs(_Args):
     def __init__(self, data):
         super().__init__(data)
 
-
 class EditArgs(_Args):
     option = "edit"
 
     def __init__(self, data):
         super().__init__(data)
 
+class PlotArgs(_Args):
+    option = "plot"
+
+    def __init__(self, data):
+        super().__init__(data)
+
+class EquilibrateArgs(_Args):
+    option = "equilibrate"
+    # TODO: Add csv or yaml for eq run prms
+
+
+    def __init__(self, data):
+        super().__init__(data)
+
+    def process(self):
+        # convert d-spacing from A to nm
+        self.d_space /= 10
 
 class ArgsFactory:
     _options = {
@@ -296,10 +386,11 @@ class ArgsFactory:
         "edit": EditArgs,
         "check": CheckArgs,
         "analysis": AnalysisArgs,
+        "equilibrate": EquilibrateArgs
     }
 
     @classmethod
-    def get_subclass(cls, parse_args):
+    def init_subclass(cls, parse_args):
         if type(parse_args) != dict:
             data = parse_args.__dict__
         option = data.pop("option")
@@ -311,9 +402,4 @@ class ArgsFactory:
         return _cls(data)
 
 
-p = parser.parse_args(
-    ["builder", "-f", "builder/tests/data/input.yaml"]
-)  # , "-comp", "a.csv"])
-args = ArgsFactory()
-b = args.get_subclass(p)
-...
+
