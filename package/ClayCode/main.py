@@ -1,4 +1,6 @@
 # from config.params import PRMS
+import logging
+logging.basicConfig(format='%(message)s', level=logging.INFO)
 from ClayCode.core.parsing import parser, ArgsFactory, BuildArgs
 
 if __name__ == '__main__':
@@ -9,7 +11,8 @@ if __name__ == '__main__':
     args = args_factory.init_subclass(args)
 
     if isinstance(args, BuildArgs):
-        ...
+        from ClayCode.builder import Builder
+        modelbuilder = Builder(args)
     # if PRMS.build:
     #     from package.builder.builder import ModelBuilder
     #     ModelBuilder().run()
