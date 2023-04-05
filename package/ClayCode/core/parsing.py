@@ -10,7 +10,7 @@ import yaml
 from typing import Dict
 
 from ClayCode import UCS, FF
-from ClayCode.builder.claycomp import TargetClayComposition, MatchClayComposition
+from ClayCode.builder.claycomp import TargetClayComposition, MatchClayComposition, InterlayerIons
 from ClayCode.config.classes import File, Dir
 from ClayCode.core.utils import init_path
 
@@ -97,7 +97,7 @@ def read_yaml_decorator(f):
         assert isinstance(self, _Args), f'Wrong class for decorator'
         with open(self.data["yaml_file"], "r") as file:
             self.__yaml_data = yaml.safe_load(file)
-        logger.info(f"Reading {file.name!r}")
+        logger.info(f"Reading {file.name!r}\n")
         for k, v in self.__yaml_data.items():
             if k in self._arg_names:
                 self.data[k] = v
@@ -156,6 +156,7 @@ class BuildArgs(_Args):
         "CLAY_COMP",
         "OUTPATH",
         "FF",
+        "GMX"
     ]
 
     def __init__(self, data) -> None:
@@ -259,6 +260,12 @@ class BuildArgs(_Args):
             self.outpath = Dir(outpath, check=False)
         except KeyError:
             raise KeyError(f"No output directory specified")
+        try:
+            GMX = self.data['GMX']
+        except KeyError:
+            setattr(self, GMX, self._build_defaults['GMX'])
+            logger.info(f'Using default GROMACS alias: {GMX}')
+
 
     def process(self):
         self.read_yaml()
@@ -271,6 +278,7 @@ class BuildArgs(_Args):
         self.get_exp_data()
         self.get_solvation_data()
         self.match_uc_combination()
+        self.get_il_ions()
 
     def get_ff_data(self):
         from ClayCode.config.classes import ForceField
@@ -342,6 +350,35 @@ class BuildArgs(_Args):
 
     def match_uc_combination(self):
         self.match_comp = MatchClayComposition(self._target_comp, self.sheet_n_cells)
+        print(self.match_charge)
+
+
+    @property
+    def match_df(self):
+        return self.match_comp.match_composition
+
+    @property
+    def sheet_uc_weights(self):
+        return self.match_comp.uc_weights
+
+    @property
+    def sheet_uc_ids(self):
+        return self.match_comp.uc_ids
+
+    @property
+    def match_charge(self):
+        return self.match_comp.match_charge
+
+    def get_il_ions(self):
+        tot_charge = self.match_charge['tot']
+        if tot_charge != 0:
+            self.il_ions = InterlayerIons(tot_charge=tot_charge,
+                                          ion_ratios=self.ion_df,
+                                          n_ucs=self.sheet_n_cells)
+
+    @property
+    def n_il_ions(self):
+        return self.il_ions.numbers
 
 class AnalysisArgs(_Args):
     option = "analysis"
