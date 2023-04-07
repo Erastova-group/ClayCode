@@ -4,13 +4,14 @@ import copy
 import logging
 import os
 import re
+from copy import copy, deepcopy
 from collections import UserList  # , UserString, UserDict
 from collections.abc import Sequence
 from functools import (
     partialmethod,
     singledispatch,
     wraps,
-    cached_property,
+    cached_property, update_wrapper,
 )
 from io import StringIO
 from pathlib import Path as _Path, PosixPath as _PosixPath
@@ -39,6 +40,7 @@ from MDAnalysis import Universe
 from pandas.errors import EmptyDataError
 
 from ClayCode import UCS, FF
+from ClayCode.analysis.lib import get_system_n_atoms
 from ClayCode.config._consts import KWD_DICT as _KWD_DICT
 from ClayCode.config.utils import select_named_file  # select_file,
 
@@ -53,7 +55,7 @@ logger.setLevel(logging.DEBUG)
 
 def add_method(cls):
     """Add new method to existing class"""
-
+    @update_wrapper(cls)
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
@@ -66,9 +68,9 @@ def add_method(cls):
 
 def add_property(cls):
     """Add new property to existing class"""
-
+    @update_wrapper(cls)
     def decorator(func):
-        @wraps(func)
+        @update_wrapper(func)
         def wrapper(self, *args, **kwargs):
             return func(self, *args, **kwargs)
 
@@ -549,7 +551,6 @@ class ParameterBase:
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.kwd!r})\n\n{self._df}\n"
-        # return self.__string
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.kwd!r})\n{self._df}"
@@ -1165,14 +1166,48 @@ class ITPFile(File):
 
 
 class GROFile(File):
-    pass
+    """Container for .gro file contents."""
+
+    suffix = ".gro"
+
+    def __init__(self, *args, **kwargs):
+        # check if file exists
+        super(GROFile, self).__init__(*args, **kwargs)
+
+    @property
+    def string(self):
+        with open(self, 'r') as file:
+            string = file.read()
+        return string
+
+    @property
+    def df(self):
+        df = pd.read_csv(str(self.resolve()), index_col=[0],
+                                      skiprows=2, header=None, sep='\s+',
+                                      names=['at-type', 'atom-id', 'x', 'y', 'z'],
+                         nrows=self.n_atoms)
+        return df
+
+    @property
+    def universe(self):
+        return Universe(str(self.resolve()))
+
+    @cached_property
+    def n_atoms(self):
+        return int(self.string.splitlines[1])#get_system_n_atoms(crds=self.universe, write=False)
+
+    @property
+    def dimensions(self):
+        return self.string.splitlines()[self.n_atoms + 1]
 
 
 class MDPFile(File):
+    suffix = '.mdp'
     pass
 
 
 class TOPFile(ITPFile):
+    suffix = '.top'
     pass
 
 
@@ -1215,6 +1250,13 @@ class Dir(BasicPath):
     @property
     def itp_filelist(self):
         return ITPList(self)
+
+    @property
+    def gro_filelist(self):
+        return GROList(self)
+
+    def __copy__(self):
+        return copy(self)
 
 
 class FFDir(Dir):
@@ -1260,7 +1302,7 @@ class BasicPathList(UserList):
         def wrapper(self, *args, pre_reset=True, post_reset=True, **kwargs):
             if pre_reset is True:
                 self.data = self._data
-            result = copy.deepcopy(method(self, *args, **kwargs))
+            result = deepcopy(method(self, *args, **kwargs))
             if post_reset is True:
                 self.data = self._data
             return result
@@ -1328,12 +1370,15 @@ class ITPList(FileList):
     pass
 
     def __copy__(self):
-        return self
+        return copy(self)
 
 
 class GROList(FileList):
     _ext = ".gro"
     pass
+
+    def __copy__(self):
+        return copy(self)
 
 
 class MDPList(FileList):
@@ -1341,7 +1386,7 @@ class MDPList(FileList):
     pass
 
 
-class TOPList(FileList):
+class TOPList(ITPList):
     _ext = ".top"
     pass
 
@@ -1629,16 +1674,6 @@ class SimDir(Dir):
         except AttributeError:
             logger.debug(f"{suffix!r}: No file found")
         return f
-        # return select_named_file(
-        #     path=self.resolve(), suffix="log", searchlist=FILE_SEARCHSTR_LIST
-        # )
-
-    # @cached_property
-    # def suffices(self):
-    #     return self._suffices
-
-    # @cached_property
-    # def __pathlist = [self.gro, self.top, self.log, self.trr]
 
     @property
     def pathdict(self):

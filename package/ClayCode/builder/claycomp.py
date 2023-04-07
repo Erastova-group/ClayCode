@@ -5,21 +5,19 @@ import os
 import shutil
 import sys
 import tempfile
-from functools import partialmethod, cached_property, lru_cache, singledispatchmethod, cache
+from functools import partialmethod, cached_property, singledispatchmethod, cache
 import warnings
 import logging
 import re
 from pathlib import PosixPath
 import pickle as pkl
-from copy import copy
 import itertools
-import multiprocessing
 
 import numpy as np
 import pandas as pd
 from typing import Union, List, Dict, Optional, Literal, Tuple
 
-from ClayCode.config.classes import File, Dir, ITPFile, PathFactory
+from ClayCode.core.classes import File, Dir, ITPFile, PathFactory
 from ClayCode.core.lib import get_ion_charges
 from tqdm import tqdm
 
@@ -54,7 +52,7 @@ class UCData(Dir):
     _sheet_grouper = pd.Grouper(level="sheet", sort=False)
 
     def __init__(self, path: Dir, uc_stem=None, ff=None):
-        from ClayCode.config.classes import ForceField
+        from ClayCode.core.classes import ForceField
         if uc_stem is None:
             self.uc_stem: str = self.name[-2:]
         else:
@@ -68,26 +66,87 @@ class UCData(Dir):
         self.__get_full_df()
         self.__get_df()
         self.__atomic_charges = None
-        self.__uc_groups = self.get_uc_groups()
+        self.group_id = None
+        self.__gro_groups = None
+        self.__itp_groups = None
+        self.__dimensions = None
+        self.__uc_groups = None
+        self.get_uc_groups()
 
     def get_uc_groups(self):
         box_dims = {}
         uc_groups = {}
-        n_groups = 0
+        gro_groups = {}
+        itp_groups = {}
+        dimensions = {}
+        n_group = 0
         self.__dimensions = {}
         extract_id = lambda file: file.stem[-2:]
         for uc in self.gro_filelist:
             uc_dimensions = uc.universe.dimensions
-            dim_str = ''.join(uc_dimensions.round(3).astype(str))
+            dim_str = '_'.join(uc_dimensions.round(3).astype(str))
             if dim_str not in box_dims.keys():
-                box_dims[dim_str] = n_groups
-                uc_groups[n_groups] = [extract_id(uc)]
-                n_groups += 1
+                box_dims[dim_str] = n_group
+                uc_groups[n_group] = [extract_id(uc)]
+                gro_groups[n_group] = [uc]
+                itp_groups[n_group] = [uc.with_suffix('.itp')]
+                dimensions[n_group] = uc_dimensions
+                n_group += 1
             else:
                 uc_groups[box_dims[dim_str]].append(extract_id(uc))
-        for dimensions, group_id in box_dims:
-            self.__dimensions[group_id] = dimensions
-        return uc_groups
+                gro_groups[box_dims[dim_str]].append(uc)
+                itp_groups[box_dims[dim_str]].append(uc.with_suffix('.itp'))
+                dimensions[box_dims[dim_str]] = uc_dimensions
+        # for dimensions, group_id in box_dims.items():
+        #     self.__dimensions[group_id] = dimensions
+        self.__dimensions = dimensions
+        self.__uc_groups = uc_groups
+        self.__gro_groups = gro_groups
+        self.__itp_groups = itp_groups
+
+    def group_gro_filelist(self):
+        if self.group_id is not None:
+            return self.__gro_groups[self.group_id]
+        else:
+            return self.__gro_groups
+
+    @cached_property
+    def __gro_df(self):
+        gro_df = pd.DataFrame(index=np.arange(1, np.max(self.n_atoms) + 1),
+                              columns=[*self.df.columns]).stack(dropna=False)
+        gro_df.index.names = ['atom-id', 'uc-id']
+        gro_cols = pd.DataFrame(index=gro_df.index, columns=['x', 'y', 'z'])
+        gro_df = gro_df.to_frame(name='at-type').join(gro_cols, how='outer')
+        gro_df.reset_index(level='uc-id', inplace=True)
+        gro_df['uc-id'] = gro_df['uc-id'].apply(lambda uc_id: f'1{self.uc_stem}{uc_id}')
+        gro_df.set_index('uc-id', inplace=True, append=True)
+        gro_df.index = gro_df.index.reorder_levels(['uc-id', 'atom-id'])
+        gro_df.sort_index(level='uc-id', inplace=True, sort_remaining=True)
+        for gro in self.gro_filelist:
+            n_atoms = self.n_atoms.filter(regex=gro.stem[-2:]).values[0]
+            gro_df.update(pd.read_csv(gro, index_col=[0, 2],
+                                      skiprows=2, header=None, sep='\s+',
+                                      names=gro_df.columns, nrows=n_atoms))
+        # gro_df.reset_index(level='uc-id', inplace=True)
+        # gro_df['uc-id'] = gro_df['uc-id'].apply(lambda uc_id: uc_id[-2:])
+        # gro_df.set_index('uc-id', inplace=True, append=True)
+        # gro_df.index = gro_df.index.reorder_levels(['uc-id', 'atom-id'])
+        return gro_df
+            # gro_data.index.names = gro_df.index.names
+            # gro_df.update(gro_data)
+
+
+
+    @property
+    def gro_df(self):
+        regex = '|'.join([f'{self.uc_stem}{uc_id}' for uc_id in self.uc_idxs])
+        return self.__gro_df.reset_index('atom-id').filter(regex=regex, axis=0).set_index('atom-id', append=True)
+
+    def group_itp_filelist(self):
+        if self.group_id is not None:
+            return self.__itp_groups[self.group_id]
+        else:
+            return self.__itp_groups
 
     def group_iter(self) -> Tuple[int, List[str]]:
         for group_id in sorted(self.__uc_groups.keys()):
@@ -105,13 +164,13 @@ class UCData(Dir):
         except KeyError as e:
             e(f'{group_id} is an invalid group id!')
 
+    def reset_selection(self):
+        self.group_id = None
+        self.uc_idxs = self.__uc_idxs.copy()
 
     def select_ucs(self, uc_ids: List[str]):
         assert np.isin(uc_ids, self.uc_idxs).all(), 'Invalid selection'
         self.uc_idxs = uc_ids
-
-    def reset_uc_selection(self):
-        self.uc_idxs = self.__uc_idxs.copy()
 
     @property
     def n_groups(self):
@@ -193,7 +252,7 @@ class UCData(Dir):
 
     @cached_property
     def n_atoms(self):
-        ...
+        return self.full_df.filter(regex='[0-9]+').sum(axis=0)
 
     @cached_property
     def uc_composition(self) -> pd.DataFrame:
@@ -660,6 +719,7 @@ class MatchClayComposition:
         if accept == 'n':
             self.__abort('uc')
         else:
+            self.__uc_data.select_group(next(iter(accepted_group.keys())))
             self.__uc_data.select_ucs(accepted_group[next(iter(accepted_group.keys()))])
             assert self.target_df.index.equals(self.uc_df.index), \
                 'Target composition and unit cell data must share index'
@@ -775,8 +835,8 @@ class MatchClayComposition:
 
     @cached_property
     def uc_weights(self):
-        match_uc_index = pd.Index([f'{uc_id:0d}' for uc_id in self.__uc_match_df['uc_ids']])
-        return pd.Series(self.__uc_match_df['uc_weights'], index=match_uc_index, name='uc_weights')
+        match_uc_index = pd.Index([f'{uc_id:02d}' for uc_id in np.ravel(*self.__uc_match_df['uc_ids'].values).astype(int)])
+        return pd.Series(np.ravel(*self.__uc_match_df['uc_weights'].values).astype(int), index=match_uc_index, name='uc_weights')
 
     @cached_property
     def uc_ids(self):

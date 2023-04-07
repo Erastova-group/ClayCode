@@ -1,5 +1,4 @@
 import logging
-import os
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserDict
@@ -7,11 +6,10 @@ from functools import cached_property
 
 import pandas as pd
 import yaml
-from typing import Dict
 
 from ClayCode import UCS, FF
-from ClayCode.builder.claycomp import TargetClayComposition, MatchClayComposition, InterlayerIons
-from ClayCode.config.classes import File, Dir
+from ClayCode.builder.claycomp import MatchClayComposition, InterlayerIons
+from ClayCode.core.classes import File, Dir
 from ClayCode.core.utils import init_path
 
 logger = logging.getLogger(File(__file__).stem)
@@ -146,7 +144,7 @@ class BuildArgs(_Args):
         "Y_CELLS",
         "N_SHEETS",
         "IL_SOLV",
-        "UC_NUMBERS_LIST",
+        "UC_INDEX_LIST",
         "UC_RATIOS_LIST",
         "ION_WATERS",
         "UC_WATERS",
@@ -247,7 +245,7 @@ class BuildArgs(_Args):
             "BOX_HEIGHT",
             "BULK_IONS",
             "FF",
-            'UC_NUMBERS_LIST',
+            'UC_INDEX_LIST',
             'UC_RATIOS_LIST'
         ]:
             try:
@@ -281,7 +279,7 @@ class BuildArgs(_Args):
         self.get_il_ions()
 
     def get_ff_data(self):
-        from ClayCode.config.classes import ForceField
+        from ClayCode.core.classes import ForceField
         water_sel_dict = {"SPC": ["ClayFF_Fe", ["spc", "interlayer_spc"]]}
         ff_dict = {}
         for ff_key, ff_sel in self.ff.items():
@@ -350,7 +348,7 @@ class BuildArgs(_Args):
 
     def match_uc_combination(self):
         self.match_comp = MatchClayComposition(self._target_comp, self.sheet_n_cells)
-        print(self.match_charge)
+        # print(self.match_charge)
 
 
     @property
