@@ -30,6 +30,7 @@ import MDAnalysis as mda
 import MDAnalysis.coordinates
 import numpy as np
 import pandas as pd
+from ClayCode.analysis.lib import temp_file_wrapper, logger, add_resnum, rename_il_solvent
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
@@ -87,7 +88,7 @@ def init_temp_inout(
         )
         outp = Path(temp_outp.name)
         new_tmp_dict[which] = True
-        logger.info(f"Creating temporary output file {outp.name!r}")
+        logger.debug(f"Creating temporary output file {outp.name!r}")
     else:
         temp_outp = None
     if type(inf) == str:
@@ -138,7 +139,7 @@ def temp_file_wrapper(f: Callable):
                 outfile = Path(fargs_dict[f"{ftype}out"])
                 assert outfile.exists(), f"No file generated!"
                 shutil.copy(outfile, infile)
-                logger.info(f"Renaming {outfile.name!r} to {infile.name!r}")
+                logger.debug(f"Renaming {outfile.name!r} to {infile.name!r}")
         return r
 
     return wrapper
@@ -206,7 +207,7 @@ def get_selections(
     """
     infiles = [str(Path(infile).absolute()) for infile in infiles]
     for file in infiles:
-        logger.info(f"Reading: {file!r}")
+        logger.debug(f"Reading: {file!r}")
     u = MDAnalysis.Universe(*infiles, in_memory=in_memory)
     # only resname specified
     if len(sel) == 1:
@@ -248,16 +249,18 @@ def get_selections(
         return sel, clay
 
 def select_outside_clay_stack(atom_group: MDAnalysis.AtomGroup,
-                              clay: MDAnalysis.AtomGroup
+                              clay: MDAnalysis.AtomGroup,
+                              extra=1
                               ):
     atom_group = atom_group.select_atoms(
-        f" prop z >= {np.max(clay.positions[:, 2] - 1)} or"
-        f" prop z <= {np.min(clay.positions[:, 2] + 1)}"
+        f" prop z >= {np.max(clay.positions[:, 2] - extra)} or"
+        f" prop z <= {np.min(clay.positions[:, 2] + extra)}"
     )
-    logger.info(
+    logger.debug(
         f"'atom_group': Selected {atom_group.n_atoms} atoms of names: {np.unique(atom_group.names)} "
         f"(residues: {np.unique(atom_group.resnames)})"
     )
+    atom_group = atom_group.residues.atoms
     return atom_group
 
 
@@ -421,7 +424,7 @@ def process_triclinic_axes(
     assert distances.shape[-1] >= len(
         axes
     ), f"Shape of distance array ({distances.shape[-1]}) does not match selected axes {axes}"
-    logger.info(
+    logger.debug(
         distances / np.diagonal(box)[..., axes],
         np.rint(distances / np.diagonal(box)[..., axes]),
     )
@@ -570,10 +573,14 @@ def select_solvent(
 
 
 def update_universe(f):
+    wraps(f)
     def wrapper(crdname: str, crdout: Union[str, Path], **kwargs) -> mda.Universe:
-        u = mda.Universe(str(crdname))
-        f(u=u, crdout=crdout, **kwargs)
-        u = mda.Universe(str(crdout))
+        if type(crdname) != Universe:
+            u = mda.Universe(str(crdname))
+            f(u=u, crdout=crdout, **kwargs)
+            u = mda.Universe(str(crdout))
+        else:
+            u = crdname
         return u
 
     return wrapper
@@ -627,6 +634,7 @@ def center_clay(u: Universe, crdout: Union[Path, str], uc_name: Optional[str]):
     u.atoms.write(crdout)
 
 
+
 @temp_file_wrapper
 def add_mol_list_to_top(
     topin: Union[str, pl.Path],
@@ -657,10 +665,85 @@ def add_mol_list_to_top(
 
 
 @temp_file_wrapper
-def neutralise_system(
-    odir: Path, crdin: Path, topin: Path, topout: Path, nion: str, pion: str
+def add_ions_n_mols(
+    odir: Path, crdin: Path, topin: Path, topout: Path,
+        ion: str, n_atoms: int, charge=None
 ):
-    logger.debug("neutralise_system")
+    logger.debug(f"adding {n_atoms} {ion} ions to {crdin}")
+    mdp = MDP / "genion.mdp"
+    assert mdp.exists(), f"{mdp.resolve()} does not exist"
+    odir = Path(odir).resolve()
+    assert odir.is_dir()
+    tpr = odir / "add_ions.tpr"
+    ndx = odir / "add_ions.ndx"
+    gmx.run_gmx_make_ndx(f=crdin, o=ndx)
+    if charge is None:
+        charge = int(get_ion_charges()[ion])
+    if charge < 0:
+        nname = ion
+        nn = n_atoms
+        nq=charge
+        pname = 'Na'
+        pq = 1
+        np = 0
+    elif charge > 0:
+        pname = ion
+        np = n_atoms
+        pq=charge
+        nname = 'Cl'
+        nq = -1
+        nn = 0
+    if ndx.is_file():
+        err, out = gmx.run_gmx_grompp(
+            f=MDP / "genion.mdp",
+            c=crdin,
+            p=topin,
+            o=tpr,
+            pp=topout,
+            po=tpr.with_suffix(".mdp"),
+            v="",
+            maxwarn=1,
+        )
+        err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
+        if err is not None:
+            logger.error(f"gmx grompp raised an error!")
+            replaced = []
+        else:
+            logger.debug(f"gmx grompp completed successfully.")
+            out = gmx.run_gmx_genion_add_n_ions(
+                s=tpr,
+                p=topout,
+                o=crdin,
+                n=ndx,
+                pname=pname,
+                np=np,
+                pq=pq,
+                nname=nname,
+                nq=nq,
+                nn=nn
+            )
+            if not topout.is_file():
+                logger.error(f"gmx genion raised an error!")
+            else:
+                logger.debug(f"gmx genion completed successfully.")
+            replaced = re.findall(
+                "Replacing solvent molecule", out.stderr, flags=re.MULTILINE
+            )
+            logger.debug(f"Replaced {len(replaced)} SOL molecules with {ion} in {crdin.name!r}")
+            add_resnum(crdin=crdin, crdout=crdin)
+            rename_il_solvent(crdin=crdin, crdout=crdin)
+    else:
+        logger.error(f"No index file {ndx.name} created!")
+        replaced = []
+    return len(replaced)
+
+
+@temp_file_wrapper
+def add_ions_neutral(
+    odir: Path, crdin: Path,
+        topin: Path, topout: Path, nion: str, pion: str, nq=None, pq=None
+):
+    logger.debug(f"Neutralising with {pion} and {nion}")
     mdp = MDP / "genion.mdp"
     assert mdp.exists(), f"{mdp.resolve()} does not exist"
     odir = Path(odir).resolve()
@@ -679,11 +762,15 @@ def neutralise_system(
             v="",
             maxwarn=1,
         )
-        err = re.search(r"error", out)
+        err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
         if err is not None:
             logger.error(f"gmx grompp raised an error!")
             replaced = []
         else:
+            if nq is None:
+                nq = int(get_ion_charges()[nion])
+            if pq is None:
+                pq = int(get_ion_charges()[pion])
             logger.debug(f"gmx grompp completed successfully.")
             out = gmx.run_gmx_genion_neutralise(
                 s=tpr,
@@ -691,18 +778,18 @@ def neutralise_system(
                 o=crdin,
                 n=ndx,
                 pname=pion,
-                pq=int(get_ion_charges()[pion]),
+                pq=pq,
                 nname=nion,
-                nq=int(get_ion_charges()[nion]),
+                nq=nq,
             )
             if not topout.is_file():
                 logger.error(f"gmx genion raised an error!")
             else:
-                logger.info(f"gmx genion completed successfully.")
+                logger.debug(f"gmx genion completed successfully.")
             replaced = re.findall(
                 "Replacing solvent molecule", out.stderr, flags=re.MULTILINE
             )
-            logger.info(f"{crdin.name!r} add numbers, rename il solv")
+            logger.debug(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
             add_resnum(crdin=crdin, crdout=crdin)
             rename_il_solvent(crdin=crdin, crdout=crdin)
     else:
@@ -761,9 +848,12 @@ def remove_excess_ions(crdin, topin, crdout, topout, n_ions, ion_type) -> None:
 def rename_il_solvent(crdin: MDAnalysis.Universe, crdout: Union[Path, str]) -> None:
     u = Universe(str(crdin))
     if "isl" not in list(map(lambda n: n.lower(), np.unique(u.residues.resnames))):
-        logger.info(f"Renaming interlayer SOL to iSL")
+        logger.debug(f"Renaming interlayer SOL to iSL")
         isl: MDAnalysis.AtomGroup = u.select_atoms("resname SOL").residues
-        idx: int = isl[np.ediff1d(isl.resnums, to_end=1) != 1][-1].resnum
+        try:
+            idx: int = isl[np.ediff1d(isl.resnums, to_end=1) != 1][-1].resnum
+        except IndexError:
+            logger.info(f'No interlayer solvation')
         isl: MDAnalysis.AtomGroup = isl.atoms.select_atoms(f"resnum 0 - {idx}")
         isl.residues.resnames = "iSL"
         if type(crdout) != Path:
@@ -771,9 +861,9 @@ def rename_il_solvent(crdin: MDAnalysis.Universe, crdout: Union[Path, str]) -> N
         crdout = str(crdout.resolve())
         u.atoms.write(crdout)
     else:
-        logger.info(f"No interlayer SOL to rename")
+        logger.debug(f"No interlayer SOL to rename")
         if str(Path(crdin).resolve()) != str(Path(crdout.resolve())):
-            logger.info(f"Overwriting {crdin.name!r}")
+            logger.debug(f"Overwriting {crdin.name!r}")
             shutil.move(crdin, crdout)
     return u
 
@@ -781,11 +871,11 @@ def rename_il_solvent(crdin: MDAnalysis.Universe, crdout: Union[Path, str]) -> N
 @temp_file_wrapper
 def add_resnum(crdin: Union[Path, str], crdout: Union[Path, str]) -> Universe:
     u = Universe(str(crdin))
-    logger.info(f"Adding residue numbers to:\n{crdin.resolve()!r}")
+    logger.debug(f"Adding residue numbers to:\n{str(crdin.resolve())!r}")
     res_n_atoms = get_system_n_atoms(crds=u, write=False)
     atoms: MDAnalysis.AtomGroup = u.atoms
     for i in np.unique(atoms.residues.resnames):
-        logger.info(f"Found residues: {i} - {res_n_atoms[i]} atoms")
+        logger.debug(f"Found residues: {i} - {res_n_atoms[i]} atoms")
     res_idx = 1
     first_idx = 0
     last_idx = 0
@@ -797,7 +887,7 @@ def add_resnum(crdin: Union[Path, str], crdout: Union[Path, str]) -> Universe:
         first_idx = last_idx
         resids.extend(np.full(n_atoms, res_idx).tolist())
         res_idx += 1
-    logger.info(f"added {len(resids)} residues")
+    logger.debug(f"Added {len(resids)} residues")
     resids = list(map(lambda resid: f"{resid:5d}", resids))
     if type(crdout) != Path:
         crdout = Path(crdout)
@@ -815,7 +905,7 @@ def add_resnum(crdin: Union[Path, str], crdout: Union[Path, str]) -> Universe:
         logger.debug(f"Writing coordinates to {str(crdout)!r}")
         for line in new_lines:
             crdfile.write(line)
-    logger.info(f"{crdfile.name!r} written")
+    logger.debug(f"{crdfile.name!r} written")
     u = MDAnalysis.Universe(str(crdout))
     return u
 
@@ -1180,3 +1270,71 @@ def remove_ag(
     u.atoms -= sel[first:]
     logger.debug(f"After: {u.atoms.n_atoms}")
     u.atoms.write(crdout)
+
+
+@temp_file_wrapper
+def add_ions_conc(odir: Path, crdin: Path,
+                  topin: Path, topout: Path,
+                  ion: str, ion_charge: float, conc: float
+                  ):
+    logger.debug(f"Adding {conc} mol/L {ion}")
+    mdp = MDP / "genion.mdp"
+    assert mdp.exists(), f"{mdp.resolve()} does not exist"
+    odir = Path(odir).resolve()
+    assert odir.is_dir()
+    # make_opath = lambda p: odir / method"{p.stem}.{p.suffix}"
+    tpr = odir / "conc.tpr"
+    ndx = odir / "conc.ndx"
+    # isl = grep_file(crdin, 'iSL')
+    gmx.run_gmx_make_ndx(f=crdin, o=ndx)
+    if ndx.is_file():
+        # if topin.resolve() == topout.resolve():
+        #     topout = topout.parent / method"{topout.stem}_n.top"
+        #     otop_copy = True
+        # else:
+        #     otop_copy = False
+        _, out = gmx.run_gmx_grompp(
+            f=MDP / "genion.mdp",
+            c=crdin,
+            p=topin,
+            pp=topout,
+            o=tpr,
+            po=tpr.with_suffix(".mdp"),
+            v="",
+            maxwarn=1,
+            # renum="",
+        )
+        err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
+        if err is not None:
+            logger.error(f"gmx grompp raised an error!")
+            replaced = []
+        else:
+            logger.debug(f"gmx grompp completed successfully.")
+            out = gmx.run_gmx_genion_conc(
+                s=tpr,
+                p=topin,
+                o=crdin,
+                n=ndx,
+                iname=ion,
+                iq=ion_charge,
+                conc=conc
+            )
+            if not topout.is_file():
+                logger.error(f"gmx genion raised an error!")
+            else:
+                logger.debug(f"gmx genion completed successfully.")
+                # add_resnum(crdname=crdin, crdout=crdin)
+                # rename_il_solvent(crdname=crdin, crdout=crdin)
+                # isl = grep_file(crdin, 'iSL')
+                # if otop_copy is True:
+                #     shutil.move(topout, topin)
+            replaced = re.findall(
+                "Replacing solvent molecule", out.stderr, flags=re.MULTILINE
+            )
+            logger.info(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
+            add_resnum(crdin=crdin, crdout=crdin)
+            rename_il_solvent(crdin=crdin, crdout=crdin)
+    else:
+        logger.error(f"No index file {ndx.name} created!")
+        replaced = []
+    return len(replaced)

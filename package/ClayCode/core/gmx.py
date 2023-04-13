@@ -5,13 +5,15 @@ import warnings
 from functools import partial
 from pathlib import Path
 
-# from ClayAnalysis.lib import temp_file_wrapper
-from ClayAnalysis.utils import execute_bash_command
+from ClayCode.core.utils import execute_bash_command
 
 # from conf.consts import OUTPATH, SYS_FILESTEM
 # from cc.paths import MDP
 
-GMX = "gmx_mpi"
+# from ClayCode.core.
+
+# GMX = "gmx_mpi"
+GMX = 'gmx'
 
 
 def run_gmx_command(commandargs_dict, opt_args_list):
@@ -22,14 +24,12 @@ def run_gmx_command(commandargs_dict, opt_args_list):
                     commandargs_dict[arg] = str(kwdargs[arg])
                 elif arg in opt_args_list:
                     commandargs_dict[arg] = str(kwdargs[arg])
-                    # print(arg)
                 else:
                     warnings.warn(
                         f'Invalid argument "-{arg}" passed to "gmx '
                         rf'{re.match("run_gmx_(.*)", func.__name__).group(1)}"'
                     )
             command, outputargs = func()
-            # print(commandargs_dict)
             kwd_str = " ".join(
                 list(
                     map(
@@ -39,9 +39,8 @@ def run_gmx_command(commandargs_dict, opt_args_list):
                     )
                 )
             )
-            # print(kwd_str)
             output = sp.run(
-                ["/bin/bash", "-i", "-c", f"gmx {command} {kwd_str}"], **outputargs
+                ["/bin/bash", "-i", "-c", f"{GMX} {command} {kwd_str}"], **outputargs
             )
             return (output.stdout, output.stderr)
 
@@ -51,7 +50,7 @@ def run_gmx_command(commandargs_dict, opt_args_list):
 
 
 @run_gmx_command(
-    commandargs_dict={"o": "crdout.crdin"},
+    commandargs_dict={"o": "crdout.gro"},
     opt_args_list=[
         "p",
         "cs",
@@ -67,6 +66,7 @@ def run_gmx_command(commandargs_dict, opt_args_list):
 )
 def run_gmx_solvate():
     return "solvate", {"capture_output": True, "text": True}
+
 
 
 @run_gmx_command(
@@ -213,6 +213,51 @@ def run_gmx_make_ndx(f: str, o: str):
     )
     assert Path(o).is_file(), f"No index file {o} was written."
 
+def run_gmx_genion_conc(
+    s: str,
+    p: str,
+    o: str,
+    n: str,
+    conc: float,
+    iname: str,
+    iq: int
+):
+    """
+    Replace SOL with ions to neutralise system charge.
+    :param s: input topology tpr filename
+    :type s: str
+    :param p: output topology top filename
+    :type p: str
+    :param o: output coordinates crdin file
+    :type o: str
+    :param n: system index file
+    :type n: str
+    :param pname: cation name
+    :type pname: str
+    :param pq: cation charge
+    :type pq: int
+    :param nname: anion name
+    :type nname: int
+    :param nq: anion charge
+    :type nq: int
+    """
+    if iq > 0:
+        istr = f'-pname {iname} -pq {iq}'
+    else:
+        istr = f'-nname {iname} -nq {iq}'
+    out = execute_bash_command(
+        f'echo -e " SOL \n q" | '
+        f"gmx genion -s {s} -p {p} -o {o} -n {n} "
+        f"-conc {conc} "
+        f"{istr} "
+        f"-rmin 0.2 -noneutral",
+        capture_output=True,
+        text=True,
+    )
+    err = re.search(r"error", out.stdout)
+    assert err is None, f"gmx genion raised an error!"
+    return out
+
 
 def run_gmx_genion_neutralise(
     s: str,
@@ -253,6 +298,50 @@ def run_gmx_genion_neutralise(
         text=True,
     )
     err = re.search(r"error", out.stdout)
+    assert err is None, f"gmx genion raised an error!"
+    return out
+
+def run_gmx_genion_add_n_ions(
+    s: str,
+    p: str,
+    o: str,
+    n: str,
+    pname: str = "Na",
+    pq: int = 1,
+    np: int = 0,
+    nname: str = "Cl",
+    nq: int = -1,
+    nn: int = 0
+):
+    """
+    Replace SOL with ions to neutralise system charge.
+    :param s: input topology tpr filename
+    :type s: str
+    :param p: output topology top filename
+    :type p: str
+    :param o: output coordinates crdin file
+    :type o: str
+    :param n: system index file
+    :type n: str
+    :param pname: cation name
+    :type pname: str
+    :param pq: cation charge
+    :type pq: int
+    :param nname: anion name
+    :type nname: int
+    :param nq: anion charge
+    :type nq: int
+    """
+    out = execute_bash_command(
+        f'echo -e " SOL \n q" | '
+        f"gmx genion -s {s} -p {p} -o {o} -n {n} "
+        f"-pname {pname} -pq {pq} -nn {nn} "
+        f"-nname {nname} -nq {nq} -np {np} "
+        f"-rmin 0.2 -noneutral",
+        capture_output=True,
+        text=True,
+    )
+    err = re.search(r"error|invalid", out.stdout)
     assert err is None, f"gmx genion raised an error!"
     return out
 

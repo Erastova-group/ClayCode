@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from copy import copy, deepcopy
-from collections import UserList  # , UserString, UserDict
+from collections import UserList
 from collections.abc import Sequence
 from functools import (
     partialmethod,
@@ -31,8 +31,7 @@ from typing import (
     Callable,  # , Type,
 )
 
-# import MDAnalysis
-# import MDAnalysis.units
+
 import numpy as np
 import pandas as pd
 import yaml
@@ -40,12 +39,12 @@ from MDAnalysis import Universe
 from pandas.errors import EmptyDataError
 
 from ClayCode import UCS, FF
-from ClayCode.analysis.lib import get_system_n_atoms
+# from ClayCode.analysis.lib import get_system_n_atoms
 from ClayCode.config._consts import KWD_DICT as _KWD_DICT
-from ClayCode.config.utils import select_named_file  # select_file,
+from ClayCode.core.utils import select_named_file, logger  # select_file,
 
 logger = logging.getLogger(_Path(__file__).stem)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 # -----------------------------------------------------------------------------
@@ -385,7 +384,7 @@ class File(BasicPath):
                     self.suffix == self._suffix
             ), f"Expected {self._suffix}, found {self.suffix}"
         else:
-            logger.info("Correct file extension.")
+            logger.debug("Correct file extension.")
 
     @property
     def parent(self) -> Dir:
@@ -1173,6 +1172,7 @@ class GROFile(File):
     def __init__(self, *args, **kwargs):
         # check if file exists
         super(GROFile, self).__init__(*args, **kwargs)
+        self.__universe = None
 
     @property
     def string(self):
@@ -1190,9 +1190,22 @@ class GROFile(File):
 
     @property
     def universe(self):
-        return Universe(str(self.resolve()))
+        if self.__universe is None:
+            self.__get_universe()
+        return self.__universe
 
-    @cached_property
+
+    def __get_universe(self):
+        self.__universe = Universe(str(self.resolve()))
+
+    @universe.setter
+    def universe(self, universe):
+        self.__universe = universe
+
+    def write(self):
+        self.universe.atoms.write(str(self.resolve()))
+
+    @property
     def n_atoms(self):
         return int(self.string.splitlines[1])#get_system_n_atoms(crds=self.universe, write=False)
 
@@ -1200,13 +1213,17 @@ class GROFile(File):
     def dimensions(self):
         return self.string.splitlines()[self.n_atoms + 1]
 
+    @property
+    def top(self):
+        return TOPFile(self.with_suffix('.top'))
+
 
 class MDPFile(File):
     suffix = '.mdp'
     pass
 
 
-class TOPFile(ITPFile):
+class TOPFile(File):
     suffix = '.top'
     pass
 
@@ -1241,7 +1258,17 @@ class Dir(BasicPath):
                 filelist = []
                 for e in ext:
                     filelist.append(ext_match_list(e))
-        return sorted(filelist)
+        filelist = PathListFactory(filelist)
+        return filelist
+        # if hasattr(self, '_order'):
+        #     order = {}
+        #     for file in filelist:
+        #         if file.stem in self._order.keys():
+        #             order[file] =
+        #     filelist = sorted(filelist, key=lambda file: self._order[file])
+        # else:
+        #     filelist = sorted(filelist)
+        # return filelist
 
     @property
     def filelist(self):
@@ -1289,12 +1316,25 @@ class FFDir(Dir):
 
 
 class BasicPathList(UserList):
-    def __init__(self, path: Union[BasicPath, Dir], ext="*", check=False):
-        self.path = DirFactory(path)
-        files = self.path._get_filelist(ext=ext)
-        self._data = []
-        for file in files:
-            self._data.append(PathFactory(file, check=check))
+    def __init__(self, path: Union[BasicPath, Dir], ext="*", check=False, order=None):
+        if not isinstance(path, list):
+            self.path = DirFactory(path)
+            # if order is not None:
+            #     self._order = order
+            files = self.path._get_filelist(ext=ext)
+            self._data = []
+            for file in files:
+                self._data.append(PathFactory(file, check=check))
+        else:
+            self._data = path
+            path = []
+            for file in self._data:
+                if file.parent not in path:
+                    path.append(file.parent)
+                if len(path) == 1:
+                    self.path = DirFactory(path[0])
+                else:
+                    self.path = None
         self.data = self._data
 
     def _reset_paths(method):
@@ -1352,12 +1392,31 @@ class BasicPathList(UserList):
 class FileList(BasicPathList):
     _ext = "*"
 
-    def __init__(self, path: Union[BasicPath, Dir], check=False):
-        self.path = DirFactory(path)
-        files = self.path._get_filelist(ext=self.__class__._ext)
-        self._data = []
-        for file in files:
-            self._data.append(FileFactory(file, check=check))
+    def __init__(self, path: Union[BasicPath, Dir], check=False, order=None):
+        if not isinstance(path, list):
+            self.path = DirFactory(path)
+            # if order is not None:
+            #     self._order = order
+            files = self.path._get_filelist(ext=self.__class__._ext)
+            self._data = []
+            for file in files:
+                self._data.append(PathFactory(file, check=check))
+        else:
+            self._data = path
+            path = []
+            for file in self._data:
+                if file.parent not in path:
+                    path.append(file.parent)
+                if len(path) == 1:
+                    self.path = DirFactory(path[0])
+                else:
+                    self.path = None
+        # self.data = self._data
+        # self.path = DirFactory(path)
+        # files = self.path._get_filelist(ext=self.__class__._ext)
+        # self._data = []
+        # for file in files:
+        #     self._data.append(FileFactory(file, check=check))
         self.data = self._data
 
 
@@ -1367,10 +1426,29 @@ class PathList(FileList):
 
 class ITPList(FileList):
     _ext = ".itp"
+    _order = {'forcefield': 0, 'ffnonbonded': 1, 'ffbonded': 2}
     pass
+    def __init__(self, path, check=False):
+        super().__init__(path, check)
+        order = self.__class__._order
+        for key in self.stems:
+            if key not in order.keys():
+                if re.search(r'.*nonbonded', key) is not None:
+                    order[key] = 4
+                elif re.search(r'.*bonded', key) is not None:
+                    order[key] = 5
+                else:
+                    order[key] = 6
+
+        # super().__init__(path, check, order)
+        self._data = self.data = sorted(self._data, key=lambda itp: order[itp.stem])
+        self.order = [order[key.stem] for key in self._data]
 
     def __copy__(self):
         return copy(self)
+
+
+
 
 
 class GROList(FileList):
@@ -1423,6 +1501,8 @@ class FFList(DirList):
 
 
 class ForceField:
+    _order = {'forcefield': 0, 'ffnonbonded': 1, 'ffbonded': 2, r'*ffnonbonded': 3, '.*ffbonded': 4, r'.*?((non)?bonded)': 5}
+
     def __init__(self, path: Union[BasicPath, Dir], include="all", exclude=None):
         self._init_path(path)
         self.include(include)
@@ -1471,6 +1551,9 @@ class ForceField:
     def __getitem__(self, item):
         prm = self.path._get_ff_parameter(item)
         return prm
+
+    def __iter__(self):
+        return self.name, self.itp_filelist
 
 
 # -----------------------------------------------------------------------------
@@ -1721,9 +1804,7 @@ class SimDir(Dir):
         return base
 
 
-
-
-
-
-
-
+def init_path(path):
+    if not Dir(path).is_dir():
+        os.makedirs(path)
+        logger.info(f'Creating new directory {path!r}')

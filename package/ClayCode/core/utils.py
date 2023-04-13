@@ -4,17 +4,16 @@ import os
 import re
 import shutil
 import subprocess as sp
-import sys
 import warnings
 from itertools import chain
 from pathlib import Path
-from functools import singledispatch
+from functools import singledispatch, partial
 from typing import Union, Literal, Optional, List
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 
-from ClayAnalysis import exec_time, exec_date
+from ClayCode import exec_time, exec_date
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -239,7 +238,7 @@ __all__ = [
 #
 #     sys.displayhook(n_mols)
 #
-#     neutralise_system(1, 2, 3, 4, 5, 6, 7)
+#     add_ions_neutral(1, 2, 3, 4, 5, 6, 7)
 # #
 
 
@@ -514,6 +513,14 @@ def get_u_files(path: Union[str, Path], suffices=["gro", "top"]):
         files[selection] = select_file(path=path, suffix=selection, how=how)
     return files["gro"], files["trr"]
 
+def _get_header(header_str, fill, n_linechars=100):
+    return (f'\n{fill:{fill}>{n_linechars}}\n'
+                    f'{header_str:^{n_linechars}}\n'
+        f'{fill:{fill}>{n_linechars}}\n')
+
+get_header = partial(_get_header, fill='=')
+
+get_subheader = partial(_get_header, fill='-')
 
 def open_outfile(outpath: Union[Path, str], suffix: str, default: str):
     if type(outpath) == bool:

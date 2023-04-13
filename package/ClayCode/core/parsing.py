@@ -4,13 +4,15 @@ from argparse import ArgumentParser
 from collections import UserDict
 from functools import cached_property
 
+import numpy as np
 import pandas as pd
 import yaml
 
 from ClayCode import UCS, FF
-from ClayCode.builder.claycomp import MatchClayComposition, InterlayerIons
-from ClayCode.core.classes import File, Dir
-from ClayCode.core.utils import init_path
+from ClayCode.builder.claycomp import MatchClayComposition, InterlayerIons, BulkIons
+from ClayCode.core.classes import File, Dir, init_path
+from ClayCode.core.lib import get_ion_charges
+from ClayCode.core.utils import get_header, get_subheader
 
 logger = logging.getLogger(File(__file__).stem)
 
@@ -25,6 +27,12 @@ parser: ArgumentParser = ArgumentParser(
     add_help=True,
     allow_abbrev=False,
 )
+
+# parser.add_argument('--test',
+#                     help='No input queries',
+#                     action='store_true',
+#                     default=None,
+#                     dest='TEST')
 
 subparsers = parser.add_subparsers(help="Select option.", dest="option")
 
@@ -95,13 +103,13 @@ def read_yaml_decorator(f):
         assert isinstance(self, _Args), f'Wrong class for decorator'
         with open(self.data["yaml_file"], "r") as file:
             self.__yaml_data = yaml.safe_load(file)
-        logger.info(f"Reading {file.name!r}\n")
+        logger.info(f"Reading {file.name!r}:\n")
         for k, v in self.__yaml_data.items():
             if k in self._arg_names:
                 self.data[k] = v
-                logger.info(f"{k!r} = {v!r}")
+                logger.info(f"\t{k} = {v!r}")
             else:
-                raise KeyError(f"Unrecognised argument {k!r}!")
+                raise KeyError(f"Unrecognised argument {k}!")
         return f(self)
     return wrapper
 
@@ -214,7 +222,7 @@ class BuildArgs(_Args):
     def check(self) -> None:
         try:
             self.name = self.data["SYSNAME"]
-            logger.info(f"Setting name = {self.name!r}")
+            logger.info(f"\nSetting name: {self.name!r}")
         except KeyError:
             raise KeyError(f"Clay system name must be given")
         try:
@@ -224,16 +232,17 @@ class BuildArgs(_Args):
             ) and (UCS / uc_type).is_dir():
                 self._uc_name = uc_type
                 self._uc_stem = self._uc_name[:2]
-                logger.info(f"Setting UC type = {self._uc_name!r}")
+                logger.debug(f"Setting unit cell type: {self._uc_name!r}")
         except KeyError:
             raise KeyError(f"Unknown unit cell type {uc_type!r}")
-        il_solv = self._charge_occ_df.loc[pd.IndexSlice["T", self._uc_name], ["solv"]]
+        il_solv = self._charge_occ_df.loc[pd.IndexSlice["T", self._uc_name], ["solv"]].values[0]
         try:
             selected_solv = self.data["IL_SOLV"]
-            if il_solv is False and selected_solv is True:
+            if il_solv == False and selected_solv is True:
                 raise ValueError(
                     f"Invalid interlayer solvation ({selected_solv}) for selected clay type {self._uc_name}!"
                 )
+            self.il_solv = il_solv
         except KeyError:
             self.il_solv = il_solv
         for prm in [
@@ -244,6 +253,7 @@ class BuildArgs(_Args):
             "UC_WATERS",
             "BOX_HEIGHT",
             "BULK_IONS",
+            "BULK_SOLV",
             "FF",
             'UC_INDEX_LIST',
             'UC_RATIOS_LIST'
@@ -266,26 +276,34 @@ class BuildArgs(_Args):
 
 
     def process(self):
+        logger.info(get_header('Getting build parameters'))
         self.read_yaml()
         self.check()
         self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         self.outpath = self.outpath / self.name
         init_path(self.outpath)
+        logger.info(f'Setting output directory: {self.outpath}')
         self.get_ff_data()
         self.get_uc_data()
         self.get_exp_data()
-        self.get_solvation_data()
         self.match_uc_combination()
         self.get_il_ions()
+        self.get_il_solvation_data()
+        self.get_bulk_ions()
 
     def get_ff_data(self):
         from ClayCode.core.classes import ForceField
         water_sel_dict = {"SPC": ["ClayFF_Fe", ["spc", "interlayer_spc"]]}
         ff_dict = {}
+        logger.info(get_subheader(f'Getting force field data'))
         for ff_key, ff_sel in self.ff.items():
             if ff_key == "WATER":
                 ff_sel = water_sel_dict[ff_sel][0]
-            ff_dict[ff_key.lower()] = ForceField(FF / ff_sel)
+            ff = ForceField(FF / ff_sel)
+            ff_dict[ff_key.lower()] = ff
+            logger.info(f'\t{ff_key}: {ff.name}')
+            itp_str = '\n\t\t'.join(ff.itp_filelist.stems)
+            logger.info(f'\t\t{itp_str}\n')
         self.ff = ff_dict
 
     def get_uc_data(self):
@@ -305,26 +323,30 @@ class BuildArgs(_Args):
         self._target_comp = TargetClayComposition(self.name, self.data['CLAY_COMP'], self._uc_data)
         self._target_comp.write_csv(self.outpath)
 
-    def get_solvation_data(self):
-        if self.il_solv is True:
-            try:
-                self.waters = self.ion_waters
-            except AttributeError:
-                try:
-                    self.waters = self.box_waters
-                except AttributeError:
-                    raise AttributeError('Number of water molecules to add must be '
-                                         'specified through either "ION_WATERS" or '
-                                         '"BOX_WATERS".')
-            else:
-                try:
-                    self.waters = self.box_waters
-                except AttributeError:
-                    pass
+    def get_il_solvation_data(self):
+        if self.il_solv == True:
+            n_ions = np.sum([*self.n_il_ions.values()])
+            if hasattr(self, 'ion_waters') and not (hasattr(self, 'uc_waters') or hasattr(self, 'spacing_waters')):
+                waters = self.ion_waters
+                if isinstance(waters, dict):
+                    assert waters.keys() in self.ion_df.index
+                    for ion_type in waters.keys():
+                        waters[ion_type] *= self.n_il_ions[ion_type]
+                    waters = np.sum([*waters.values()]) + n_ions
                 else:
-                    raise AttributeError('Number of water molecules to add must be '
-                                         'specified through either "ION_WATERS" or '
-                                         '"BOX_WATERS".')
+                    waters *= n_ions
+                self.n_waters = waters + n_ions
+                self.il_solv_height = None
+            elif hasattr(self, 'uc_waters') and not (hasattr(self, 'ion_waters') or hasattr(self, 'spacing_waters')):
+                self.n_waters = self.uc_waters * self.sheet_n_cells + n_ions
+                self.il_solv_height = None
+            elif hasattr(self, 'spacing_waters') and not (hasattr(self, 'uc_waters') or hasattr(self, 'ion_waters')):
+                self.n_waters = None
+                self.il_solv_height = self.spacing_waters
+            else:
+                raise AttributeError('Number of water molecules or interlayer solvent height to add must be '
+                                             'specified through either "ION_WATERS", '
+                                             '"UC_WATERS" or "SPACING_WATERS".')
 
     @property
     def uc_df(self):
@@ -348,6 +370,7 @@ class BuildArgs(_Args):
 
     def match_uc_combination(self):
         self.match_comp = MatchClayComposition(self._target_comp, self.sheet_n_cells)
+        self.match_comp.write_csv(self.outpath)
         # print(self.match_charge)
 
 
@@ -373,6 +396,27 @@ class BuildArgs(_Args):
             self.il_ions = InterlayerIons(tot_charge=tot_charge,
                                           ion_ratios=self.ion_df,
                                           n_ucs=self.sheet_n_cells)
+
+    def get_bulk_ions(self):
+        self._bulk_ions = BulkIons(self.bulk_ions, self._build_defaults['BULK_IONS'])
+
+    @property
+    def bulk_ion_conc(self):
+        return self._bulk_ions.tot_conc
+
+    @property
+    def bulk_ion_df(self):
+        return self._bulk_ions.conc
+
+    @cached_property
+    def default_bulk_pion(self):
+        neutralise_ions = self._bulk_ions.neutralise_ions
+        return tuple(*neutralise_ions[neutralise_ions['charge'] > 0]['conc'].reset_index().values)
+
+    @cached_property
+    def default_bulk_nion(self):
+        neutralise_ions = self._bulk_ions.neutralise_ions
+        return tuple(*neutralise_ions[neutralise_ions['charge'] < 0]['conc'].reset_index().values)
 
     @property
     def n_il_ions(self):

@@ -19,6 +19,7 @@ from typing import Union, List, Dict, Optional, Literal, Tuple
 
 from ClayCode.core.classes import File, Dir, ITPFile, PathFactory
 from ClayCode.core.lib import get_ion_charges
+from ClayCode.core.utils import get_subheader
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -28,6 +29,7 @@ logger = logging.getLogger(File(__file__).stem)
 logger.setLevel(logging.DEBUG)
 
 __all__ = ['TargetClayComposition']
+
 
 class UnitCell(ITPFile):
     @property
@@ -57,6 +59,7 @@ class UCData(Dir):
             self.uc_stem: str = self.name[-2:]
         else:
             self.uc_stem: str = uc_stem
+        logger.info(get_subheader(f'Getting unit cell data'))
         self.ff: ForceField = ForceField(ff)
         self.__uc_idxs: list = list(map(lambda x: str(x[-2:]), self.available))
         self.uc_idxs = self.__uc_idxs.copy()
@@ -72,6 +75,11 @@ class UCData(Dir):
         self.__dimensions = None
         self.__uc_groups = None
         self.get_uc_groups()
+        logger.info(f'Found {self.n_groups} {self.name!r} unit cell groups:')
+        for n_group, group_ids in self.group_iter():
+            group_id_str = f', {self.uc_stem}'.join(group_ids)
+            logger.info(f'\tGroup {n_group}: {self.uc_stem}{group_id_str}\n')
+
 
     def get_uc_groups(self):
         box_dims = {}
@@ -104,6 +112,7 @@ class UCData(Dir):
         self.__gro_groups = gro_groups
         self.__itp_groups = itp_groups
 
+    @property
     def group_gro_filelist(self):
         if self.group_id is not None:
             return self.__gro_groups[self.group_id]
@@ -142,6 +151,7 @@ class UCData(Dir):
         regex = '|'.join([f'{self.uc_stem}{uc_id}' for uc_id in self.uc_idxs])
         return self.__gro_df.reset_index('atom-id').filter(regex=regex, axis=0).set_index('atom-id', append=True)
 
+    @property
     def group_itp_filelist(self):
         if self.group_id is not None:
             return self.__itp_groups[self.group_id]
@@ -160,7 +170,8 @@ class UCData(Dir):
         self.group_id = group_id
         try:
             self.uc_idxs = self.uc_groups[group_id]
-            logger.info(f'Selected unit cells {self.uc_idxs}')
+            uc_idx_str = f', {self.uc_stem}'.join(self.uc_idxs)
+            logger.info(f'\nSelected unit cells: {self.uc_stem}{uc_idx_str}')
         except KeyError as e:
             e(f'{group_id} is an invalid group id!')
 
@@ -415,6 +426,7 @@ class TargetClayComposition():
         self.match_file: File = File(csv_file, check=True)
         self.uc_data: UCData = uc_data
         self.uc_df: pd.DataFrame = self.uc_data.df
+        logger.info(get_subheader(f'Processing target clay composition'))
         match_df: pd.DataFrame = pd.read_csv(csv_file).fillna(method="ffill")
         match_cols = match_df.columns.values
         match_cols[:2] = self.uc_df.index.names
@@ -484,14 +496,13 @@ class TargetClayComposition():
         except KeyError:
             pass
         sheet_df = self.__df.copy()
-        logger.info('Splitting total iron content by charge.\n')
-        self.print_df_composition(sheet_df.loc[['T', 'O'], :].dropna())
+        logger.info(f'\nSplitting total iron content ({missing_o:.2f}) to match charge.\n')
+        self.print_df_composition(sheet_df.loc[['T', 'O'], :].dropna(), fill='\t')
         accept = None
-        while accept not  in ['y', 'n']:
+        while accept not in ['y', 'n']:
             accept = input('\nAccept clay composition? [y/n]\n')
         if accept == 'n':
             self.__abort()
-        # logger.info(f'{accept}\n')
         return sheet_df
 
     @staticmethod
@@ -550,8 +561,9 @@ class TargetClayComposition():
         input_uc_occ: pd.Series = pd.Series(self.occupancies)
         check_occ: pd.Series = input_uc_occ - correct_uc_occ
         check_occ.dropna(inplace=True)
+        logger.info(f'\nGetting sheet occupancies:')
         for sheet, occ in check_occ.iteritems():
-            logger.info(f"\nFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.2f}/{correct_uc_occ[sheet]:.2f} ({occ:+.2f})")
+            logger.info(f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.2f}/{correct_uc_occ[sheet]:.2f} ({occ:+.2f})")
         # exp_occ.apply(lambda x: print(f"{x.name}: {x.sum()}"))
         sheet_df: pd.Series = self.__df.loc[['T', 'O'], :].copy()
         sheet_df = sheet_df.loc[sheet_df != 0]
@@ -566,7 +578,7 @@ class TargetClayComposition():
                 new_check_df: pd.Series = new_occ - correct_uc_occ
                 new_check_df.dropna(inplace=True)
                 assert (new_check_df == 0).all(), f'New occupancies are non-integer!'
-                self.print_df_composition(sheet_df, old_composition=old_composition)
+                self.print_df_composition(sheet_df, old_composition=old_composition, fill='\t')
                 while accept not in ['y', 'n', 'c']:
                     accept = input('\nAccept new composition? [y/n] (exit with c)\n').lower()
                 if accept == 'n':
@@ -582,7 +594,7 @@ class TargetClayComposition():
                     self.__abort()
             # logger.info(f'{accept}\n')
             # for idx, val in self.match_df.iter
-            self.print_df_composition(sheet_df)
+            # self.print_df_composition(sheet_df)
             # logger.info('Will use the following clay composition:')
             # for idx, occ in sheet_df.iteritems():
             #     sheet, atom = idx
@@ -592,23 +604,23 @@ class TargetClayComposition():
             # self.df.update(exp_occ)
 
     @staticmethod
-    def print_df_composition(sheet_df, old_composition=None):
+    def print_df_composition(sheet_df, old_composition=None, fill=''):
         if old_composition is None:
-            logger.info('Will use the following composition:')
+            logger.info(f'{fill}Will use the following composition:')
         else:
-            logger.info('old occupancies -> new occupancies per unit cell:')
-            logger.info('sheet - atom type : occupancies  (difference)')
+            logger.info(f'{fill}old occupancies -> new occupancies per unit cell:')
+            logger.info(f'{fill}sheet - atom type : occupancies  (difference)')
         for idx, occ in sheet_df.iteritems():
             sheet, atom = idx
             try:
                 old_val = old_composition[idx]
                 logger.info(
-                    f"\t{sheet!r:5} - {atom!r:^10}: {old_val:2.2f} -> {occ:2.2f} ({occ - old_val:+2.2f})"
+                    f"{fill}\t{sheet!r:5} - {atom!r:^10}: {old_val:2.2f} -> {occ:2.2f} ({occ - old_val:+2.2f})"
                     # sheet occupancies of {new_occ[sheet]:.2f}/{correct_uc_occ[sheet]:.2f} ({occ:+.2f})")
                 )
             except TypeError:
                 logger.info(
-                    f"\t{sheet!r:5} - {atom!r:^10}: {occ:2.2f}"
+                    f"{fill}\t{sheet!r:5} - {atom!r:^10}: {occ:2.2f}"
                 )
 
     correct_t_occupancies = partialmethod(correct_occupancies, idx_sel=["T"])
@@ -639,7 +651,7 @@ class TargetClayComposition():
                              f'Expected {".csv"!r} or {".p"!r}')
         if not outpath.parent.is_dir():
             os.makedirs(outpath.parent)
-        logger.info(f'Writing new target clay compoition to {str(outpath)!r}')
+        logger.info(f'\nWriting new target clay composition to {outpath.name!r}\n')
         shutil.copy(tmpfile.name, outpath)
 
     write_csv = partialmethod(_write, fmt='.csv')
@@ -663,13 +675,16 @@ class TargetClayComposition():
 class MatchClayComposition:
 
     def __init__(self, target_composition, sheet_n_ucs: int):
-        logger.info(f'Finding matching Unit cell combination for target composition.')
+        logger.info(get_subheader(f'Selecting unit cells'))
         self.__target_df: pd.DataFrame = target_composition.clay_df
         self.__uc_data: UCData = target_composition.uc_data
+        self.name = target_composition.name
         self.drop_unused_ucs()
         self.sheet_n_ucs = sheet_n_ucs
         accept = None
-        TargetClayComposition.print_df_composition(self.match_composition, self.target_df)
+        self.match_composition, self.target_df
+        logger.info(f'Unit cell combination has the following composition:')
+        TargetClayComposition.print_df_composition(self.match_composition, self.target_df, fill='\t')
         while accept not in ['y', 'n']:
             accept = input(f'\nAccept matched clay composition? [y/n]\n')
         if accept == 'n':
@@ -700,14 +715,15 @@ class MatchClayComposition:
         accept = None
         if len(accepted_group) == 1:
             selected_ucs_df = all_ucs_df.loc[:, accepted_group[next(iter(accepted_group.keys()))]]
-            self.print_groups(accepted_group, all_ucs_df)
+            logger.info(f'Found one matching unit cell group:')
+            self.print_groups(accepted_group, selected_ucs_df, fill='\t')
             while accept not in ['y', 'n']:
                 accept = input(f'\nAccept unit cell group? [y/n]\n')
         elif len(accepted_group) == 0:
             raise ValueError(f'Not all target compoistion atom types were found in the unit cells!')
         else:
             logger.info(f'Found the following unit cell groups:')
-            self.print_groups(accepted_group, all_ucs_df)
+            self.print_groups(accepted_group, all_ucs_df, fill='\t')
             uc_id_str = '/'.join(accepted_group.keys())
             while accept not in [accepted_group.keys(), 'n']:
                 accept = input(f'\nSelect unit cell group? [{uc_id_str}n]\n')
@@ -747,18 +763,18 @@ class MatchClayComposition:
         sys.exit(0)
 
     @staticmethod
-    def print_groups(group_dict, uc_df):
+    def print_groups(group_dict, uc_df, fill=''):
         for group_id, group_ucs in group_dict.items():
             uc_group_df = uc_df.loc[:, group_ucs]
-            logger.info(f'Group {group_id}:')#{uc_group_df.columns}')
-            logger.info(f'{"":10}\tUC occupancies')
+            logger.info(f'{fill}Group {group_id}:')#{uc_group_df.columns}')
+            logger.info(f'{fill}{"":10}\tUC occupancies')
             uc_list = '  '.join(list(map(lambda v: f'{v:>3}', uc_group_df.columns)))
-            logger.info(f'{"UC index":<10}\t{uc_list}')
-            logger.info(f'{"atom type":<10}')
+            logger.info(f'{fill}{"UC index":<10}\t{uc_list}')
+            logger.info(f'{fill}{"atom type":<10}')
             for idx, values in uc_group_df.sort_index(ascending=False).iterrows():
                 sheet, atype = idx
                 composition_string = '  '.join(list(map(lambda v: f'{v:>3}', values.astype(int))))
-                logger.info(f'{sheet!r:<3} - {atype!r:^4}\t{composition_string}')
+                logger.info(f'{fill}{sheet!r:<3} - {atype!r:^4}\t{composition_string}')
 
     @staticmethod
     def __get_nan_xor_zero_mask(df):
@@ -781,8 +797,9 @@ class MatchClayComposition:
         n_ucs_idx = pd.Index([x for x in range(2, len(self.unique_uc_array) + 1)], name='n_ucs')
         match_df = pd.DataFrame(columns=['uc_ids', 'uc_weights', 'composition', 'dist'],
                                 index=n_ucs_idx)
+        logger.info(get_subheader('Getting matching unit cell combination for target composition'))
         for n_ucs in n_ucs_idx[:2]:
-            logger.info(f'Getting combinations for {n_ucs} unique unit cells')
+            logger.info(f'\nGetting combinations for {n_ucs} unique unit cells')
             uc_id_combinations = self.get_uc_combinations(n_ucs)
             occ_combinations = self.get_sheet_uc_weights(n_ucs)
             for uc_ids in uc_id_combinations:
@@ -805,7 +822,7 @@ class MatchClayComposition:
                                       np.round(dist, 4))
 
         best_match = match_df[match_df['dist'] == match_df['dist'].min()].head(1)
-        logger.info(f'Best match found with {best_match.index[0]} unique unit cells '
+        logger.info(f'\nBest match found with {best_match.index[0]} unique unit cells '
                     f'(total occupancy deviation {best_match["dist"].values[0]:+.4f})\n')
         return best_match
 
@@ -950,6 +967,37 @@ class MatchClayComposition:
     def get_uc_combinations(self, n_ucs):
         return np.asarray(list(itertools.combinations(self.unique_uc_array, n_ucs)))
 
+    def _write(self, outpath: Union[Dir, File, PosixPath], fmt: Optional[str]=None):
+        if type(outpath) == str:
+            outpath = PathFactory(outpath)
+        if fmt is None:
+            if outpath.suffix == '':
+                raise ValueError(f'No file format specified')
+            else:
+                fmt = outpath.suffix
+        fmt = f'.{fmt.lstrip(".")}'
+        if outpath.suffix == '':
+            outpath = outpath / f"{self.name}_match_df{fmt}"
+        tmpfile = tempfile.NamedTemporaryFile(
+            suffix=fmt, prefix=outpath.stem
+        )
+        if fmt == '.csv':
+            self.match_composition.to_csv(tmpfile.name)
+        elif fmt == '.p':
+            with open(tmpfile.name, 'wb') as file:
+                pkl.dump(self.match_composition)
+        else:
+            raise ValueError(f'Invalid format specification {fmt!r}\n'
+                             f'Expected {".csv"!r} or {".p"!r}')
+        if not outpath.parent.is_dir():
+            os.makedirs(outpath.parent)
+        logger.info(f'Writing new match clay compoition to {str(outpath)!r}')
+        shutil.copy(tmpfile.name, outpath)
+
+    write_csv = partialmethod(_write, fmt='.csv')
+    write_pkl = partialmethod(_write, fmt='.csv')
+
+
 
 class InterlayerIons:
     def __init__(self, tot_charge: int, ion_ratios: pd.DataFrame, n_ucs: int, monovalent=['Na', 'Cl']):
@@ -974,6 +1022,71 @@ class InterlayerIons:
     @property
     def numbers(self):
         return self.df['numbers'].to_dict()
+
+class BulkIons:
+    def __init__(self, ion_con_dict, default_ions):
+        ion_charges = get_ion_charges()
+        ion_idx = pd.Index(np.unique([*ion_con_dict.keys(), *default_ions.keys()]), name='itype')
+        self.df = pd.DataFrame(columns=[
+                               'charge',
+                               'conc'], index=ion_idx)
+        default_ions = pd.Series(default_ions)
+        bulk_ion_sel = pd.Series(ion_con_dict)
+        default_ions = default_ions[default_ions.index.difference(bulk_ion_sel.index)]
+        self.df['conc'].update(default_ions)
+        self.df['conc'].update(bulk_ion_sel)
+        self.df['charge'] = [ion_charges[ion] for ion in self.df.index.values]
+        self.df['neutralise'] = True
+        select_min_charge = lambda charges: np.abs(charges) == np.min(np.abs(charges))
+        for ion_slice in [self.df['charge'] > 0, self.df['charge'] < 0]:
+            ion_slice_df = self.df[ion_slice]
+            ion_slice_df['neutralise'] = ion_slice_df['neutralise'].where(select_min_charge(ion_slice_df['charge']), False)
+            self.df['neutralise'].update(ion_slice_df['neutralise'])
+        # n_itypes = {}
+        # for ion, conc in ion_con_dict.items():
+        #     if ion_charges[ion] > 0:
+        #         self.pions[ion] = conc
+        #     else:
+        #         self.nions[ion] = conc
+        # for ion, conc in default_ions:
+        #     if ion_charges[ion] > 0:
+        #         default_itypes['pion'] = ion
+        #     else:
+        #         default_itypes['nion'] = ion
+        # self._neutral_ions = {}
+        # for itype in ['pion', 'nion']:
+        #     ions = getattr(self, itype)
+        #     n_ions = len(ions)
+        #     if n_ions == 0:
+        #         setattr(self, itype, {default_itypes[itype]: 0.0})
+        #         self._neutral_ions[itype] = getattr(self, itype)
+        #     elif n_ions == 1:
+        #         self._neutral_ions[itype] = getattr(self, itype)
+        #     elif n_ions > 1:
+        #         all_ions, all_concs = ions.items()
+        #         all_charges = list(map(lambda ion: ion_charges[ion]))
+        #         default_idx = np.argwhere(np.min(np.abs(all_charges)))
+        #         self._neutral_ions[itype] = {all_ions[default_idx]: all_concs[default_idx]}
+
+    @property
+    def neutralise_ions(self):
+        return self.df[self.df['neutralise']][['charge', 'conc']]
+
+    @property
+    def conc(self):
+        return self.df[self.df['conc'] > 0][['charge', 'conc']]
+
+    @property
+    def tot_conc(self):
+        return self.pions['conc'].sum() + self.nions['conc'].sum()
+
+    @property
+    def pions(self):
+        return self.df[self.df['charge'] > 0].dropna(how='all', subset='conc')
+
+    @property
+    def nions(self):
+        return self.df[self.df['charge'] < 0].dropna(how='all', subset='conc')
 
 
         # ion_probs = ion_probs.rename(columns={c.X_EL: 'ratios'}
