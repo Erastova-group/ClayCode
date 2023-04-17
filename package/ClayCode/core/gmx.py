@@ -4,15 +4,14 @@ import subprocess as sp
 import warnings
 from functools import partial
 from pathlib import Path
+import logging
+from typing import Union
 
 from ClayCode.core.utils import execute_bash_command
 
-# from conf.consts import OUTPATH, SYS_FILESTEM
-# from cc.paths import MDP
+logger = logging.getLogger(Path(__file__).stem)
+logger.setLevel(logging.DEBUG)
 
-# from ClayCode.core.
-
-# GMX = "gmx_mpi"
 GMX = 'gmx'
 
 
@@ -40,9 +39,16 @@ def run_gmx_command(commandargs_dict, opt_args_list):
                 )
             )
             output = sp.run(
-                ["/bin/bash", "-i", "-c", f"{GMX} {command} {kwd_str}"], **outputargs
+                ["/bin/bash", "-i", "-c", f"{GMX} {command} {kwd_str} -nobackup"], **outputargs
             )
-            return (output.stdout, output.stderr)
+            logger.debug(f"{GMX} {command} {kwd_str} -nobackup")
+            out, err = output.stdout, output.stderr
+            search_gmx_error(err)
+            # if error is None:
+            logger.debug(f'{GMX} {command} completed successfully.')
+            # else:
+            #    logger.error(f'{GMX} {command} raised an error!\n{out}')
+            return err, out  # -> gmx process stderr, gmx process stdout
 
         return wrapper
 
@@ -245,18 +251,30 @@ def run_gmx_genion_conc(
         istr = f'-pname {iname} -pq {iq}'
     else:
         istr = f'-nname {iname} -nq {iq}'
-    out = execute_bash_command(
+    output = execute_bash_command(
         f'echo -e " SOL \n q" | '
-        f"gmx genion -s {s} -p {p} -o {o} -n {n} "
+        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
         f"-conc {conc} "
         f"{istr} "
-        f"-rmin 0.2 -noneutral",
+        f"-rmin 0.2 -noneutral -nobackup",
         capture_output=True,
         text=True,
     )
-    err = re.search(r"error", out.stdout)
-    assert err is None, f"gmx genion raised an error!"
-    return out
+    logger.debug(f'echo -e " SOL \n q" | '
+        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
+        f"-conc {conc} "
+        f"{istr} "
+        f"-rmin 0.2 -noneutral -nobackup")
+    err, out = output.stderr, output.stdout
+    search_gmx_error(err)
+    # if err is None:
+    logger.debug(f'{GMX} genion completed successfully.')
+    # else:
+    #     logger.error(f'{GMX} genion raised an error!\n{out}')
+    return err, out
+    # err = re.search(r"error", out.stdout)
+    # assert err is None, f"gmx genion raised an error!"
+    # return out
 
 
 def run_gmx_genion_neutralise(
@@ -288,18 +306,31 @@ def run_gmx_genion_neutralise(
     :param nq: anion charge
     :type nq: int
     """
-    out = execute_bash_command(
+    output = execute_bash_command(
         f'echo -e " SOL \n q" | '
-        f"gmx genion -s {s} -p {p} -o {o} -n {n} "
+        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
         f"-pname {pname} -pq {pq} "
         f"-nname {nname} -nq {nq} "
-        f"-rmin 0.2 -neutral",
+        f"-rmin 0.2 -neutral -nobackup",
         capture_output=True,
         text=True,
     )
-    err = re.search(r"error", out.stdout)
-    assert err is None, f"gmx genion raised an error!"
-    return out
+    logger.debug(
+        f'echo -e " SOL \n q" | '
+        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
+        f"-pname {pname} -pq {pq} "
+        f"-nname {nname} -nq {nq} "
+        f"-rmin 0.2 -neutral -nobackup")
+    err, out = output.stderr, output.stdout
+    search_gmx_error(err)
+    # if err is None:
+    logger.debug(f'{GMX} genion completed successfully.')
+    # else:
+    #     logger.error(f'{GMX} genion raised an error!\n{out}')
+    return err, out  # -> gmx process stderr, gmx process stdout
+    # err = re.search(r"error", out.stdout)
+    # assert err is None, f"gmx genion raised an error!"
+    # return err, out
 
 def run_gmx_genion_add_n_ions(
     s: str,
@@ -332,18 +363,30 @@ def run_gmx_genion_add_n_ions(
     :param nq: anion charge
     :type nq: int
     """
-    out = execute_bash_command(
+    output = execute_bash_command(
         f'echo -e " SOL \n q" | '
-        f"gmx genion -s {s} -p {p} -o {o} -n {n} "
+        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
         f"-pname {pname} -pq {pq} -nn {nn} "
         f"-nname {nname} -nq {nq} -np {np} "
-        f"-rmin 0.2 -noneutral",
+        f"-rmin 0.2 -noneutral -nobackup",
         capture_output=True,
         text=True,
     )
-    err = re.search(r"error|invalid", out.stdout)
-    assert err is None, f"gmx genion raised an error!"
-    return out
+    logger.debug(f'echo -e " SOL \n q" | '
+        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
+        f"-pname {pname} -pq {pq} -nn {nn} "
+        f"-nname {nname} -nq {nq} -np {np} "
+        f"-rmin 0.2 -noneutral -nobackup")
+    out, err = output.stdout, output.stderr
+    search_gmx_error(err)
+    # if err is None:
+    logger.debug(f'{GMX} genion completed successfully.')
+    # else:
+    #     logger.error(f'{GMX} genion raised an error!\n{out}')
+    return err, out  # -> gmx process stderr, gmx process stdout
+    # err = re.search(r"error|invalid", out.stdout)
+    # assert err is None, f"gmx genion raised an error!"
+    # return out
 
 
 @run_gmx_command(
@@ -351,3 +394,14 @@ def run_gmx_genion_add_n_ions(
 )
 def run_gmx_convert_tpr():
     return "convert-tpr", {"capture_output": True, "text": True}
+
+
+def search_gmx_error(out: str) -> None:
+    check = re.search(r":-\) GROMACS", out, flags=re.IGNORECASE | re.MULTILINE)
+    if check is None:
+        raise ValueError(f'\n{out}\nNo GROMACS output string used for GROMACS check!')
+    err = re.search(r"\n?(.?)(error|exception|invalid)(.?\n).*(GROMACS reminds you)?", out,
+                    flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
+    if err is not None:
+        raise RuntimeError(f'{out}\nGROMACS raised an error!')
+        #f'\t{err.group(1)}{err.group(2)}{err.group(3)}'

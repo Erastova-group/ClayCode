@@ -4,11 +4,11 @@ import os
 import pathlib as pl
 import re
 import shutil
-import sys
 import tempfile
 from functools import partial, update_wrapper, wraps
 from pathlib import Path, PosixPath
 import pickle as pkl
+import logging
 from typing import (
     NoReturn,
     Union,
@@ -20,7 +20,6 @@ from typing import (
     Tuple,
     Callable,
     Dict,
-    Any,
     cast,
     Sequence,
 )
@@ -30,7 +29,7 @@ import MDAnalysis as mda
 import MDAnalysis.coordinates
 import numpy as np
 import pandas as pd
-from ClayCode.analysis.lib import temp_file_wrapper, logger, add_resnum, rename_il_solvent
+
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
@@ -39,13 +38,14 @@ from numpy.typing import NDArray
 from ClayCode import SOL, SOL_DENSITY, IONS, MDP, FF, DATA, AA, UCS
 from ClayCode.analysis.analysisbase import analysis_class
 from ClayCode.core import gmx
-
-# from ClayAnalysis.gmx import run_gmx_convert_tpr
-from ClayCode.core.utils import change_suffix, grep_file
+from ClayCode.core.classes import GROFile
 
 tpr_logger = logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
     level=logging.WARNING
 )
+
+logger = logging.getLogger(Path(__file__).stem)
+logger.setLevel(logging.DEBUG)
 
 MaskedArray = TypeVar("MaskedArray")
 AtomGroup = TypeVar("AtomGroup")
@@ -83,12 +83,16 @@ def init_temp_inout(
     inp = Path(inf)
     outp = Path(outf)
     if inp == outp:
-        temp_outp = tempfile.NamedTemporaryFile(
-            suffix=outp.suffix, prefix=outp.stem, dir=outp.parent
-        )
-        outp = Path(temp_outp.name)
+        temp_outp = outp.parent / f'{outp.stem}_temp{outp.suffix}'
+            # tempfile.NamedTemporaryFile(
+            # suffix=outp.suffix,
+            # prefix=outp.stem,
+            # dir=outp.parent,
+            # delete=False
+        # )
+        outp = outp.parent / temp_outp.name
         new_tmp_dict[which] = True
-        logger.debug(f"Creating temporary output file {outp.name!r}")
+        logger.debug(f"Creating temporary output file {outp.parent / outp.name!r}")
     else:
         temp_outp = None
     if type(inf) == str:
@@ -138,8 +142,9 @@ def temp_file_wrapper(f: Callable):
                 infile = Path(fargs_dict[f"{ftype}in"])
                 outfile = Path(fargs_dict[f"{ftype}out"])
                 assert outfile.exists(), f"No file generated!"
-                shutil.copy(outfile, infile)
+                shutil.move(outfile, infile)
                 logger.debug(f"Renaming {outfile.name!r} to {infile.name!r}")
+                # fargs_dict[f"{ftype}out"].close()
         return r
 
     return wrapper
@@ -620,12 +625,12 @@ def write_insert_dat(n_mols: Union[int, float], save: Union[str, Literal[False]]
 
 
 @update_universe
-def center_clay(u: Universe, crdout: Union[Path, str], uc_name: Optional[str]):
+def center_clay(u: Universe, crdout: Union[Path, str], uc_name: Optional[str], other_resnames=" ".join(IONS)):
     from MDAnalysis.transformations.translate import center_in_box
     from MDAnalysis.transformations.wrap import wrap
 
     if uc_name is None:
-        clay = u.select_atoms("not resname SOL iSL" + " ".join(IONS))
+        clay = u.select_atoms(f"not resname SOL iSL {other_resnames}")
     else:
         clay = u.select_atoms(f"resname {uc_name}*")
     for ts in u.trajectory:
@@ -666,9 +671,30 @@ def add_mol_list_to_top(
 
 @temp_file_wrapper
 def add_ions_n_mols(
-    odir: Path, crdin: Path, topin: Path, topout: Path,
+    odir: Path, crdin: Path, crdout: Path, topin: Path, topout: Path,
         ion: str, n_atoms: int, charge=None
-):
+) -> int:
+    """
+    Add a selected number of ions.
+    :param odir: output directory
+    :type odir: Path
+    :param crdin: input coordinates filename
+    :type crdin: GROFile
+    :param crdout: output corrdiantes filename
+    :type crdout: GROFile
+    :param topin: input topology filename
+    :type topin: TOPFile
+    :param topout: output topology filename
+    :type topout: TOPFile
+    :param ion: ion atom type
+    :type ion: str
+    :param n_atoms: number of ions to insert
+    :type n_atoms: int
+    :param charge: ion type charge
+    :type charge: Optional[int]
+    :return: number of inserted ions
+    :rtype: int
+    """
     logger.debug(f"adding {n_atoms} {ion} ions to {crdin}")
     mdp = MDP / "genion.mdp"
     assert mdp.exists(), f"{mdp.resolve()} does not exist"
@@ -682,7 +708,7 @@ def add_ions_n_mols(
     if charge < 0:
         nname = ion
         nn = n_atoms
-        nq=charge
+        nq = charge
         pname = 'Na'
         pq = 1
         np = 0
@@ -694,55 +720,87 @@ def add_ions_n_mols(
         nq = -1
         nn = 0
     if ndx.is_file():
-        err, out = gmx.run_gmx_grompp(
+        gmx.run_gmx_grompp(
             f=MDP / "genion.mdp",
             c=crdin,
             p=topin,
             o=tpr,
-            pp=topout,
+            # pp=topout,
             po=tpr.with_suffix(".mdp"),
             v="",
             maxwarn=1,
         )
-        err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
-        if err is not None:
-            logger.error(f"gmx grompp raised an error!")
-            replaced = []
-        else:
-            logger.debug(f"gmx grompp completed successfully.")
-            out = gmx.run_gmx_genion_add_n_ions(
-                s=tpr,
-                p=topout,
-                o=crdin,
-                n=ndx,
-                pname=pname,
-                np=np,
-                pq=pq,
-                nname=nname,
-                nq=nq,
-                nn=nn
+        # if
+        # err = search_gmx_error(out)
+        # if err is not None:
+        #     logger.error(f"gmx grompp raised an error!")
+        #     logger.error(err)
+        #     replaced = []
+        # else:
+            # logger.debug(f"gmx grompp completed successfully.")
+            # logger.info(f'{GROFile(crdin).universe.atoms.n_atoms}')
+        err, out = gmx.run_gmx_genion_add_n_ions(
+            s=tpr,
+            p=topin,
+            o=crdin,
+            n=ndx,
+            pname=pname,
+            np=np,
+            pq=pq,
+            nname=nname,
+            nq=nq,
+            nn=nn
+        )
+            # err = search_gmx_error(out)
+        logger.info(f'{GROFile(crdin).universe.atoms.n_atoms} atoms')
+        # logger.info(topout.name)
+        # if err is not None or not topout.is_file(): #not topout.is_file():
+                # logger.error(f"gmx genion raised an error!")
+            # if not topin.is_file():
+            #     logger.error(f"gmx genion raised an error!")
+            #     raise RuntimeError(f'GROMACS process not completed successfully!')
+            # else:
+                # logger.debug(f"gmx genion completed successfully.")
+        replaced = re.findall(
+                "Replacing solvent molecule", err, flags=re.MULTILINE
             )
-            if not topout.is_file():
-                logger.error(f"gmx genion raised an error!")
-            else:
-                logger.debug(f"gmx genion completed successfully.")
-            replaced = re.findall(
-                "Replacing solvent molecule", out.stderr, flags=re.MULTILINE
-            )
-            logger.debug(f"Replaced {len(replaced)} SOL molecules with {ion} in {crdin.name!r}")
-            add_resnum(crdin=crdin, crdout=crdin)
-            rename_il_solvent(crdin=crdin, crdout=crdin)
+        logger.debug(f"Replaced {len(replaced)} SOL molecules with {ion} in {crdin.name!r}")
+        # add_resnum(crdin=crdin, crdout=crdin)
+        # rename_il_solvent(crdin=crdin, crdout=crdin)
     else:
-        logger.error(f"No index file {ndx.name} created!")
+        raise RuntimeError(f"No index file {ndx.name} created!")
         replaced = []
     return len(replaced)
 
 
 @temp_file_wrapper
 def add_ions_neutral(
-    odir: Path, crdin: Path,
+    odir: Path, crdin: Path, crdout: Path,
         topin: Path, topout: Path, nion: str, pion: str, nq=None, pq=None
-):
+) -> str:
+    """
+    Neutralise system charge with selected anion and cation types.
+    :param odir: output directory
+    :type odir: Path
+    :param crdin: input coordinates filename
+    :type crdin: GROFile
+    :param crdout: output corrdiantes filename
+    :type crdout: GROFile
+    :param topin: input topology filename
+    :type topin: TOPFile
+    :param topout: output topology filename
+    :type topout: TOPFile
+    :param nion: anion name
+    :type nion: str
+    :param pion: cation name
+    :type pion: str
+    :param nq: anion charge
+    :type nq: int
+    :param pq: cation charge
+    :type pq: int
+    :return: number of inserted ions
+    :rtype: int
+    """
     logger.debug(f"Neutralising with {pion} and {nion}")
     mdp = MDP / "genion.mdp"
     assert mdp.exists(), f"{mdp.resolve()} does not exist"
@@ -752,29 +810,31 @@ def add_ions_neutral(
     ndx = odir / "neutral.ndx"
     gmx.run_gmx_make_ndx(f=crdin, o=ndx)
     if ndx.is_file():
-        _, out = gmx.run_gmx_grompp(
+        gmx.run_gmx_grompp(
             f=MDP / "genion.mdp",
             c=crdin,
             p=topin,
             o=tpr,
-            pp=topout,
+            # pp=topout,
             po=tpr.with_suffix(".mdp"),
             v="",
             maxwarn=1,
         )
-        err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
-        if err is not None:
-            logger.error(f"gmx grompp raised an error!")
-            replaced = []
-        else:
-            if nq is None:
-                nq = int(get_ion_charges()[nion])
-            if pq is None:
-                pq = int(get_ion_charges()[pion])
-            logger.debug(f"gmx grompp completed successfully.")
-            out = gmx.run_gmx_genion_neutralise(
+        # err = search_gmx_error(out)
+        # err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
+        # if err is not None: # or not topout.is_file():
+        #     raise RuntimeError(f"GROMACS raised an error!")
+        #     replaced = []
+        # else:
+        logger.debug(f'{topin.name} -> {topout.name}')
+        if nq is None:
+            nq = int(get_ion_charges()[nion])
+        if pq is None:
+            pq = int(get_ion_charges()[pion])
+        logger.debug(f"gmx grompp completed successfully.")
+        err, out = gmx.run_gmx_genion_neutralise(
                 s=tpr,
-                p=topout,
+                p=topin,
                 o=crdin,
                 n=ndx,
                 pname=pion,
@@ -782,16 +842,18 @@ def add_ions_neutral(
                 nname=nion,
                 nq=nq,
             )
-            if not topout.is_file():
-                logger.error(f"gmx genion raised an error!")
-            else:
-                logger.debug(f"gmx genion completed successfully.")
-            replaced = re.findall(
-                "Replacing solvent molecule", out.stderr, flags=re.MULTILINE
+            # err = search_gmx_error(out)
+            # if err is not None:  # if not topout.is_file():
+            #     raise RuntimeError(f'GROMACS raised an error!')
+                # logger.error(f"gmx genion raised an error!")
+            # else:
+                # logger.debug(f"gmx genion completed successfully.")
+        replaced = re.findall(
+                "Replacing solvent molecule", err, flags=re.MULTILINE
             )
-            logger.debug(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
-            add_resnum(crdin=crdin, crdout=crdin)
-            rename_il_solvent(crdin=crdin, crdout=crdin)
+        logger.debug(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
+        # add_resnum(crdin=crdout, crdout=crdout)
+        # rename_il_solvent(crdin=crdout, crdout=crdout)
     else:
         logger.error(f"No index file {ndx.name} created!")
         replaced = []
@@ -1273,7 +1335,7 @@ def remove_ag(
 
 
 @temp_file_wrapper
-def add_ions_conc(odir: Path, crdin: Path,
+def add_ions_conc(odir: Path, crdin: Path, crdout: Path,
                   topin: Path, topout: Path,
                   ion: str, ion_charge: float, conc: float
                   ):
@@ -1286,16 +1348,17 @@ def add_ions_conc(odir: Path, crdin: Path,
     tpr = odir / "conc.tpr"
     ndx = odir / "conc.ndx"
     # isl = grep_file(crdin, 'iSL')
-    gmx.run_gmx_make_ndx(f=crdin, o=ndx)
+    shutil.copy(crdin, crdout)
+    gmx.run_gmx_make_ndx(f=crdout, o=ndx)
     if ndx.is_file():
         # if topin.resolve() == topout.resolve():
         #     topout = topout.parent / method"{topout.stem}_n.top"
         #     otop_copy = True
         # else:
         #     otop_copy = False
-        _, out = gmx.run_gmx_grompp(
+        gmx.run_gmx_grompp(
             f=MDP / "genion.mdp",
-            c=crdin,
+            c=crdout,
             p=topin,
             pp=topout,
             o=tpr,
@@ -1304,37 +1367,136 @@ def add_ions_conc(odir: Path, crdin: Path,
             maxwarn=1,
             # renum="",
         )
-        err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
-        if err is not None:
-            logger.error(f"gmx grompp raised an error!")
-            replaced = []
-        else:
-            logger.debug(f"gmx grompp completed successfully.")
-            out = gmx.run_gmx_genion_conc(
+        # err = search_gmx_error(out)
+        # err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
+        # if err is not None:
+        #     raise RuntimeError(f"GROMACS raised an error!")
+        #     replaced = []
+        # else:
+            # logger.debug(f"gmx grompp completed successfully.")
+        err, out = gmx.run_gmx_genion_conc(
                 s=tpr,
                 p=topin,
-                o=crdin,
+                o=crdout,
                 n=ndx,
                 iname=ion,
                 iq=ion_charge,
                 conc=conc
             )
-            if not topout.is_file():
-                logger.error(f"gmx genion raised an error!")
-            else:
-                logger.debug(f"gmx genion completed successfully.")
+            # err = search_gmx_error(out)
+            # if err is not None:
+            # if not topout.is_file():
+            #     logger.error(f"gmx genion raised an error!")
+            #     raise RuntimeError(f'GROMACS raised an error!')
+            # else:
+            #     logger.debug(f"gmx genion completed successfully.")
                 # add_resnum(crdname=crdin, crdout=crdin)
                 # rename_il_solvent(crdname=crdin, crdout=crdin)
                 # isl = grep_file(crdin, 'iSL')
                 # if otop_copy is True:
                 #     shutil.move(topout, topin)
-            replaced = re.findall(
-                "Replacing solvent molecule", out.stderr, flags=re.MULTILINE
+        replaced = re.findall(
+                "Replacing solvent molecule", err, flags=re.MULTILINE
             )
-            logger.info(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
-            add_resnum(crdin=crdin, crdout=crdin)
-            rename_il_solvent(crdin=crdin, crdout=crdin)
+        logger.info(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
+        # add_resnum(crdin=crdout, crdout=crdout)
+        # rename_il_solvent(crdin=crdout, crdout=crdout)
     else:
         logger.error(f"No index file {ndx.name} created!")
         replaced = []
     return len(replaced)
+
+
+def check_insert_numbers(add_repl: Literal["Added", "Replaced"], searchstr: str) -> int:
+    """Get number of inserted/replaced molecules.
+
+    :param add_repl: specify if molecules search for added or replaced molecules
+    :type add_repl: 'Added' or 'Replaced'
+    :param searchstr: string to be searched
+    :type searchstr: str
+    :return: number of added or replaced molecules
+    :rtype: int or None if no match found
+
+    """
+    return int(
+        re.search(
+            rf".*{add_repl} (\d+)", searchstr, flags=re.MULTILINE | re.DOTALL
+        ).group(1)
+    )
+
+
+def run_em(
+    mdp: str,
+    crdin: Union[str, Path],
+    topin: Union[str, Path],
+    # tpr: Union[str, Path],
+    odir: Path,
+    outname: str = "em",
+) -> Union[str, None]:
+    """
+    Run an energy minimisation using gmx and
+    return convergence information if successful.
+    :param mdp: mdp parameter file path
+    :type mdp: Union[Path, str]
+    :param crdin: Input coordinate file name
+    :type crdin: Union[Path, str]
+    :param topin: In put topology file name
+    :type topin: Union[Path, str]
+    :param tpr: Output tpr file name
+    :type tpr: Union[Path, str]
+    :param odir: Output directory path
+    :type odir: Path
+    :param outname: Default stem for output files
+    :type outname: str
+    :return: Convergence information message
+    :rtype: Union[str, None]
+    """
+    if not pl.Path(mdp).is_file():
+        mdp = MDP / mdp
+        assert mdp.is_file()
+    logger.debug("# MINIMISING ENERGY")
+    outname = (Path(odir) / outname).resolve()
+    topout = outname.with_suffix(".top")
+    if topin.resolve() == topout.resolve():
+        tmp_top = tempfile.NamedTemporaryFile(prefix=topin.stem,
+                                              suffix='.top',
+                                              dir=odir)
+        topout = odir / tmp_top.name
+        logger.debug(f'Creating temportary output file {tmp_top}')
+        otop_copy = True
+    else:
+        otop_copy = False
+    tpr = outname.with_suffix('.tpr')
+    gmx.run_gmx_grompp(
+        f=mdp,
+        c=crdin,
+        p=topin,
+        o=tpr,
+        pp=topout,
+        v="",
+        po=tpr.with_suffix('.mdp')
+    )
+    # if err is None:
+    em, out = gmx.run_gmx_mdrun(s=tpr, deffnm=outname)
+    conv = re.search(
+            r"converged to Fmax < (\d+) in (\d+) steps",
+            em,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        # if conv is None:
+        #     logger.info(em)
+    assert conv is not None, "Energy minimisation run not converged!"
+    fmax, n_steps = conv.groups()
+    logger.info(f"Fmax: {fmax}, reached in {n_steps} steps")
+    logger.debug(f"Output written to {outname!r}")
+    conv = (
+            f"Fmax: {fmax}, reached in {n_steps} steps."
+            f"Output written to {outname!r}"
+        )
+    if otop_copy is True:
+        shutil.copy(topout, topin)
+# else:
+        # logger.info(f"\n{em}")
+    # raise RuntimeError("GROMACS raised error!")
+    return conv
+
