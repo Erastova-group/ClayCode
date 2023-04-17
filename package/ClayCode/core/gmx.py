@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess as sp
+import tempfile
 import warnings
 from functools import partial
 from pathlib import Path
@@ -38,9 +39,10 @@ def run_gmx_command(commandargs_dict, opt_args_list):
                     )
                 )
             )
-            output = sp.run(
-                ["/bin/bash", "-i", "-c", f"{GMX} {command} {kwd_str} -nobackup"], **outputargs
-            )
+            with tempfile.TemporaryDirectory() as odir:
+                output = sp.run(
+                    ["/bin/bash", "-i", "-c", f"cd {odir}; {GMX} {command} {kwd_str} -nobackup"], **outputargs
+                )
             logger.debug(f"{GMX} {command} {kwd_str} -nobackup")
             out, err = output.stdout, output.stderr
             search_gmx_error(err)
@@ -251,26 +253,27 @@ def run_gmx_genion_conc(
         istr = f'-pname {iname} -pq {iq}'
     else:
         istr = f'-nname {iname} -nq {iq}'
-    output = execute_bash_command(
-        f'echo -e " SOL \n q" | '
-        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
-        f"-conc {conc} "
-        f"{istr} "
-        f"-rmin 0.2 -noneutral -nobackup",
-        capture_output=True,
-        text=True,
-    )
-    logger.debug(f'echo -e " SOL \n q" | '
-        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
-        f"-conc {conc} "
-        f"{istr} "
-        f"-rmin 0.2 -noneutral -nobackup")
-    err, out = output.stderr, output.stdout
-    search_gmx_error(err)
-    # if err is None:
-    logger.debug(f'{GMX} genion completed successfully.')
-    # else:
-    #     logger.error(f'{GMX} genion raised an error!\n{out}')
+    with tempfile.TemporaryDirectory() as odir:
+        output = execute_bash_command(
+            f'cd {odir}; echo -e " SOL \n q" | '
+            f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
+            f"-conc {conc} "
+            f"{istr} "
+            f"-rmin 0.2 -noneutral -nobackup",
+            capture_output=True,
+            text=True,
+        )
+        logger.debug(f'echo -e " SOL \n q" | '
+            f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
+            f"-conc {conc} "
+            f"{istr} "
+            f"-rmin 0.2 -noneutral -nobackup")
+        err, out = output.stderr, output.stdout
+        search_gmx_error(err)
+        # if err is None:
+        logger.debug(f'{GMX} genion completed successfully.')
+        # else:
+        #     logger.error(f'{GMX} genion raised an error!\n{out}')
     return err, out
     # err = re.search(r"error", out.stdout)
     # assert err is None, f"gmx genion raised an error!"
@@ -306,31 +309,32 @@ def run_gmx_genion_neutralise(
     :param nq: anion charge
     :type nq: int
     """
-    output = execute_bash_command(
-        f'echo -e " SOL \n q" | '
-        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
-        f"-pname {pname} -pq {pq} "
-        f"-nname {nname} -nq {nq} "
-        f"-rmin 0.2 -neutral -nobackup",
-        capture_output=True,
-        text=True,
-    )
-    logger.debug(
-        f'echo -e " SOL \n q" | '
-        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
-        f"-pname {pname} -pq {pq} "
-        f"-nname {nname} -nq {nq} "
-        f"-rmin 0.2 -neutral -nobackup")
-    err, out = output.stderr, output.stdout
-    search_gmx_error(err)
-    # if err is None:
-    logger.debug(f'{GMX} genion completed successfully.')
-    # else:
-    #     logger.error(f'{GMX} genion raised an error!\n{out}')
-    return err, out  # -> gmx process stderr, gmx process stdout
-    # err = re.search(r"error", out.stdout)
-    # assert err is None, f"gmx genion raised an error!"
-    # return err, out
+    with tempfile.TemporaryDirectory() as odir:
+        output = execute_bash_command(
+            f'cd {odir}; echo -e " SOL \n q" | '
+            f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
+            f"-pname {pname} -pq {pq} "
+            f"-nname {nname} -nq {nq} "
+            f"-rmin 0.2 -neutral -nobackup",
+            capture_output=True,
+            text=True,
+        )
+        logger.debug(
+            f'echo -e " SOL \n q" | '
+            f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
+            f"-pname {pname} -pq {pq} "
+            f"-nname {nname} -nq {nq} "
+            f"-rmin 0.2 -neutral -nobackup")
+        err, out = output.stderr, output.stdout
+        search_gmx_error(err)
+        # if err is None:
+        logger.debug(f'{GMX} genion completed successfully.')
+        # else:
+        #     logger.error(f'{GMX} genion raised an error!\n{out}')
+        return err, out  # -> gmx process stderr, gmx process stdout
+        # err = re.search(r"error", out.stdout)
+        # assert err is None, f"gmx genion raised an error!"
+        # return err, out
 
 def run_gmx_genion_add_n_ions(
     s: str,
@@ -363,27 +367,28 @@ def run_gmx_genion_add_n_ions(
     :param nq: anion charge
     :type nq: int
     """
-    output = execute_bash_command(
-        f'echo -e " SOL \n q" | '
-        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
-        f"-pname {pname} -pq {pq} -nn {nn} "
-        f"-nname {nname} -nq {nq} -np {np} "
-        f"-rmin 0.2 -noneutral -nobackup",
-        capture_output=True,
-        text=True,
-    )
-    logger.debug(f'echo -e " SOL \n q" | '
-        f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
-        f"-pname {pname} -pq {pq} -nn {nn} "
-        f"-nname {nname} -nq {nq} -np {np} "
-        f"-rmin 0.2 -noneutral -nobackup")
-    out, err = output.stdout, output.stderr
-    search_gmx_error(err)
-    # if err is None:
-    logger.debug(f'{GMX} genion completed successfully.')
-    # else:
-    #     logger.error(f'{GMX} genion raised an error!\n{out}')
-    return err, out  # -> gmx process stderr, gmx process stdout
+    with tempfile.TemporaryDirectory() as odir:
+        output = execute_bash_command(
+            f'cd {odir}; echo -e " SOL \n q" | '
+            f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
+            f"-pname {pname} -pq {pq} -nn {nn} "
+            f"-nname {nname} -nq {nq} -np {np} "
+            f"-rmin 0.2 -noneutral -nobackup",
+            capture_output=True,
+            text=True,
+        )
+        logger.debug(f'echo -e " SOL \n q" | '
+            f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
+            f"-pname {pname} -pq {pq} -nn {nn} "
+            f"-nname {nname} -nq {nq} -np {np} "
+            f"-rmin 0.2 -noneutral -nobackup")
+        out, err = output.stdout, output.stderr
+        search_gmx_error(err)
+        # if err is None:
+        logger.debug(f'{GMX} genion completed successfully.')
+        # else:
+        #     logger.error(f'{GMX} genion raised an error!\n{out}')
+        return err, out  # -> gmx process stderr, gmx process stdout
     # err = re.search(r"error|invalid", out.stdout)
     # assert err is None, f"gmx genion raised an error!"
     # return out

@@ -1,36 +1,33 @@
-import os
 import shutil
+import logging
 import re
+import shutil
 import tempfile
-from functools import cached_property, partial, partialmethod
-from typing import Optional, List, Tuple, Dict, Union, Callable
+from functools import cached_property
 from pathlib import Path
+from typing import Optional, List, Union, Callable
 
-import MDAnalysis
 import numpy as np
 import pandas as pd
-import logging
-
-from MDAnalysis import Universe, Merge, AtomGroup, ResidueGroup
-from MDAnalysis.units import constants
-from numpy._typing import NDArray
-
 from ClayCode import MDP
 from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.consts import GRO_FMT
 from ClayCode.builder.solvent import logger
-from ClayCode.core.classes import FileFactory, FileFactory, GROFile, TOPFile
-from ClayCode.core.gmx import run_gmx_insert_mols, run_gmx_solvate, run_gmx_genion_conc
-from ClayCode.core.lib import add_resnum, add_ions_n_mols, write_insert_dat, center_clay, add_ions_neutral, \
-    add_ions_conc, select_outside_clay_stack, check_insert_numbers, run_em
 from ClayCode.builder.topology import TopologyConstructorBase
+from ClayCode.core.classes import FileFactory, GROFile, TOPFile
+from ClayCode.core.gmx import run_gmx_insert_mols, run_gmx_solvate
+from ClayCode.core.lib import add_resnum, add_ions_n_mols, write_insert_dat, center_clay, add_ions_neutral, \
+    select_outside_clay_stack, check_insert_numbers, run_em, set_mdp_freeze_clay
 from ClayCode.core.utils import get_header, get_subheader
+from MDAnalysis import Universe, Merge, AtomGroup, ResidueGroup
+from MDAnalysis.units import constants
+from numpy._typing import NDArray
 
 __all__ = ['Builder', 'Sheet']
 
 
 logger = logging.getLogger(Path(__file__).name)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 class Builder:
@@ -95,8 +92,13 @@ class Builder:
         # self.il_solv = crdout
 
     def run_em(self):
-        outname = f'{self.stack.stem}_em'
-        run_em(mdp='em_fix.mdp',
+        outname = Path(f'{self.stack.stem}_em')
+        em_inp = 'em.mdp'
+        em_outfile = set_mdp_freeze_clay(folder=self.args.outpath,
+                                         uc_stem=self.args.uc_stem,
+                                      uc_list=self.args.sheet_uc_ids,
+                                      em_template=em_inp)
+        run_em(mdp=em_outfile.name,
                crdin=self.stack,
                topin=self.stack.top,
                odir=self.args.outpath,
@@ -249,9 +251,9 @@ class Builder:
                 logger.debug(f'before n_atoms: {self.stack.universe.atoms.n_atoms}')
                 replaced: int = add_ions_n_mols(odir=self.__tmp_outpath.name,
                                                 crdin=self.stack,
-                                                crdout=self.stack,
+                                                # crdout=self.stack,
                                                 topin=self.stack.top,
-                                                topout=self.stack.top,
+                                                # topout=self.stack.top,
                                                 ion=ion,
                               charge=int(charge),
                               n_atoms=n_ions
@@ -263,9 +265,9 @@ class Builder:
             logger.info(f"\tNeutralising with {pion} and {nion}")
             replaced: int = add_ions_neutral(odir=self.__tmp_outpath.name,
                              crdin=self.stack,
-                                            crdout=self.stack,
+                                            # crdout=self.stack,
                              topin=self.stack.top,
-                             topout=self.stack.top,
+                             # topout=self.stack.top,
                              nion=nion,
                              # nq=nq,
                              pion=pion,
@@ -276,6 +278,12 @@ class Builder:
             logger.info(f'Saving solvated box with ions as {self.stack.stem!r}')
             self.stack.reset_universe()
             self.stack.write(self.top)
+            processed_top = Path('processed.top')
+            processed_top.unlink(missing_ok=True)
+            # tempfiles = Path.cwd().glob(r'temp.top[a-zA-Z0-9]*')
+            # for file in tempfiles:
+            #     file.unlink(missing_ok=True)
+            #     logger.debug(f'Removing {file.name}')
         else:
             logger.info('\tSkipping bulk ion addition.')
 
@@ -535,10 +543,9 @@ class Builder:
         if self.__box_ext is True:
             logger.info('\nCentering clay in box')
             center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
-        self.stack: GROFile = self.stack
+        self.stack: GROFile = self.args.outpath / self.stack.name
         self.__tmp_outpath.cleanup()
         logger.info(f'Wrote final coordiantes and topology to {self.stack.name!r} and {self.stack.top.name!r}')
-
 
 class Sheet:
     def __init__(self,
