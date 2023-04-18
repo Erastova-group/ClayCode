@@ -149,4 +149,4 @@ test_data
 notebooks
 results
 dask-worker-space
-
+.{A..Z}*
