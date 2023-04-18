@@ -4,6 +4,7 @@ import copy
 import logging
 import os
 import re
+import tempfile
 from copy import copy, deepcopy
 from collections import UserList
 from collections.abc import Sequence
@@ -11,7 +12,8 @@ from functools import (
     partialmethod,
     singledispatch,
     wraps,
-    cached_property, update_wrapper,
+    cached_property,
+    update_wrapper,
 )
 from io import StringIO
 from pathlib import Path as _Path, PosixPath as _PosixPath
@@ -28,20 +30,19 @@ from typing import (
     NewType,
     NoReturn,
     cast,
-    Callable,  # , Type,
+    Callable,
 )
 
 
 import numpy as np
 import pandas as pd
-import yaml
-from MDAnalysis import Universe
+from MDAnalysis import Universe, ResidueGroup, AtomGroup
 from pandas.errors import EmptyDataError
+from parmed import Atom, Residue
 
-from ClayCode import UCS, FF
-# from ClayCode.analysis.lib import get_system_n_atoms
-from ClayCode.config._consts import KWD_DICT as _KWD_DICT
-from ClayCode.core.utils import select_named_file, logger  # select_file,
+from ClayCode import FF
+from ClayCode.config.consts import KWD_DICT as _KWD_DICT
+from ClayCode.core.utils import select_named_file
 
 logger = logging.getLogger(_Path(__file__).stem)
 logger.setLevel(logging.INFO)
@@ -54,6 +55,7 @@ logger.setLevel(logging.INFO)
 
 def add_method(cls):
     """Add new method to existing class"""
+
     @update_wrapper(cls)
     def decorator(func):
         @wraps(func)
@@ -67,6 +69,7 @@ def add_method(cls):
 
 def add_property(cls):
     """Add new property to existing class"""
+
     @update_wrapper(cls)
     def decorator(func):
         @update_wrapper(func)
@@ -169,9 +172,9 @@ class Kwd(str):
     """str container for '.itp' and '.top' file parameters"""
 
     def match(
-            self,
-            pattern: Union[str, List[str], Dict[str, Any]],
-            mode: Literal["full", "parts"] = "full",
+        self,
+        pattern: Union[str, List[str], Dict[str, Any]],
+        mode: Literal["full", "parts"] = "full",
     ) -> Union[Kwd, None]:
         """Match keywords against a search pattern and return match"""
         if mode == "full":
@@ -205,10 +208,10 @@ class KwdList(UserList):
         return self.remove(other)
 
     def match(
-            self,
-            pattern: str,
-            mode: Literal["full", "parts"] = "full",
-            keep_dims: bool = False,
+        self,
+        pattern: str,
+        mode: Literal["full", "parts"] = "full",
+        keep_dims: bool = False,
     ) -> List[Union[Kwd, None]]:
         """Match keywords against a search pattern and return matching item or none"""
         match = [obj.match(pattern, mode) for obj in self.data]
@@ -240,10 +243,10 @@ class KwdList(UserList):
             self.data.append(item)
 
     def filter(
-            self,
-            pattern: str,
-            mode: Literal["full", "parts"] = "full",
-            keep_dims: bool = False,
+        self,
+        pattern: str,
+        mode: Literal["full", "parts"] = "full",
+        keep_dims: bool = False,
     ) -> List[Union[Kwd, None]]:
         """Match keywords against a search pattern and return matching items"""
         match_list = [obj.match(pattern, mode) for obj in self.data]
@@ -307,11 +310,12 @@ class BasicPath(_Path):
 
     def _match_deorator(method):
         """Match name against seacrch pattern object"""
+
         @wraps(method)
         def wrapper(
-                self,
-                pattern: Union[str, List[str], int, float, Dict[str, Any]],
-                mode: Literal["full", "stem", "ext", "suffix", "parts"] = "full",
+            self,
+            pattern: Union[str, List[str], int, float, Dict[str, Any]],
+            mode: Literal["full", "stem", "ext", "suffix", "parts"] = "full",
         ) -> Union[BasicPath, None]:
             if mode == "full":
                 check = match_str(self.name, pattern)
@@ -374,14 +378,33 @@ Dir = NewType("Dir", _Path)
 
 class File(BasicPath):
     """pathlib.Path subclass for file objects"""
+
     _suffix = "*"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @property
+    def gro(self):
+        return self._get_filetype(".gro")
+
+    @property
+    def top(self):
+        return self._get_filetype(".top")
+
+    def _get_filetype(self, suffix: str):
+        suffix = suffix.strip(".")
+        if suffix != self.suffix.strip("."):
+            return FileFactory(self.with_suffix(suffix))
+        else:
+            return self
 
     def check(self):
         if not self.is_file():
             raise FileNotFoundError(f"{self.name} is not a file.")
         if self._suffix != "*":
             assert (
-                    self.suffix == self._suffix
+                self.suffix == self._suffix
             ), f"Expected {self._suffix}, found {self.suffix}"
         else:
             logger.debug("Correct file extension.")
@@ -408,6 +431,7 @@ class File(BasicPath):
 
 class ParametersBase:
     """Base class for GROMACS topology parameter collections."""
+
     kwd_list = []
 
     def _arithmetic_type_check(method):
@@ -474,8 +498,8 @@ class ParametersBase:
             if self.kwds == other.kwds:
                 for kwd in self.kwds:
                     if (
-                            self.__getattribute__(kwd).full_df.sort_values()
-                            == other.__getattribute__(kwd).full_df.sort_values()
+                        self.__getattribute__(kwd).full_df.sort_values()
+                        == other.__getattribute__(kwd).full_df.sort_values()
                     ):
                         return True
         return False
@@ -483,11 +507,13 @@ class ParametersBase:
 
 class SystemParameters(ParametersBase):
     """GROMACS topology parameter collection class for system"""
+
     pass
 
 
 class MoleculeParameters(ParametersBase):
     """GROMACS topology parameter collection class for molecules"""
+
     @property
     def name(self):
         if "moleculetype" in self.kwds:
@@ -499,11 +525,13 @@ class MoleculeParameters(ParametersBase):
 
 class Parameters(ParametersBase):
     """General GROMACS topology parameter collection class"""
+
     pass
 
 
 class ParametersFactory:
     """Factory class for GROMACS topology parameter collection classes"""
+
     def __new__(cls, data, *args, **kwargs):
         if type(data) == dict:
             data_list = []
@@ -520,6 +548,7 @@ class ParametersFactory:
 
 class ParameterBase:
     """Base class for GROMACS topology parameters"""
+
     kwd_list = []
     suffix = ".itp"
     collection = ParametersBase
@@ -646,6 +675,7 @@ class ParameterBase:
 
 class Parameter(ParameterBase):
     """Class for general GROMACS topology parameters"""
+
     kwd_list = [
         "defaults",
         "atomtypes",
@@ -660,6 +690,7 @@ class Parameter(ParameterBase):
 
 class MoleculeParameter(ParameterBase):
     """Class for GROMACS molecule parameters"""
+
     kwd_list = [
         "moleculetype",
         "atoms",
@@ -685,6 +716,7 @@ class MoleculeParameter(ParameterBase):
 
 class SystemParameter(ParameterBase):
     """Class for GROMACS system parameters"""
+
     kwd_list = ["system", "molecules"]
     collection = SystemParameters
 
@@ -694,6 +726,7 @@ class SystemParameter(ParameterBase):
 
 class ParameterFactory:
     """Factory class for GROMACS topology parameters"""
+
     _prm_types = [Parameter, MoleculeParameter, SystemParameter]
     default = ParameterBase
 
@@ -1172,42 +1205,83 @@ class GROFile(File):
     def __init__(self, *args, **kwargs):
         # check if file exists
         super(GROFile, self).__init__(*args, **kwargs)
+        self.__topology = None
         self.__universe = None
 
     @property
     def string(self):
-        with open(self, 'r') as file:
+        with open(self, "r") as file:
             string = file.read()
         return string
 
     @property
     def df(self):
-        df = pd.read_csv(str(self.resolve()), index_col=[0],
-                                      skiprows=2, header=None, sep='\s+',
-                                      names=['at-type', 'atom-id', 'x', 'y', 'z'],
-                         nrows=self.n_atoms)
+        df = pd.read_csv(
+            str(self.resolve()),
+            index_col=[0],
+            skiprows=2,
+            header=None,
+            sep="\s+",
+            names=["at-type", "atom-id", "x", "y", "z"],
+            nrows=self.n_atoms,
+        )
         return df
 
     @property
     def universe(self):
-        if self.__universe is None:
-            self.__get_universe()
-        return self.__universe
+        # if self.__universe is None:
+        #     self.__get_universe()
+        # self.__get_universe()
+        if self.__universe is not None:
+            return self.__universe
+        elif self.is_file():
+            return Universe(str(self.resolve()))
 
+    def reset_universe(self):
+        self.__universe = None
 
-    def __get_universe(self):
-        self.__universe = Universe(str(self.resolve()))
+    # def __get_universe(self):
+    #     return Universe(str(self.resolve()))
 
     @universe.setter
-    def universe(self, universe):
+    def universe(
+        self, universe: Union[AtomGroup, ResidueGroup, Atom, Residue, Universe]
+    ):
+        if universe.__class__.__name__ in ["AtomGroup", "Atom"]:
+            with tempfile.NamedTemporaryFile(suffix=".gro") as grofile:
+                universe.write(grofile.name)
+                universe = Universe(grofile.name)
+        elif universe.__class__.__name__ in ["ResidueGroup", "Residue"]:
+            with tempfile.NamedTemporaryFile(suffix=".gro") as grofile:
+                universe.atoms.write(grofile.name)
+                universe = Universe(grofile.name)
+        elif universe.__class__.__name__ == "Universe":
+            pass
+        else:
+            raise TypeError(
+                f"Unexpected type {universe.__class__.__name__} for universe!"
+            )
         self.__universe = universe
 
-    def write(self):
-        self.universe.atoms.write(str(self.resolve()))
+    def write(self, topology=None):
+        try:
+            self.universe.atoms.write(str(self.resolve()))
+        except IndexError:
+            logger.debug(f"Not writing empty Universe")
+        if topology is not None:
+            self.__topology = topology
+        if self.__topology is not None:
+            logger.debug(f"Writing topology {self.top}")
+            topology.reset_molecules()
+            topology.add_molecules(self.universe.atoms)
+            topology.write(self.top)
+        self.__universe = None
 
     @property
     def n_atoms(self):
-        return int(self.string.splitlines[1])#get_system_n_atoms(crds=self.universe, write=False)
+        return int(
+            self.string.splitlines[1]
+        )  # get_system_n_atoms(crds=self.universe, write=False)
 
     @property
     def dimensions(self):
@@ -1215,17 +1289,24 @@ class GROFile(File):
 
     @property
     def top(self):
-        return TOPFile(self.with_suffix('.top'))
+        return TOPFile(self.with_suffix(".top"))
 
 
 class MDPFile(File):
-    suffix = '.mdp'
+    suffix = ".mdp"
     pass
 
 
 class TOPFile(File):
-    suffix = '.top'
-    pass
+    suffix = ".top"
+
+    def __init__(self, *args, **kwargs):
+        super(TOPFile, self).__init__(*args, **kwargs)
+        self.__coordinates = None
+
+    @property
+    def gro(self):
+        return GROFile(self.with_suffix(".gro"))
 
 
 class Dir(BasicPath):
@@ -1237,7 +1318,7 @@ class Dir(BasicPath):
             raise FileNotFoundError(f"{self.name} is not a directory.")
         if self._suffix != "*":
             assert (
-                    self.suffix == self._suffix
+                self.suffix == self._suffix
             ), f"Expected {self._suffix!r}, found {self.suffix!r}"
 
     def _get_filelist(self, ext: Union[str, list] = _suffices):
@@ -1278,6 +1359,7 @@ class Dir(BasicPath):
     def itp_filelist(self):
         return ITPList(self)
 
+
     @property
     def gro_filelist(self):
         return GROList(self)
@@ -1298,7 +1380,7 @@ class FFDir(Dir):
 
     def _get_ff_parameter(self, prm_name: str):
         assert (
-                prm_name in _KWD_DICT[".itp"]
+            prm_name in _KWD_DICT[".itp"]
         ), f"{prm_name!r} is not a recognised parameter."
         # full_df = pd.DataFrame(columns=  )
         for itp in self.itp_filelist:
@@ -1346,6 +1428,7 @@ class BasicPathList(UserList):
             if post_reset is True:
                 self.data = self._data
             return result
+
         return wrapper
 
     @property
@@ -1362,7 +1445,7 @@ class BasicPathList(UserList):
 
     @_reset_paths
     def _extract_parts(
-            self, part="name", pre_reset=True, post_reset=True
+        self, part="name", pre_reset=True, post_reset=True
     ) -> List[Tuple[str, str]]:
         data_list = self._data
         data_list = [getattr(obj, part) for obj in data_list]
@@ -1371,12 +1454,12 @@ class BasicPathList(UserList):
 
     @_reset_paths
     def filter(
-            self,
-            pattern: Union[List[str], str],
-            mode: Literal["full", "parts"] = "parts",
-            keep_dims: bool = False,
-            pre_reset=False,
-            post_reset=False,
+        self,
+        pattern: Union[List[str], str],
+        mode: Literal["full", "parts"] = "parts",
+        keep_dims: bool = False,
+        pre_reset=False,
+        post_reset=False,
     ):
         match = [obj.filter(pattern, mode=mode) for obj in self.data]
         if not keep_dims:
@@ -1426,16 +1509,17 @@ class PathList(FileList):
 
 class ITPList(FileList):
     _ext = ".itp"
-    _order = {'forcefield': 0, 'ffnonbonded': 1, 'ffbonded': 2}
+    _order = {"forcefield": 0, "ffnonbonded": 1, "ffbonded": 2}
     pass
+
     def __init__(self, path, check=False):
         super().__init__(path, check)
         order = self.__class__._order
         for key in self.stems:
             if key not in order.keys():
-                if re.search(r'.*nonbonded', key) is not None:
+                if re.search(r".*nonbonded", key) is not None:
                     order[key] = 4
-                elif re.search(r'.*bonded', key) is not None:
+                elif re.search(r".*bonded", key) is not None:
                     order[key] = 5
                 else:
                     order[key] = 6
@@ -1446,9 +1530,6 @@ class ITPList(FileList):
 
     def __copy__(self):
         return copy(self)
-
-
-
 
 
 class GROList(FileList):
@@ -1501,7 +1582,14 @@ class FFList(DirList):
 
 
 class ForceField:
-    _order = {'forcefield': 0, 'ffnonbonded': 1, 'ffbonded': 2, r'*ffnonbonded': 3, '.*ffbonded': 4, r'.*?((non)?bonded)': 5}
+    _order = {
+        "forcefield": 0,
+        "ffnonbonded": 1,
+        "ffbonded": 2,
+        r"*ffnonbonded": 3,
+        ".*ffbonded": 4,
+        r".*?((non)?bonded)": 5,
+    }
 
     def __init__(self, path: Union[BasicPath, Dir], include="all", exclude=None):
         self._init_path(path)
@@ -1543,9 +1631,9 @@ class ForceField:
 
     def __repr__(self):
         return (
-                f"{self.path.name}: ["
-                + ", ".join([itp.stem for itp in self.itp_filelist])
-                + "]"
+            f"{self.path.name}: ["
+            + ", ".join([itp.stem for itp in self.itp_filelist])
+            + "]"
         )
 
     def __getitem__(self, item):
@@ -1807,4 +1895,4 @@ class SimDir(Dir):
 def init_path(path):
     if not Dir(path).is_dir():
         os.makedirs(path)
-        logger.info(f'Creating new directory {path!r}')
+        logger.info(f"Creating new directory {path!r}")

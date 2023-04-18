@@ -8,18 +8,16 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from ClayCode import UCS, FF
+from ClayCode import UCS, FF, logger
 from ClayCode.builder.claycomp import MatchClayComposition, InterlayerIons, BulkIons
 from ClayCode.core.classes import File, Dir, init_path
 from ClayCode.core.lib import get_ion_charges
 from ClayCode.core.utils import get_header, get_subheader
 
-logger = logging.getLogger(File(__file__).stem)
-
-logger.setLevel(logging.DEBUG)
 
 __all__ = {"ArgsFactory", "parser", 'BuildArgs', 'EditArgs', 'CheckArgs', 'EquilibrateArgs', 'PlotArgs',
            'AnalysisArgs'}
+
 
 parser: ArgumentParser = ArgumentParser(
     "ClayCode",
@@ -28,11 +26,12 @@ parser: ArgumentParser = ArgumentParser(
     allow_abbrev=False,
 )
 
-# parser.add_argument('--test',
-#                     help='No input queries',
-#                     action='store_true',
-#                     default=None,
-#                     dest='TEST')
+parser.add_argument('--debug',
+                    help='Debug run',
+                    action='store_const',
+                    const=logging.DEBUG,
+                    default=logging.INFO,
+                    dest='DEBUG')
 
 subparsers = parser.add_subparsers(help="Select option.", dest="option")
 
@@ -177,7 +176,7 @@ class BuildArgs(_Args):
         self.boxheight: float = None
         self.n_sheets: int = None
         self._uc_name: str = None
-        self._uc_stem: str = None
+        self.uc_stem: str = None
         self.name: str = None
         self.outpath: Dir = None
         self._raw_comp: pd.DataFrame = None
@@ -231,7 +230,7 @@ class BuildArgs(_Args):
                 uc_type in self._charge_occ_df.index.get_level_values("value").unique()
             ) and (UCS / uc_type).is_dir():
                 self._uc_name = uc_type
-                self._uc_stem = self._uc_name[:2]
+                self.uc_stem = self._uc_name[:2]
                 logger.debug(f"Setting unit cell type: {self._uc_name!r}")
         except KeyError:
             raise KeyError(f"Unknown unit cell type {uc_type!r}")
@@ -308,7 +307,7 @@ class BuildArgs(_Args):
 
     def get_uc_data(self):
         from ClayCode.builder.claycomp import UCData
-        self._uc_data = UCData(UCS / self._uc_name, uc_stem=self._uc_stem, ff=self.ff["clay"])
+        self._uc_data = UCData(UCS / self._uc_name, uc_stem=self.uc_stem, ff=self.ff["clay"])
         occ = self._uc_data.occupancies
         ch = self._uc_data.oxidation_numbers
         atc = self._uc_data.atomic_charges
@@ -371,15 +370,14 @@ class BuildArgs(_Args):
     def match_uc_combination(self):
         self.match_comp = MatchClayComposition(self._target_comp, self.sheet_n_cells)
         self.match_comp.write_csv(self.outpath)
-        # print(self.match_charge)
 
 
     @property
-    def match_df(self):
+    def match_df(self) -> pd.DataFrame:
         return self.match_comp.match_composition
 
     @property
-    def sheet_uc_weights(self):
+    def sheet_uc_weights(self) -> pd.Series:
         return self.match_comp.uc_weights
 
     @property
@@ -479,6 +477,4 @@ class ArgsFactory:
             raise KeyError(f"{option!r} is not known!")
         print(_cls)
         return _cls(data)
-
-
 

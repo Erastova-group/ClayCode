@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import logging
+
 import os
 import re
 import shutil
@@ -13,13 +13,11 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 
-from ClayCode import exec_time, exec_date
+from ClayCode import exec_time, exec_date, logger
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.simplefilter("ignore")
-
-logger = logging.getLogger(Path(__file__).stem)
 
 __all__ = [
     "remove_files",
@@ -37,6 +35,11 @@ __all__ = [
     "convert_str_list_to_arr",
     "select_file",
     "select_named_file",
+    "copy_final_setup",
+    "get_subheader",
+    "get_header",
+    "get_pd_idx_iter",
+    "get_u_files"
 ]
 
 
@@ -499,6 +502,7 @@ def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]):
     ).T.reshape(-1, len(idx_values))
     # idx_product = np.apply_along_axis(lambda x: '/'.join(x), 1, idx_product)
     return idx_product
+
 
 
 def get_u_files(path: Union[str, Path], suffices=["gro", "top"]):

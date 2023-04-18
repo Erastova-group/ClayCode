@@ -3,18 +3,11 @@ import re
 import subprocess as sp
 import tempfile
 import warnings
-from functools import partial
 from pathlib import Path
-import logging
-from typing import Union
-
+from ClayCode import logger
 from ClayCode.core.utils import execute_bash_command
 
-logger = logging.getLogger(Path(__file__).stem)
-logger.setLevel(logging.DEBUG)
-
 GMX = 'gmx'
-
 
 def run_gmx_command(commandargs_dict, opt_args_list):
     def func_decorator(func):
@@ -26,8 +19,8 @@ def run_gmx_command(commandargs_dict, opt_args_list):
                     commandargs_dict[arg] = str(kwdargs[arg])
                 else:
                     warnings.warn(
-                        f'Invalid argument "-{arg}" passed to "gmx '
-                        rf'{re.match("run_gmx_(.*)", func.__name__).group(1)}"'
+                        rf'Invalid argument "-{arg}" passed to "gmx '
+                        rf'{re.match(r"run_gmx_(.*)", func.__name__).group(1)}"'
                     )
             command, outputargs = func()
             kwd_str = " ".join(
@@ -45,12 +38,14 @@ def run_gmx_command(commandargs_dict, opt_args_list):
                 )
             logger.debug(f"{GMX} {command} {kwd_str} -nobackup")
             out, err = output.stdout, output.stderr
-            search_gmx_error(err)
-            # if error is None:
-            logger.debug(f'{GMX} {command} completed successfully.')
-            # else:
+            error = search_gmx_error(err)
+            if error is None:
+                logger.debug(f'{GMX} {command} completed successfully.')
+            if command is 'mdrun':
+                return error, err, out  # -> gmx process error match, gmx process stderr, gmx process stdout
+            else:
             #    logger.error(f'{GMX} {command} raised an error!\n{out}')
-            return err, out  # -> gmx process stderr, gmx process stdout
+                return err, out  # -> gmx process stderr, gmx process stdout
 
         return wrapper
 
@@ -408,5 +403,9 @@ def search_gmx_error(out: str) -> None:
     err = re.search(r"\n?(.?)(error|exception|invalid)(.?\n).*(GROMACS reminds you)?", out,
                     flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
     if err is not None:
-        raise RuntimeError(f'{out}\nGROMACS raised an error!')
+        if re.search('Too many LINCS warnings', out, flags=re.MULTILINE | re.IGNORECASE):
+            logger.error('GROMACS terminated due to LINCS warnings!')
+        else:
+            raise RuntimeError(f'{out}\nGROMACS raised an error!')
         #f'\t{err.group(1)}{err.group(2)}{err.group(3)}'
+

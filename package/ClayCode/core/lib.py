@@ -35,7 +35,7 @@ from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
 from numpy.typing import NDArray
 
-from ClayCode import SOL, SOL_DENSITY, IONS, MDP, FF, DATA, AA, UCS
+from ClayCode import SOL, SOL_DENSITY, IONS, MDP, FF, DATA, AA, UCS, logger
 from ClayCode.analysis.analysisbase import analysis_class
 from ClayCode.core import gmx
 from ClayCode.core.classes import GROFile
@@ -44,9 +44,6 @@ from ClayCode.core.utils import select_file
 tpr_logger = logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
     level=logging.WARNING
 )
-
-logger = logging.getLogger(Path(__file__).stem)
-logger.setLevel(logging.DEBUG)
 
 MaskedArray = TypeVar("MaskedArray")
 AtomGroup = TypeVar("AtomGroup")
@@ -67,10 +64,8 @@ __all__ = [
     "get_system_charges",
     "process_orthogonal_axes",
     "process_triclinic_axes",
+    "temp_file_wrapper"
 ]
-
-logger = logging.getLogger("lib")
-
 
 def init_temp_inout(
         inf: Union[str, Path],
@@ -90,7 +85,7 @@ def init_temp_inout(
         suffix=outp.suffix,
         prefix=outp.stem,
         dir=outp.parent,
-        # delete=False
+        delete=False
         )
         outp = outp.parent / temp_outp.name
         new_tmp_dict[which] = True
@@ -260,14 +255,14 @@ def select_outside_clay_stack(atom_group: MDAnalysis.AtomGroup,
                               extra=1
                               ):
     atom_group = atom_group.select_atoms(
-        f" prop z >= {np.max(clay.positions[:, 2] - extra)} or"
-        f" prop z <= {np.min(clay.positions[:, 2] + extra)}"
+        f" prop z > {np.max(clay.positions[:, 2]) + extra} or"
+        f" prop z < {np.min(clay.positions[:, 2]) - extra}"
     )
     logger.debug(
         f"'atom_group': Selected {atom_group.n_atoms} atoms of names: {np.unique(atom_group.names)} "
         f"(residues: {np.unique(atom_group.resnames)})"
     )
-    atom_group = atom_group.residues.atoms
+    # atom_group = atom_group.residues.atoms
     return atom_group
 
 
@@ -747,7 +742,7 @@ def add_ions_n_mols(
             nq=nq,
             nn=nn
         )
-        logger.info(f'{GROFile(crdin).universe.atoms.n_atoms} atoms')
+        logger.debug(f'{GROFile(crdin).universe.atoms.n_atoms} atoms')
         replaced = re.findall(
             "Replacing solvent molecule", err, flags=re.MULTILINE
         )
@@ -1451,22 +1446,27 @@ def run_em(
         v="",
         po=tpr.with_suffix('.mdp')
     )
-    em, out = gmx.run_gmx_mdrun(s=tpr, deffnm=outname)
-    conv = re.search(
-        r"converged to Fmax < (\d+) in (\d+) steps",
-        em,
-        flags=re.MULTILINE | re.DOTALL,
-    )
-    assert conv is not None, "Energy minimisation run not converged!"
-    fmax, n_steps = conv.groups()
-    logger.info(f"Fmax: {fmax}, reached in {n_steps} steps")
-    logger.debug(f"Output written to {outname!r}")
-    conv = (
-        f"Fmax: {fmax}, reached in {n_steps} steps."
-        f"Output written to {outname!r}"
-    )
-    if otop_copy is True:
-        shutil.copy(topout, topin)
+    error, em, out = gmx.run_gmx_mdrun(s=tpr, deffnm=outname)
+    if error is None:
+        conv = re.search(
+            r"converged to Fmax < (\d+) in (\d+) steps",
+            em,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        if conv is None:
+            logger.error("Energy minimisation run not converged!\n")
+        else:
+            fmax, n_steps = conv.groups()
+            logger.debug(f"Fmax: {fmax}, reached in {n_steps} steps")
+            logger.debug(f"Output written to {outname!r}")
+            conv = (
+                f"Fmax: {fmax}, reached in {n_steps} steps."
+                f"Output written to {outname!r}\n"
+            )
+        if otop_copy is True:
+            shutil.copy(topout, topin)
+    else:
+        conv = False
     return conv
 
 def set_mdp_parameter(parameter, value, mdp_str, searchex='[A-Za-z0-9 ]*'):
@@ -1474,16 +1474,16 @@ def set_mdp_parameter(parameter, value, mdp_str, searchex='[A-Za-z0-9 ]*'):
                      r'\1'+f'={value}', mdp_str)
     return new_str
 
-def set_mdp_freeze_clay(folder, uc_stem, uc_list, em_template):
+def add_mdp_parameter(parameter, value, mdp_str, searchex='[A-Za-z0-9 ]*'):
+    new_str = re.sub(rf'(?<={parameter})(\s*)(=\s*)({searchex})(?=\n)',
+                     r'\1=\3'+f'{value}', mdp_str)
+    return new_str
+
+def set_mdp_freeze_clay(uc_stem, uc_list, em_template, freeze_dims=['Y', 'Y', 'Y']):
     uc_list = [f'{uc_stem}{uc_id:02d}' for uc_id in np.ravel(*uc_list).astype(int)]
     freezegrpstr = ' '.join(uc_list)
-    freezearray = np.repeat('Y', (3 * len(uc_list)))
+    freezearray = np.tile(freeze_dims, (len(uc_list)))
     freezedimstr = ' '.join(freezearray)
-    em_outfile = tempfile.NamedTemporaryFile(mode='w',
-                                             prefix=Path(em_template).stem,
-                                             suffix='.mdp',
-                                             delete=False,
-                                             dir=folder)
     #print(freezegrpstr, freezedimstr)
     # em_template = MDP / 'mdp/em.mdp'
     # em_outfile = MDP / f'{folder}/em.mdp'
@@ -1491,6 +1491,9 @@ def set_mdp_freeze_clay(folder, uc_stem, uc_list, em_template):
         em_filestr = emfile.read()
     em_filestr = set_mdp_parameter('freezegrps', freezegrpstr, em_filestr)
     em_filestr = set_mdp_parameter('freezedim', freezedimstr, em_filestr)
-    em_outfile.write(em_filestr)
-    return em_outfile
+    return em_filestr
+    # em_filestr = add_mdp_parameter('freezegrps', ' SOL', em_filestr)
+    # em_filestr = add_mdp_parameter('freezedim', ' Y Y Y', em_filestr)
+    # em_outfile.write(em_filestr)
+    # return em_outfile
 
