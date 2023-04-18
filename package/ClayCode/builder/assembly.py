@@ -1,5 +1,3 @@
-import shutil
-import logging
 import re
 import shutil
 import tempfile
