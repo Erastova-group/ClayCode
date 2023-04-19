@@ -1,6 +1,45 @@
-__all__ = []
+#!/usr/bin/env python3
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict
+import logging
 
-ITP_KWDS = {
+__all__ = [
+    "exec_time",
+    "exec_date",
+    "AA",
+    "FF",
+    "MDP",
+    "CLAYS",
+    "IONS",
+    "SOL",
+    "SOL_DENSITY",
+    "UCS",
+    "FILE_SEARCHSTR_LIST",
+    "DATA",
+]
+
+PATH = Path(__file__)
+DATA = (PATH.parent / "../../../data").resolve()
+AA = (DATA / "AA").resolve()
+FF = (DATA / "FF").resolve()
+MDP = (DATA / "MDP").resolve()
+CLAYS = (DATA / "CLAYS").resolve()
+UCS = (DATA / "UCS").resolve()
+
+IONS = ["Cl", "Na", "Ca", "K", "Mg", "Cs"]
+SOL_DENSITY = 1000  # g L-1
+SOL = "SOL"
+
+shandler = logging.StreamHandler()
+shandler.setLevel(logging.INFO)
+
+exec_time = datetime.now(timezone.utc).strftime("%y%m%d-%H%M")
+exec_date = datetime.now(timezone.utc).strftime("%y%m%d")
+
+FILE_SEARCHSTR_LIST = [""]
+
+ITP_KWDS = TOP_KWDS = {
     "defaults": ["nbfunc", "comb-rule", "gen-pairs", "fudgeLJ", "fudgeQQ"],
     "atomtypes": [
         "at-type",
@@ -95,11 +134,7 @@ def set_globals() -> Dict[str, Dict[str, str]]:
 
     combined_dict = {}
     global_dict = lambda key: globals()[key]
-
-    # set_global = lambda key, value: globals().__setitem__(key, value)
-
     del_global = lambda key: globals().__delitem__(key)
-    # set_global('KWD_DICT', {})
     kwds = sorted(re.findall(r"[A-Z]+_KWDS", " ".join(globals().keys())), reverse=True)
     for kwd_dict in kwds:
         kwd = kwd_dict.split("_")[0]
@@ -116,18 +151,3 @@ def set_globals() -> Dict[str, Dict[str, str]]:
 
 
 KWD_DICT = set_globals()
-
-
-    # KWD_DICT,
-    # exec_time,
-    # exec_date,
-    # AA,
-    # FF,
-    # MDP,
-    # CLAYS,
-    # IONS,
-    # SOL,
-    # SOL_DENSITY,
-    # UCS,
-    # FILE_SEARCHSTR_LIST,
-    # DATA

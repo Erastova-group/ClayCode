@@ -150,7 +150,7 @@ class Builder:
         self.stack: GROFile = self.args.outpath / self.stack.name
         self.__tmp_outpath.cleanup()
         logger.info(
-            f"\nWrote final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
+            f"Wrote final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
         )
         logger.info(get_header(f"{self.args.name} model setup complete"))
 
