@@ -215,7 +215,7 @@ class Builder:
                 p=self.stack.top,
                 pp=solv_box_crd.top,
                 cp=self.stack,
-                radius=0.105,
+                radius=0.2,
                 scale=0.57,
                 o=solv_box_crd,
                 maxsol=0,

@@ -1,4 +1,6 @@
+import argparse
 import logging
+import re
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserDict
@@ -61,6 +63,125 @@ buildparser.add_argument(
 
 # Clay model modification parser
 editparser = subparsers.add_parser("edit", help="Edit clay models.")
+
+editparser.add_argument('-c',
+                        help='system coordinates',
+                        required=True,
+                        dest='ingro',
+                        metavar='input_grofile')
+editparser.add_argument('-p',
+                        help='system topology',
+                        required=False,
+                        dest='intop',
+                        default=None,
+                        metavar='input_topfile')
+editparser.add_argument('--solvate-bulk',
+                        help='Solvate box',
+                        action='store_true',
+                        default=False,
+                        dest='bulk_solv')
+editparser.add_argument('--add-resnum',
+                        help='Add residue numbers to coordinate file',
+                        action='store_true',
+                        default=False)
+editparser.add_argument('-neutralise',
+                        help='Neutralise system with selected ion types',
+                        nargs='?',
+                        type=str,
+                        metavar='ion_types',
+                        dest='neutral_ions'
+                        )
+
+editparser.add_argument('-odir',
+                        help='Output directory',
+                        required=False,
+                        default=None,
+                        type=Dir,
+                        dest='odir',
+                        metavar='output_directory')
+
+editparser.add_argument('-o',
+                        help='Output naming pattern',
+                        type=str,
+                        required=True,
+                        dest='new_name',
+                        metavar='output_filestem')
+
+edit_subparsers = editparser.add_subparsers(help='Molecule addition subparsers',
+dest = 'add_mol'
+)
+
+aa_parser = edit_subparsers.add_parser('add_aa', help='Amino acid addition')
+aa_parser.add_argument('-aa',
+                     help='Amino acid types',
+                     required=True,
+                       nargs='+',
+                       type=str,
+                       dest='aa',
+                       metavar='aa_types'
+                     )
+aa_parser.add_argument('-pH',
+                       help='pH value',
+                       dest='pH',
+                       type=float,
+                       default=7,
+                       metavar='pH')
+
+aa_parser.add_argument('-replace',
+                       help='Molecule type to replace',
+                       required=False,
+                       dest='replace_type',
+                       metavar='replace_moltype')
+
+aa_add_group = aa_parser.add_mutually_exclusive_group(required=True)
+aa_add_group.add_argument('-n_mols',
+                       help='Insert number of molecules',
+                       type=int,
+                       dest='n_mols',
+                          metavar='n_mols')
+
+aa_add_group.add_argument('-conc',
+                       help='Insert concentration',
+                       type=float,
+                       dest='conc',
+                       required=False,
+                          metavar='concentration'
+                       )
+
+ion_parser = edit_subparsers.add_parser('add_ions', help='Bulk ion addition')
+
+ion_parser.add_argument('-pion',
+                     help='Cation type(s)',
+                     required=False,
+                       nargs='+',
+                       type=str,
+                       dest='pion',
+                        metavar='cation_type'
+                     )
+ion_parser.add_argument('-nion',
+                     help='Anion type(s)',
+                     required=False,
+                       nargs='+',
+                       type=str,
+                       dest='nion',
+                       metavar='anion_type'
+                     )
+
+
+ion_add_group = ion_parser.add_mutually_exclusive_group(required=True)
+ion_add_group.add_argument('-n_atoms',
+                       help='Insert number of atoms',
+                       type=int,
+                       dest='n_mols',
+                           metavar='n_atoms')
+
+ion_add_group.add_argument('-conc',
+                       help='Insert concentration',
+                       type=float,
+                       dest='conc',
+                       required=False,
+                           metavar='concentration'
+                       )
 
 # Clay simulation analysis parser
 analysisparser = subparsers.add_parser("analyse", help="Analyse clay simulations.")
@@ -135,7 +256,6 @@ class _Args(ABC, UserDict):
     @abstractmethod
     def check(self):
         pass
-
 
 
 class BuildArgs(_Args):
@@ -437,6 +557,11 @@ class CheckArgs(_Args):
 
 class EditArgs(_Args):
     option = "edit"
+
+    _arg_names = ['ingro', 'intop', 'bulk_solv', 'neutral_ions', 'odir', 'new_name',
+                  'add_mol']
+    _mol_args = {'aa': ['pH', 'conc', 'n_mols', 'replace_type'],
+                 'ions': ['pion', 'n_ion', 'conc', 'n_mols', 'replace_type']}
 
     def __init__(self, data):
         super().__init__(data)

@@ -898,7 +898,7 @@ class MatchClayComposition:
                 "Getting matching unit cell combination for target composition"
             )
         )
-        for n_ucs in n_ucs_idx:
+        for n_ucs in n_ucs_idx[:2]:
             logger.info(f"\nGetting combinations for {n_ucs} unique unit cells")
             uc_id_combinations = self.get_uc_combinations(n_ucs)
             occ_combinations = self.get_sheet_uc_weights(n_ucs)
