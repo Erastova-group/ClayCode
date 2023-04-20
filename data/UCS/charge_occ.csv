@@ -1,0 +1,13 @@
+sheet,value,charge,occ,solv
+T,D21,4,8,True
+O,,3,4
+T,T21,4,8,True
+O,,2,6
+T,D11,4,8,False
+O,,0,0
+T,T11,4,8,False
+O,,0,0
+T,L21,0,0,True
+O,,2,4
+T,L31,0,0,True
+O,,3,4
