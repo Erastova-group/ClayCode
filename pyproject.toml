@@ -33,5 +33,5 @@ ClayAnalysis = ['data/AA/*/*.gro', 'data/AA/*/*.itp', 'data/FF/*.ff/*.itp',
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"
 
 [build-system]
-requires = ["setuptools>=62", "python>=3.9"]
+requires = ["setuptools>=62"]
 build-backend = "setuptools.build_meta"
