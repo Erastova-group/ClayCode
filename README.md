@@ -1,6 +1,28 @@
 # ClayCode
 
-ClayCode is called as `ClayCode <option> <option arguments>`
+## Installation
+
+```shell
+git clone https://github.com/Erastova-group/ClayCode.git
+cd ClayCode
+pip install .
+````
+
+## Usage
+
+ClayCode is called in the following way:
+
+```
+ClayCode <option> <option arguments>
+```
+
+The available options are:
+  - `builder`
+  - <del>`siminp`</del>
+  - <del>`analysis`</del>
+  - <del>`plot`</del>
+  - <del>`check`</del>
+  - <del>`edit`</del>
 
 ## builder
 
@@ -8,15 +30,28 @@ Builds clay models based on average target occupancies for a specified unit cell
 
 `ClayCode.builder` will match a combination of differently substituted unit cells to fit the average target occupancies specified by the user.
 
+### Usage
+
+Arguments for `builder` are:
+  - `-f`: [System specifications YAML file](#1-system-specifications-yaml-file)
+  - `-comp`: [Clay composition in CSV format](#2-clay-composition-in-csv-format) (can also be given in system specifications YAML)
+
+#### Example:
+
+```
+ClayCode builder -f path/to/input.yaml
+```
 
 ### Required input files:
 
 The build specifications are provided in YAML format:
 
-#### 1. System specifications .yaml file
+#### 1. System specifications YAML file
 
-The first section contains general parameters that are required for the model construction.
+The first section contains general parameters that are required for the model construction.[^1]
 If the directives in the optional section are not given by the user, `ClayCode` will use default values.
+
+[^1]: Currently only dioctahedral 2:1 unit cell type available
 
 ```yaml
 # =============================================================================
@@ -31,7 +66,7 @@ OUTPATH: /path/to/output/directory
 # name of system
 SYSNAME: NAu-1-fe
 
-# name of .csv file with target stoichiometry
+# name of CSV file with target stoichiometry
 CLAY_COMP: /path/to/clay_comp.csv
 
 # clay type available options in 'clay_units' directory:
@@ -61,7 +96,7 @@ N_SHEETS: 3
 
 # ----------------------------------------------------------------------------
 # Optional: Unit Cell Composition and Ratios input
-# if not given, these will be calculated from data in the CLAY_COMP .csv file
+# if not given, these will be calculated from data in the CLAY_COMP CSV file
 # (Default UC_INDEX_LIST: [], UC_RATIOS_LIST: [])
 # -----------------------------------------------------------------------------
 
@@ -127,7 +162,9 @@ BULK_IONS:
 GMX: gmx_mpi
 ```
 
-#### 2. Clay composition in .csv format:
+
+
+#### 2. Clay composition in CSV format:
 `CLAY_COMP` specifies the path of a CVS file with the following information:
 
    - First column: `sheet`
@@ -172,9 +209,6 @@ Only ion species of the opposite sign to the layer charge will be considered.
 |           | **O**       | \-0\.03        |        \-0\.27 |
 |           | **tot**     | \-1\.05        |        \-0\.72 |
 
-### Usage
-
-`ClayCode builder -f <path/to/input.yaml file>`
 
 ### Output files (inside `<OUTPATH>` directory)
 
@@ -185,3 +219,14 @@ Only ion species of the opposite sign to the layer charge will be considered.
 5. Sheet stack coordinates and topology in extended and solvated box (if bulk solvation is specified and specfied box height > height of clay sheet stack) `<SYSNAME>_<X_CELLS>_<Y_CELLS>_solv.top` and `<SYSNAME>_<X_CELLS>_<Y_CELLS>_solv.top`
 6. Sheet stack coordinates and topology in extended and solvated box with ions (if bulk solvation is specified and specified box height > height of clay sheet stack) `<SYSNAME>_<X_CELLS>_<Y_CELLS>_solv_ions.top` and `<SYSNAME>_<X_CELLS>_<Y_CELLS>_solv_ions.top`
 7. Sheet stack coordinates and topology in box after energy minimisation `<SYSNAME>_<X_CELLS>_<Y_CELLS>_<sheetnumber>_em.gro` and `<SYSNAME>_<X_CELLS>_<Y_CELLS>_<sheetnumber>_em.gro`
+
+## <del>siminp</del>
+Not yet available
+## <del>analysis</del>
+Not yet available
+## <del>plot</del>
+Not yet available
+## <del>check</del>
+Not yet available
+## <del>edit</del>
+Not yet available
