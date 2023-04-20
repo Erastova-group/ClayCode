@@ -416,8 +416,6 @@ class AnalysisData(UserDict):
             self.norm_hist = self.hist.copy()
             self.norm_hist = self.norm_hist / n_atoms
 
-
-
     @property
     def has_hist(self):
         if np.all(self.hist != 0):
@@ -495,7 +493,7 @@ class AnalysisData(UserDict):
             )
             for k, v in kwargs.items():
                 v = str(v)
-                v = re.sub('\n', '\n# ', v, flags=re.MULTILINE)
+                v = re.sub("\n", "\n# ", v, flags=re.MULTILINE)
                 outfile.write(f"# {k}: {v}\n")
             outfile.write("# --------------------------\n" f"# {df_str}")
         with open(f"{outname}.p", "wb") as outfile:

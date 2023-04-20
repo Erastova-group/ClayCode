@@ -3,14 +3,13 @@ import sys
 
 from ClayCode import logger
 from ClayCode.core.parsing import parser, ArgsFactory, BuildArgs
-from ClayCode.core.utils import get_header, get_subheader
+from ClayCode.core.utils import get_subheader
 
-__all__ = ['run']
+__all__ = ["run"]
+
 
 def run():
-    args = parser.parse_args(
-        sys.argv[1:]
-    )
+    args = parser.parse_args(sys.argv[1:])
     logger.setLevel(args.DEBUG)
     args_factory = ArgsFactory()
     args = args_factory.init_subclass(args)
@@ -46,37 +45,13 @@ def run():
                         repeat = input("Repeat solvation setup? [y/n]\n")
                     if repeat == "y":
                         completed = False
-                        logger.info(get_subheader('Repeating solvation'))
+                        logger.info(get_subheader("Repeating solvation"))
             elif completed is False:
                 logger.info("\nRepeating solvation setup.\n")
             else:
                 logger.info(completed)
         clay_builder.conclude()
 
-
-    # if PRMS.build:
-    #     from package.builder.builder import ModelBuilder
-    #     ModelBuilder().run()
-    #
-    # if PRMS.siminp:
-    #     from package.siminp.siminp import SiminpWriter
-    #     SiminpWriter().run()
-    #
-    # # builder = BuildParams()
-    # # if builder.builder == "new":
-    # #     if not builder.hasattr("uc_dict"):
-    # #         ions_ff = ForceField(builder.FF['ions'])
-    # #         clay_ff = ForceField(builder.FF['clay'])
-    # #         exp = ExpComposition(builder._target_comp,
-    # #                              ions_ff)
-    # #         ratios = ElementRatios(
-    # #             builder._target_comp,
-    # #             builder.clay_type,
-    # #             builder.x_cells,
-    # #             builder.y_cells,
-    # #             builder.outpath,
-    # #             builder.sysname,
-    # #         )
 
 if __name__ == "__main__":
     run()

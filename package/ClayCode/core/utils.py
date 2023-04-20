@@ -39,210 +39,8 @@ __all__ = [
     "get_subheader",
     "get_header",
     "get_pd_idx_iter",
-    "get_u_files"
+    "get_u_files",
 ]
-
-
-# path = UC_PATH
-# gro_list = UC_PATH.glob(rf'{UC_STEM}[0-9]\{1-2}.gro')
-# _uc_data = UCData(UC_FOLDER)
-# uc_composition = _uc_data.uc_composition
-# uc_charges = _uc_data.uc_charges
-# print(uc_composition, uc_charges)
-#     from argparse import ArgumentParser
-#
-#     parser = ArgumentParser(prog="utils.py", add_help=True, allow_abbrev=False)
-#
-#     parser.add_argument(
-#         "-crd",
-#         "-crdin",
-#         type=str,
-#         dest="INFNAME",
-#         required=False,
-#         metavar="filename",
-#         help="Coordinate file path",
-#     )
-#
-#     parser.add_argument(
-#         "-ff",
-#         required=False,
-#         type=str,
-#         help="Force field directory",
-#         default="/usr/local/gromacs/share/gromacs/top/",
-#         metavar="ff directory",
-#         dest="FF",
-#     )
-#
-#     conc_args = parser.add_argument_group(
-#         title="molecule number arguments:",
-#         description="Calculate molecule number from bulk concentration in mol L-1",
-#     )
-#
-#     conc_args.add_argument(
-#         "-conc",
-#         type=float,
-#         dest="CONC",
-#         required=False,
-#         default=False,
-#         metavar="concentration",
-#         help="Concentration in mol L-1",
-#     )
-#
-#     conc_args.add_argument(
-#         "-savepos",
-#         required=False,
-#         dest="SAVEPOS",
-#         default="positions.dat",
-#         metavar="filename",
-#         help=' Filename <filename>.dat (default "positions.dat")',
-#     )
-#
-#     center_args = parser.add_argument_group(
-#         title="center atoms arguments:",
-#         description="Align positions of clay atom and box center.",
-#     )
-#
-#     center_args.add_argument(
-#         "--center",
-#         required=False,
-#         action="store_true",
-#         dest="CENTER",
-#         default=False,
-#         help="Center clay atoms in box.",
-#     )
-#
-#     center_args.add_argument(
-#         "-outgro",
-#         required=False,
-#         default="center.gro",
-#         dest="OUTGRO",
-#         help='Save centered coordinates to < filename > (default "center.gro"',
-#     )
-#
-#     center_args.add_argument(
-#         "-uc",
-#         required=False,
-#         type=str,
-#         help="CLay unit cell selection string",
-#         dest="UC",
-#         metavar="uc_type",
-#         default=None,
-#     )
-#
-#     charges_args = parser.add_argument_group(
-#         title="Charge checker",
-#         description="Check charges and remove Cl from gro and top file if < 0 or return n_mols.",
-#     )
-#
-#     charges_args.add_argument(
-#         "--neutralise",
-#         action="store_true",
-#         required=False,
-#         default=False,
-#         dest="NEUTRAL",
-#         help="Check charges and remove Cl from gro and top file if < 0 or return n_mols.",
-#     )
-#
-#     charges_args.add_argument(
-#         "-insertgro",
-#         required=False,
-#         type=str,
-#         dest="INSERT",
-#         default=None,
-#         metavar="insert coordinates",
-#         help="Coordinate file of inserted molecule.",
-#     )
-#
-#     charges_args.add_argument(
-#         "-topin",
-#         required=False,
-#         type=str,
-#         dest="ITOP",
-#         metavar="filename",
-#         help="Input topology filename",
-#     )
-#
-#     charges_args.add_argument(
-#         "-topout",
-#         required=False,
-#         type=str,
-#         dest="OTOP",
-#         default="insert.top",
-#         metavar="filename",
-#         help="Output topology filename",
-#     )
-#
-#     charges_args.add_argument(
-#         "-n_mols",
-#         required=False,
-#         type=int,
-#         dest="N_MOLS",
-#         metavar="n mols",
-#         help="Number of inserted molecules",
-#         default=None,
-#     )
-#
-#     parser.add_argument(
-#         "--add-insert",
-#         action="store_true",
-#         default=False,
-#         required=False,
-#         dest="MODTOP",
-#     )
-#
-#     parser.add_argument(
-#         "--replace-sol",
-#         help="Remove replaced SOL from topology file",
-#         required=False,
-#         default=0,
-#         dest="SOLREPL",
-#         action="store_true",
-#     )
-#
-#     parser.add_argument(
-#         "--new-dat", action="store_true", default=False, required=False, dest="DAT"
-#     )
-#
-#     p = parser.parse_args(sys.argv[1:])
-#
-#     n_mols = None
-#
-#     if p.INFNAME:
-#         crdin = mda.Universe(p.INFNAME)
-#
-#     if p.CONC:
-#         n_mols = get_n_mols(conc=p.CONC, crdin=crdin)
-#         write_insert_dat(n_mols=n_mols, save=p.SAVEPOS)
-#
-#     if p.CENTER:
-#         center_clay(crdin=crdin, uc_name=p.UC, crdout=p.OUTGRO)
-#
-#     # if not 'n_mols' in globals():
-#     if p.N_MOLS is None and n_mols is None:
-#         n_mols = 0
-#     elif n_mols is None:
-#         n_mols = p.N_MOLS
-#
-#     if p.MODTOP:
-#         add_mols_to_top(
-#             topin=p.ITOP, topout=p.OTOP, insert=p.INSERT, n_mols=n_mols, include_dir=p.FF
-#         )
-#
-#     if p.NEUTRAL:
-#         remove_charge_Cl(
-#             topin=p.ITOP, topout=p.OTOP, insert=p.INSERT, n_mols=n_mols, include_dir=p.FF
-#         )
-#
-#     if p.SOLREPL:
-#         remove_replaced_SOL(topin=p.ITOP, topout=p.OTOP, n_mols=n_mols)
-#
-#     if p.DAT:
-#         write_insert_dat(n_mols=n_mols, save=p.SAVEPOS)
-#
-#     sys.displayhook(n_mols)
-#
-#     add_ions_neutral(1, 2, 3, 4, 5, 6, 7)
-# #
 
 
 def remove_files(path, searchstr):
@@ -504,7 +302,6 @@ def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]):
     return idx_product
 
 
-
 def get_u_files(path: Union[str, Path], suffices=["gro", "top"]):
     files = {}
     path = Path(path)
@@ -517,14 +314,19 @@ def get_u_files(path: Union[str, Path], suffices=["gro", "top"]):
         files[selection] = select_file(path=path, suffix=selection, how=how)
     return files["gro"], files["trr"]
 
+
 def _get_header(header_str, fill, n_linechars=100):
-    return (f'\n{fill:{fill}>{n_linechars}}\n'
-                    f'{header_str:^{n_linechars}}\n'
-        f'{fill:{fill}>{n_linechars}}\n')
+    return (
+        f"\n{fill:{fill}>{n_linechars}}\n"
+        f"{header_str:^{n_linechars}}\n"
+        f"{fill:{fill}>{n_linechars}}\n"
+    )
 
-get_header = partial(_get_header, fill='=')
 
-get_subheader = partial(_get_header, fill='-')
+get_header = partial(_get_header, fill="=")
+
+get_subheader = partial(_get_header, fill="-")
+
 
 def open_outfile(outpath: Union[Path, str], suffix: str, default: str):
     if type(outpath) == bool:

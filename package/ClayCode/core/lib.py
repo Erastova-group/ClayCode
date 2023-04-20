@@ -64,14 +64,15 @@ __all__ = [
     "get_system_charges",
     "process_orthogonal_axes",
     "process_triclinic_axes",
-    "temp_file_wrapper"
+    "temp_file_wrapper",
 ]
 
+
 def init_temp_inout(
-        inf: Union[str, Path],
-        outf: Union[str, Path],
-        new_tmp_dict: Dict[Union[Literal["crd"], Literal["top"]], bool],
-        which=Union[Literal["crd"], Literal["top"]],
+    inf: Union[str, Path],
+    outf: Union[str, Path],
+    new_tmp_dict: Dict[Union[Literal["crd"], Literal["top"]], bool],
+    which=Union[Literal["crd"], Literal["top"]],
 ) -> Tuple[
     Union[str, Path],
     Union[str, Path],
@@ -80,12 +81,9 @@ def init_temp_inout(
     inp = Path(inf)
     outp = Path(outf)
     if inp == outp:
-          #outp = outp.parent / f'{outp.stem}_temp{outp.suffix}'
+        # outp = outp.parent / f'{outp.stem}_temp{outp.suffix}'
         temp_outp = tempfile.NamedTemporaryFile(
-        suffix=outp.suffix,
-        prefix=outp.stem,
-        dir=outp.parent,
-        delete=False
+            suffix=outp.suffix, prefix=outp.stem, dir=outp.parent, delete=False
         )
         outp = outp.parent / temp_outp.name
         new_tmp_dict[which] = True
@@ -164,29 +162,27 @@ def run_analysis(instance: analysis_class, start: int, stop: int, step: int):
 
 @overload
 def get_selections(
-        infiles: Sequence[Union[str, Path, PosixPath]],
-        sel: Sequence[str],
-        clay_type: str,
-        other: Sequence[str],
-        in_memory: bool,
+    infiles: Sequence[Union[str, Path, PosixPath]],
+    sel: Sequence[str],
+    clay_type: str,
+    other: Sequence[str],
+    in_memory: bool,
 ) -> Tuple[AtomGroup, AtomGroup, AtomGroup]:
     ...
 
 
 @overload
 def get_selections(
-        infiles: Sequence[Union[str, Path, PosixPath]],
-        sel: Sequence[str],
-        clay_type: str,
-        other: None,
-        in_memory: bool,
+    infiles: Sequence[Union[str, Path, PosixPath]],
+    sel: Sequence[str],
+    clay_type: str,
+    other: None,
+    in_memory: bool,
 ) -> Tuple[AtomGroup, AtomGroup]:
     ...
 
 
-def get_selections(
-        infiles, sel, clay_type, other=None, in_memory=False
-):
+def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
     """Get MDAnalysis atom groups for clay, first and optional second selection.
     :param in_memory: store trajectory to memory
     :type in_memory: bool
@@ -250,10 +246,9 @@ def get_selections(
         return sel, clay
 
 
-def select_outside_clay_stack(atom_group: MDAnalysis.AtomGroup,
-                              clay: MDAnalysis.AtomGroup,
-                              extra=1
-                              ):
+def select_outside_clay_stack(
+    atom_group: MDAnalysis.AtomGroup, clay: MDAnalysis.AtomGroup, extra=1
+):
     atom_group = atom_group.select_atoms(
         f" prop z > {np.max(clay.positions[:, 2]) + extra} or"
         f" prop z < {np.min(clay.positions[:, 2]) - extra}"
@@ -278,11 +273,11 @@ def search_ndx_group(ndx_str: str, sel_name: str):
 
 
 def save_selection(
-        outname: Union[str, Path],
-        atom_groups: List[mda.AtomGroup],
-        ndx=False,
-        traj=".trr",
-        pdbqt=False,
+    outname: Union[str, Path],
+    atom_groups: List[mda.AtomGroup],
+    ndx=False,
+    traj=".trr",
+    pdbqt=False,
 ):
     ocoords = Path(outname).with_suffix(".gro").resolve()
     opdb = Path(outname).with_suffix(".pdbqt").resolve()
@@ -368,7 +363,7 @@ def process_box(instance: analysis_class) -> None:
 
 
 def process_orthogonal_axes(
-        distances: NDArray[np.float64], dimensions: NDArray[np.float64], axes: List[int]
+    distances: NDArray[np.float64], dimensions: NDArray[np.float64], axes: List[int]
 ) -> None:
     """
     Correct x, x2, z interatomic distances for periodic boundary conditions
@@ -384,14 +379,14 @@ def process_orthogonal_axes(
     :rtype: NoReturn
     """
     assert (
-            distances.shape[-1] == len(axes) or distances.ndim == 2
+        distances.shape[-1] == len(axes) or distances.ndim == 2
     ), f"Shape of distance array ({distances.shape[-1]}) does not match selected axes {axes}"
     for idx, dist in np.ma.ndenumerate(distances):
         distances[idx] -= dimensions[:3][axes] * np.rint(dist / dimensions[:3][axes])
 
 
 def process_orthogonal(
-        distances: NDArray[np.float64], dimensions: NDArray[np.float64]
+    distances: NDArray[np.float64], dimensions: NDArray[np.float64]
 ) -> None:
     """
     Correct x, x2, z interatomic distances for periodic boundary conditions
@@ -408,7 +403,7 @@ def process_orthogonal(
 
 
 def process_triclinic_axes(
-        distances: NDArray[np.float64], dimensions: NDArray[np.float64], axes: List[int]
+    distances: NDArray[np.float64], dimensions: NDArray[np.float64], axes: List[int]
 ) -> None:
     """
     Correct x, x2, z interatomic distances for periodic boundary conditions
@@ -437,7 +432,7 @@ def process_triclinic_axes(
 
 
 def process_triclinic(
-        distances: NDArray[np.float64], dimensions: NDArray[np.float64]
+    distances: NDArray[np.float64], dimensions: NDArray[np.float64]
 ) -> None:
     """
     Correct x, x2, z interatomic distances for periodic boundary conditions
@@ -455,7 +450,7 @@ def process_triclinic(
 
 
 def select_cyzone(
-        distances: MaskedArray, z_dist: float, xy_rad: float, mask_array: MaskedArray
+    distances: MaskedArray, z_dist: float, xy_rad: float, mask_array: MaskedArray
 ) -> None:
     """
     Select all distances corresponding to atoms within a cylindrical volume
@@ -481,8 +476,8 @@ def select_cyzone(
 
 
 def exclude_xyz_cutoff(
-        distances: NDArray[np.int64],
-        cutoff: float,
+    distances: NDArray[np.int64],
+    cutoff: float,
 ) -> None:
     """
     Select all distances corresponding to atoms within a box
@@ -499,8 +494,8 @@ def exclude_xyz_cutoff(
 
 
 def exclude_z_cutoff(
-        distances: NDArray[np.int64],
-        cutoff: float,
+    distances: NDArray[np.int64],
+    cutoff: float,
 ) -> None:
     """
     Select all distances corresponding to atoms within a box
@@ -517,10 +512,10 @@ def exclude_z_cutoff(
 
 
 def get_dist(
-        ag_pos: NDArray[np.float64],
-        ref_pos: NDArray[np.float64],
-        distances: NDArray[np.float64],
-        box: NDArray[np.float64],
+    ag_pos: NDArray[np.float64],
+    ref_pos: NDArray[np.float64],
+    distances: NDArray[np.float64],
+    box: NDArray[np.float64],
 ) -> NoReturn:
     """Calculate minimum elementwise x, x2, z distances
     of selection atom positions to reference atom positions in box.
@@ -539,8 +534,8 @@ def get_dist(
 
 
 def get_self_dist(
-        ag_pos: NDArray[np.float64],
-        distances: NDArray[np.float64],
+    ag_pos: NDArray[np.float64],
+    distances: NDArray[np.float64],
 ) -> NoReturn:
     """Calculate minimum elementwise x, x2, z distances
     of selection atom positions to reference atom positions in box.
@@ -559,7 +554,7 @@ def get_self_dist(
 
 
 def select_solvent(
-        center_ag: str, solvent_ag: MDAnalysis.core.groups.AtomGroup, radius: float
+    center_ag: str, solvent_ag: MDAnalysis.core.groups.AtomGroup, radius: float
 ) -> AtomGroup:
     """Select solvent OW* atoms within sphere of
     specified radius around atom group
@@ -593,10 +588,10 @@ def update_universe(f):
 
 
 def get_n_mols(
-        conc: Union[float, int],
-        u: Universe,
-        solvent: str = SOL,
-        density: float = SOL_DENSITY,  # g/dm^3
+    conc: Union[float, int],
+    u: Universe,
+    solvent: str = SOL,
+    density: float = SOL_DENSITY,  # g/dm^3
 ):
     sol = u.select_atoms(f"resname {solvent}")
     m = np.sum(sol.masses)  # g
@@ -626,7 +621,12 @@ def write_insert_dat(n_mols: Union[int, float], save: Union[str, Literal[False]]
 
 
 @update_universe
-def center_clay(u: Universe, crdout: Union[Path, str], uc_name: Optional[str], other_resnames=" ".join(IONS)):
+def center_clay(
+    u: Universe,
+    crdout: Union[Path, str],
+    uc_name: Optional[str],
+    other_resnames=" ".join(IONS),
+):
     from MDAnalysis.transformations.translate import center_in_box
     from MDAnalysis.transformations.wrap import wrap
 
@@ -642,10 +642,10 @@ def center_clay(u: Universe, crdout: Union[Path, str], uc_name: Optional[str], o
 
 @temp_file_wrapper
 def add_mol_list_to_top(
-        topin: Union[str, pl.Path],
-        topout: Union[str, pl.Path],
-        insert_list: List[str],
-        ff_path: Union[pl.Path, str] = FF,
+    topin: Union[str, pl.Path],
+    topout: Union[str, pl.Path],
+    insert_list: List[str],
+    ff_path: Union[pl.Path, str] = FF,
 ):
     logger.debug(insert_list)
     with open(topin, "r") as topfile:
@@ -671,8 +671,7 @@ def add_mol_list_to_top(
 
 @temp_file_wrapper
 def add_ions_n_mols(
-        odir: Path, crdin: Path, topin: Path,
-        ion: str, n_atoms: int, charge=None
+    odir: Path, crdin: Path, topin: Path, ion: str, n_atoms: int, charge=None
 ) -> int:
     """
     Add a selected number of ions.
@@ -709,14 +708,14 @@ def add_ions_n_mols(
         nname = ion
         nn = n_atoms
         nq = charge
-        pname = 'Na'
+        pname = "Na"
         pq = 1
         np = 0
     elif charge > 0:
         pname = ion
         np = n_atoms
         pq = charge
-        nname = 'Cl'
+        nname = "Cl"
         nq = -1
         nn = 0
     if ndx.is_file():
@@ -740,13 +739,13 @@ def add_ions_n_mols(
             pq=pq,
             nname=nname,
             nq=nq,
-            nn=nn
+            nn=nn,
         )
-        logger.debug(f'{GROFile(crdin).universe.atoms.n_atoms} atoms')
-        replaced = re.findall(
-            "Replacing solvent molecule", err, flags=re.MULTILINE
+        logger.debug(f"{GROFile(crdin).universe.atoms.n_atoms} atoms")
+        replaced = re.findall("Replacing solvent molecule", err, flags=re.MULTILINE)
+        logger.debug(
+            f"Replaced {len(replaced)} SOL molecules with {ion} in {crdin.name!r}"
         )
-        logger.debug(f"Replaced {len(replaced)} SOL molecules with {ion} in {crdin.name!r}")
         # add_resnum(crdin=crdin, crdout=crdin)
         # rename_il_solvent(crdin=crdin, crdout=crdin)
     else:
@@ -757,8 +756,7 @@ def add_ions_n_mols(
 
 @temp_file_wrapper
 def add_ions_neutral(
-        odir: Path, crdin: Path,
-        topin: Path, nion: str, pion: str, nq=None, pq=None
+    odir: Path, crdin: Path, topin: Path, nion: str, pion: str, nq=None, pq=None
 ) -> str:
     """
     Neutralise system charge with selected anion and cation types.
@@ -808,18 +806,9 @@ def add_ions_neutral(
             pq = int(get_ion_charges()[pion])
         logger.debug(f"gmx grompp completed successfully.")
         err, out = gmx.run_gmx_genion_neutralise(
-            s=tpr,
-            p=topin,
-            o=crdin,
-            n=ndx,
-            pname=pion,
-            pq=pq,
-            nname=nion,
-            nq=nq
+            s=tpr, p=topin, o=crdin, n=ndx, pname=pion, pq=pq, nname=nion, nq=nq
         )
-        replaced = re.findall(
-            "Replacing solvent molecule", err, flags=re.MULTILINE
-        )
+        replaced = re.findall("Replacing solvent molecule", err, flags=re.MULTILINE)
         logger.debug(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
         # add_resnum(crdin=crdout, crdout=crdout)
         # rename_il_solvent(crdin=crdout, crdout=crdout)
@@ -832,7 +821,7 @@ def add_ions_neutral(
 
 @update_universe
 def _remove_excess_gro_ions(
-        u: MDAnalysis.Universe, crdout: Union[Path, str], n_ions: int, ion_type: str
+    u: MDAnalysis.Universe, crdout: Union[Path, str], n_ions: int, ion_type: str
 ) -> None:
     last_sol_id = u.select_atoms("resname SOL")[-1].index
     ions = u.select_atoms(f"resname {ion_type}")
@@ -848,7 +837,7 @@ def _remove_excess_gro_ions(
 
 @temp_file_wrapper
 def _remove_excess_top_ions(
-        topin: Union[Path, str], topout: Union[Path, str], n_ions: int, ion_type: str
+    topin: Union[Path, str], topout: Union[Path, str], n_ions: int, ion_type: str
 ) -> None:
     with open(topin, "r") as topfile:
         topstr = topfile.read()
@@ -885,7 +874,7 @@ def rename_il_solvent(crdin: MDAnalysis.Universe, crdout: Union[Path, str]) -> N
         try:
             idx: int = isl[np.ediff1d(isl.resnums, to_end=1) != 1][-1].resnum
         except IndexError:
-            logger.info(f'No interlayer solvation')
+            logger.info(f"No interlayer solvation")
         isl: MDAnalysis.AtomGroup = isl.atoms.select_atoms(f"resnum 0 - {idx}")
         isl.residues.resnames = "iSL"
         if type(crdout) != Path:
@@ -957,11 +946,11 @@ PRM_INFO_DICT = {
 
 
 def get_mol_prms(
-        prm_str: str,
-        itp_file: Union[str, pl.Path],
-        include_dir: Union[str, pl.Path] = FF,
-        write=False,
-        force_update=False,
+    prm_str: str,
+    itp_file: Union[str, pl.Path],
+    include_dir: Union[str, pl.Path] = FF,
+    write=False,
+    force_update=False,
 ) -> dict:
     dict_func = PRM_INFO_DICT[prm_str]
     residue_itp = Path(itp_file)
@@ -1036,10 +1025,10 @@ update_wrapper(get_clay_n_atoms, "n_atoms")
 
 
 def get_sol_prms(
-        prm_str: str,
-        sol_path=FF / "ClayFF_Fe.ff",
-        include_dir: Union[str, pl.Path] = FF,
-        force_update=False,
+    prm_str: str,
+    sol_path=FF / "ClayFF_Fe.ff",
+    include_dir: Union[str, pl.Path] = FF,
+    force_update=False,
 ):
     prm_func = PRM_METHODS[prm_str]
     charge_file = DATA / f"SOL_{prm_str}.pkl"
@@ -1153,7 +1142,7 @@ update_wrapper(get_all_n_atoms, "n_atoms")
 
 
 def get_system_prms(
-        prm_str, crds: Union[str, Path, Universe], write=True, force_update=True
+    prm_str, crds: Union[str, Path, Universe], write=True, force_update=True
 ) -> Union[str, pd.Series, None]:
     if type(crds) == Universe:
         u = crds
@@ -1189,11 +1178,11 @@ update_wrapper(get_system_n_atoms, "n_atoms")
 
 
 def add_mols_to_top(
-        topin: Union[str, pl.Path],
-        topout: Union[str, pl.Path],
-        insert: Union[None, str, pl.Path],
-        n_mols: int,
-        include_dir,
+    topin: Union[str, pl.Path],
+    topout: Union[str, pl.Path],
+    insert: Union[None, str, pl.Path],
+    n_mols: int,
+    include_dir,
 ):
     if n_mols != 0:
         itp_path = pl.Path(insert).parent.resolve()
@@ -1223,7 +1212,7 @@ def add_mols_to_top(
 
 
 def remove_replaced_SOL(
-        topin: Union[str, pl.Path], topout: Union[str, pl.Path], n_mols: int
+    topin: Union[str, pl.Path], topout: Union[str, pl.Path], n_mols: int
 ):
     if n_mols > 0:
         with open(topin, "r") as topfile:
@@ -1238,9 +1227,7 @@ def remove_replaced_SOL(
                 2
             )
             n_sol = int(topmatch) - n_mols
-            logger.debug(
-                f"Removing {n_mols} SOL residues from topology."
-            )
+            logger.debug(f"Removing {n_mols} SOL residues from topology.")
 
             if n_sol < 0:
                 raise ValueError
@@ -1261,7 +1248,7 @@ def remove_replaced_SOL(
 
 @update_universe
 def center_clay_universe(
-        u: mda.Universe, crdout: Union[str, Path], uc_name: Optional[str]
+    u: mda.Universe, crdout: Union[str, Path], uc_name: Optional[str]
 ) -> None:
     from MDAnalysis.transformations.translate import center_in_box
     from MDAnalysis.transformations.wrap import wrap
@@ -1278,11 +1265,11 @@ def center_clay_universe(
 
 @update_universe
 def remove_ag(
-        u: mda.Universe,
-        crdout: str,
-        selstr: str,
-        last: Union[bool, int],
-        first: Union[bool, int],
+    u: mda.Universe,
+    crdout: str,
+    selstr: str,
+    last: Union[bool, int],
+    first: Union[bool, int],
 ) -> None:
     sel = u.select_atoms(selstr)
     logger.debug(
@@ -1305,10 +1292,16 @@ def remove_ag(
 
 
 @temp_file_wrapper
-def add_ions_conc(odir: Path, crdin: Path, crdout: Path,
-                  topin: Path, topout: Path,
-                  ion: str, ion_charge: float, conc: float
-                  ):
+def add_ions_conc(
+    odir: Path,
+    crdin: Path,
+    crdout: Path,
+    topin: Path,
+    topout: Path,
+    ion: str,
+    ion_charge: float,
+    conc: float,
+):
     logger.debug(f"Adding {conc} mol/L {ion}")
     mdp = MDP / "genion.mdp"
     assert mdp.exists(), f"{mdp.resolve()} does not exist"
@@ -1345,13 +1338,7 @@ def add_ions_conc(odir: Path, crdin: Path, crdout: Path,
         # else:
         # logger.debug(f"gmx grompp completed successfully.")
         err, out = gmx.run_gmx_genion_conc(
-            s=tpr,
-            p=topin,
-            o=crdout,
-            n=ndx,
-            iname=ion,
-            iq=ion_charge,
-            conc=conc
+            s=tpr, p=topin, o=crdout, n=ndx, iname=ion, iq=ion_charge, conc=conc
         )
         # err = search_gmx_error(out)
         # if err is not None:
@@ -1365,9 +1352,7 @@ def add_ions_conc(odir: Path, crdin: Path, crdout: Path,
         # isl = grep_file(crdin, 'iSL')
         # if otop_copy is True:
         #     shutil.move(topout, topin)
-        replaced = re.findall(
-            "Replacing solvent molecule", err, flags=re.MULTILINE
-        )
+        replaced = re.findall("Replacing solvent molecule", err, flags=re.MULTILINE)
         logger.info(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
         # add_resnum(crdin=crdout, crdout=crdout)
         # rename_il_solvent(crdin=crdout, crdout=crdout)
@@ -1397,11 +1382,11 @@ def check_insert_numbers(add_repl: Literal["Added", "Replaced"], searchstr: str)
 
 
 def run_em(
-        mdp: str,
-        crdin: Union[str, Path],
-        topin: Union[str, Path],
-        odir: Path,
-        outname: str = "em",
+    mdp: str,
+    crdin: Union[str, Path],
+    topin: Union[str, Path],
+    odir: Path,
+    outname: str = "em",
 ) -> Union[str, None]:
     """
     Run an energy minimisation using gmx and
@@ -1428,23 +1413,17 @@ def run_em(
     outname = (Path(odir) / outname).resolve()
     topout = outname.with_suffix(".top")
     if topin.resolve() == topout.resolve():
-        tmp_top = tempfile.NamedTemporaryFile(prefix=topin.stem,
-                                              suffix='.top',
-                                              dir=odir)
+        tmp_top = tempfile.NamedTemporaryFile(
+            prefix=topin.stem, suffix=".top", dir=odir
+        )
         topout = odir / tmp_top.name
-        logger.debug(f'Creating temportary output file {tmp_top}')
+        logger.debug(f"Creating temportary output file {tmp_top}")
         otop_copy = True
     else:
         otop_copy = False
-    tpr = outname.with_suffix('.tpr')
+    tpr = outname.with_suffix(".tpr")
     gmx.run_gmx_grompp(
-        f=mdp,
-        c=crdin,
-        p=topin,
-        o=tpr,
-        pp=topout,
-        v="",
-        po=tpr.with_suffix('.mdp')
+        f=mdp, c=crdin, p=topin, o=tpr, pp=topout, v="", po=tpr.with_suffix(".mdp")
     )
     error, em, out = gmx.run_gmx_mdrun(s=tpr, deffnm=outname)
     if error is None:
@@ -1469,31 +1448,34 @@ def run_em(
         conv = False
     return conv
 
-def set_mdp_parameter(parameter, value, mdp_str, searchex='[A-Za-z0-9 ]*'):
-    new_str = re.sub(rf'(?<={parameter})(\s*)(=\s*)({searchex})(?=\n)',
-                     r'\1'+f'={value}', mdp_str)
+
+def set_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ]*"):
+    new_str = re.sub(
+        rf"(?<={parameter})(\s*)(=\s*)({searchex})(?=\n)", r"\1" + f"={value}", mdp_str
+    )
     return new_str
 
-def add_mdp_parameter(parameter, value, mdp_str, searchex='[A-Za-z0-9 ]*'):
-    new_str = re.sub(rf'(?<={parameter})(\s*)(=\s*)({searchex})(?=\n)',
-                     r'\1=\3'+f'{value}', mdp_str)
+
+def add_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ]*"):
+    new_str = re.sub(
+        rf"(?<={parameter})(\s*)(=\s*)({searchex})(?=\n)",
+        r"\1=\3" + f"{value}",
+        mdp_str,
+    )
     return new_str
 
-def set_mdp_freeze_clay(uc_stem, uc_list, em_template, freeze_dims=['Y', 'Y', 'Y']):
-    uc_list = [f'{uc_stem}{uc_id:02d}' for uc_id in np.ravel(*uc_list).astype(int)]
-    freezegrpstr = ' '.join(uc_list)
+
+def set_mdp_freeze_clay(uc_stem, uc_list, em_template, freeze_dims=["Y", "Y", "Y"]):
+    uc_list = [f"{uc_stem}{uc_id:02d}" for uc_id in np.ravel(*uc_list).astype(int)]
+    freezegrpstr = " ".join(uc_list)
     freezearray = np.tile(freeze_dims, (len(uc_list)))
-    freezedimstr = ' '.join(freezearray)
-    #print(freezegrpstr, freezedimstr)
-    # em_template = MDP / 'mdp/em.mdp'
-    # em_outfile = MDP / f'{folder}/em.mdp'
-    with open(MDP / em_template, 'r') as emfile:
+    freezedimstr = " ".join(freezearray)
+    with open(MDP / em_template, "r") as emfile:
         em_filestr = emfile.read()
-    em_filestr = set_mdp_parameter('freezegrps', freezegrpstr, em_filestr)
-    em_filestr = set_mdp_parameter('freezedim', freezedimstr, em_filestr)
+    em_filestr = set_mdp_parameter("freezegrps", freezegrpstr, em_filestr)
+    em_filestr = set_mdp_parameter("freezedim", freezedimstr, em_filestr)
     return em_filestr
     # em_filestr = add_mdp_parameter('freezegrps', ' SOL', em_filestr)
     # em_filestr = add_mdp_parameter('freezedim', ' Y Y Y', em_filestr)
     # em_outfile.write(em_filestr)
     # return em_outfile
-

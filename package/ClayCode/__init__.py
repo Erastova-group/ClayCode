@@ -14,12 +14,13 @@ from ClayCode.core.consts import (
     SOL_DENSITY,
     UCS,
     FILE_SEARCHSTR_LIST,
-    DATA
+    DATA,
 )
-logging.basicConfig(format="%(message)s", level=logging.INFO)
-logger = logging.getLogger('ClayCode')
 
-__all__ = ["analysis", "builder", "siminp", "config", 'logger']  # , 'check', 'edit']
+logging.basicConfig(format="%(message)s", level=logging.INFO)
+logger = logging.getLogger("ClayCode")
+
+__all__ = ["analysis", "builder", "siminp", "config", "logger"]  # , 'check', 'edit']
 
 # TODO: remove siminp?
 # TODO: take out setup/edit/molecule insertion from analysis

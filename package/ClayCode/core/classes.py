@@ -263,6 +263,7 @@ class KwdList(UserList):
 # file object classes
 # -----------------------------------------------------------------------------
 
+
 # Adaptation _PathParents class from Lib/pathlib.py module
 class _PathParents(Sequence):
     """This object provides sequence-like access to the logical ancestors
@@ -1358,7 +1359,6 @@ class Dir(BasicPath):
     @property
     def itp_filelist(self):
         return ITPList(self)
-
 
     @property
     def gro_filelist(self):

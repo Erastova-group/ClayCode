@@ -7,7 +7,8 @@ from pathlib import Path
 from ClayCode import logger
 from ClayCode.core.utils import execute_bash_command
 
-GMX = 'gmx'
+GMX = "gmx"
+
 
 def run_gmx_command(commandargs_dict, opt_args_list):
     def func_decorator(func):
@@ -34,17 +35,27 @@ def run_gmx_command(commandargs_dict, opt_args_list):
             )
             with tempfile.TemporaryDirectory() as odir:
                 output = sp.run(
-                    ["/bin/bash", "-i", "-c", f"cd {odir}; {GMX} {command} {kwd_str} -nobackup"], **outputargs
+                    [
+                        "/bin/bash",
+                        "-i",
+                        "-c",
+                        f"cd {odir}; {GMX} {command} {kwd_str} -nobackup",
+                    ],
+                    **outputargs,
                 )
             logger.debug(f"{GMX} {command} {kwd_str} -nobackup")
             out, err = output.stdout, output.stderr
             error = search_gmx_error(err)
             if error is None:
-                logger.debug(f'{GMX} {command} completed successfully.')
-            if command is 'mdrun':
-                return error, err, out  # -> gmx process error match, gmx process stderr, gmx process stdout
+                logger.debug(f"{GMX} {command} completed successfully.")
+            if command is "mdrun":
+                return (
+                    error,
+                    err,
+                    out,
+                )  # -> gmx process error match, gmx process stderr, gmx process stdout
             else:
-            #    logger.error(f'{GMX} {command} raised an error!\n{out}')
+                #    logger.error(f'{GMX} {command} raised an error!\n{out}')
                 return err, out  # -> gmx process stderr, gmx process stdout
 
         return wrapper
@@ -69,7 +80,6 @@ def run_gmx_command(commandargs_dict, opt_args_list):
 )
 def run_gmx_solvate():
     return "solvate", {"capture_output": True, "text": True}
-
 
 
 @run_gmx_command(
@@ -216,14 +226,9 @@ def run_gmx_make_ndx(f: str, o: str):
     )
     assert Path(o).is_file(), f"No index file {o} was written."
 
+
 def run_gmx_genion_conc(
-    s: str,
-    p: str,
-    o: str,
-    n: str,
-    conc: float,
-    iname: str,
-    iq: int
+    s: str, p: str, o: str, n: str, conc: float, iname: str, iq: int
 ):
     """
     Replace SOL with ions to neutralise system charge.
@@ -245,9 +250,9 @@ def run_gmx_genion_conc(
     :type nq: int
     """
     if iq > 0:
-        istr = f'-pname {iname} -pq {iq}'
+        istr = f"-pname {iname} -pq {iq}"
     else:
-        istr = f'-nname {iname} -nq {iq}'
+        istr = f"-nname {iname} -nq {iq}"
     with tempfile.TemporaryDirectory() as odir:
         output = execute_bash_command(
             f'cd {odir}; echo -e " SOL \n q" | '
@@ -258,15 +263,17 @@ def run_gmx_genion_conc(
             capture_output=True,
             text=True,
         )
-        logger.debug(f'echo -e " SOL \n q" | '
+        logger.debug(
+            f'echo -e " SOL \n q" | '
             f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
             f"-conc {conc} "
             f"{istr} "
-            f"-rmin 0.2 -noneutral -nobackup")
+            f"-rmin 0.2 -noneutral -nobackup"
+        )
         err, out = output.stderr, output.stdout
         search_gmx_error(err)
         # if err is None:
-        logger.debug(f'{GMX} genion completed successfully.')
+        logger.debug(f"{GMX} genion completed successfully.")
         # else:
         #     logger.error(f'{GMX} genion raised an error!\n{out}')
     return err, out
@@ -319,17 +326,19 @@ def run_gmx_genion_neutralise(
             f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
             f"-pname {pname} -pq {pq} "
             f"-nname {nname} -nq {nq} "
-            f"-rmin 0.2 -neutral -nobackup")
+            f"-rmin 0.2 -neutral -nobackup"
+        )
         err, out = output.stderr, output.stdout
         search_gmx_error(err)
         # if err is None:
-        logger.debug(f'{GMX} genion completed successfully.')
+        logger.debug(f"{GMX} genion completed successfully.")
         # else:
         #     logger.error(f'{GMX} genion raised an error!\n{out}')
         return err, out  # -> gmx process stderr, gmx process stdout
         # err = re.search(r"error", out.stdout)
         # assert err is None, f"gmx genion raised an error!"
         # return err, out
+
 
 def run_gmx_genion_add_n_ions(
     s: str,
@@ -341,7 +350,7 @@ def run_gmx_genion_add_n_ions(
     np: int = 0,
     nname: str = "Cl",
     nq: int = -1,
-    nn: int = 0
+    nn: int = 0,
 ):
     """
     Replace SOL with ions to neutralise system charge.
@@ -372,15 +381,17 @@ def run_gmx_genion_add_n_ions(
             capture_output=True,
             text=True,
         )
-        logger.debug(f'echo -e " SOL \n q" | '
+        logger.debug(
+            f'echo -e " SOL \n q" | '
             f"{GMX} genion -s {s} -p {p} -o {o} -n {n} "
             f"-pname {pname} -pq {pq} -nn {nn} "
             f"-nname {nname} -nq {nq} -np {np} "
-            f"-rmin 0.2 -noneutral -nobackup")
+            f"-rmin 0.2 -noneutral -nobackup"
+        )
         out, err = output.stdout, output.stderr
         search_gmx_error(err)
         # if err is None:
-        logger.debug(f'{GMX} genion completed successfully.')
+        logger.debug(f"{GMX} genion completed successfully.")
         # else:
         #     logger.error(f'{GMX} genion raised an error!\n{out}')
         return err, out  # -> gmx process stderr, gmx process stdout
@@ -399,13 +410,17 @@ def run_gmx_convert_tpr():
 def search_gmx_error(out: str) -> None:
     check = re.search(r":-\) GROMACS", out, flags=re.IGNORECASE | re.MULTILINE)
     if check is None:
-        raise ValueError(f'\n{out}\nNo GROMACS output string used for GROMACS check!')
-    err = re.search(r"\n?(.?)(error|exception|invalid)(.?\n).*(GROMACS reminds you)?", out,
-                    flags=re.IGNORECASE | re.MULTILINE | re.DOTALL)
+        raise ValueError(f"\n{out}\nNo GROMACS output string used for GROMACS check!")
+    err = re.search(
+        r"\n?(.?)(error|exception|invalid)(.?\n).*(GROMACS reminds you)?",
+        out,
+        flags=re.IGNORECASE | re.MULTILINE | re.DOTALL,
+    )
     if err is not None:
-        if re.search('Too many LINCS warnings', out, flags=re.MULTILINE | re.IGNORECASE):
-            logger.error('GROMACS terminated due to LINCS warnings!')
+        if re.search(
+            "Too many LINCS warnings", out, flags=re.MULTILINE | re.IGNORECASE
+        ):
+            logger.error("GROMACS terminated due to LINCS warnings!")
         else:
-            raise RuntimeError(f'{out}\nGROMACS raised an error!')
-        #f'\t{err.group(1)}{err.group(2)}{err.group(3)}'
-
+            raise RuntimeError(f"{out}\nGROMACS raised an error!")
+        # f'\t{err.group(1)}{err.group(2)}{err.group(3)}'

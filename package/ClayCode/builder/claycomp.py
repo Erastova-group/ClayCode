@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from __future__ import annotations
 
 import math
@@ -7,7 +9,6 @@ import sys
 import tempfile
 from functools import partialmethod, cached_property, singledispatchmethod, cache
 import warnings
-import logging
 import re
 from pathlib import PosixPath
 import pickle as pkl
@@ -258,11 +259,6 @@ class UCData(Dir):
     @cached_property
     def occupancies(self) -> Dict[str, int]:
         return self._get_occupancies(self.df)
-        # occ = self.df.groupby('sheet').sum().aggregate("unique",
-        #                                                axis='columns')
-        # idx = self.df.index.get_level_values('sheet').unique()
-        # occ_dict = dict(zip(idx, occ))
-        # return occ_dict
 
     @cached_property
     def tot_charge(self) -> pd.Series:
@@ -288,22 +284,6 @@ class UCData(Dir):
             self.occupancies, self.df, self.tot_charge
         )[1]
         return dict(zip(ox_dict.keys(), list(map(lambda x: int(x), ox_dict.values()))))
-        # import yaml
-        # from ClayCode import UCS
-        # with open(UCS / 'clay_charges.yaml', 'r') as file:
-        #     ox_dict: dict = yaml.safe_load(file)
-        # ox_df: pd.DataFrame = self.df.copy()
-        # ox_df = ox_df.loc[~(ox_df == 0).all(1), :]
-        # ox_df = ox_df.loc[:, self.tot_charge == 0]
-        # at_types: pd.DataFrame = ox_df.index.get_level_values('at-type').to_frame()
-        # at_types.index = ox_df.index
-        # at_types = at_types.applymap(lambda x: ox_dict[x])
-        # ox: np.ndarray = ox_df.apply(lambda x: x * at_types['at-type']).groupby('sheet').sum().aggregate('unique',
-        #                                                                                                  axis='columns')
-        # idx: pd.Index = self.df.index.get_level_values('sheet').unique()
-        # ox_dict: dict = dict(zip(idx, ox))
-        # ox_dict: dict = dict(map(lambda x: (x, ox_dict[x] // self.occupancies[x]), ox_dict.keys()))
-        # return ox_dict
 
     @cached_property
     def idxs(self) -> np.array:
@@ -458,7 +438,6 @@ class UCData(Dir):
 
 
 class TargetClayComposition:
-
     sheet_grouper = pd.Grouper(level="sheet", sort=False)
 
     def __init__(self, name, csv_file: Union[str, File], uc_data: UCData):
@@ -623,7 +602,6 @@ class TargetClayComposition:
             logger.info(
                 f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.2f}/{correct_uc_occ[sheet]:.2f} ({occ:+.2f})"
             )
-        # exp_occ.apply(lambda x: print(f"{x.name}: {x.sum()}"))
         sheet_df: pd.Series = self.__df.loc[["T", "O"], :].copy()
         sheet_df = sheet_df.loc[sheet_df != 0]
         if check_occ.values.any() != 0:
@@ -647,7 +625,6 @@ class TargetClayComposition:
                         "\nAccept new composition? [y/n] (exit with c)\n"
                     ).lower()
                 if accept == "n":
-                    # logger.info(f'{accept}\n')
                     sheet_df: pd.Series = old_composition.copy()
                     sheet_df = sheet_df.loc[["T", "O"], :]
                     sheet_df = sheet_df.loc[sheet_df != 0]
@@ -661,16 +638,6 @@ class TargetClayComposition:
                                 )
                 elif accept == "c":
                     self.__abort()
-            # logger.info(f'{accept}\n')
-            # for idx, val in self.match_df.iter
-            # self.print_df_composition(sheet_df)
-            # logger.info('Will use the following clay composition:')
-            # for idx, occ in sheet_df.iteritems():
-            #     sheet, atom = idx
-            #     logger.info(f"\t{sheet!r} - {atom!r:^10}: {occ:2.2f}")
-            # exp_group = exp_occ.groupby(self.sheet_grouper)
-            # exp_group.apply(lambda x: print(f"{x.name}: {x.sum()}"))
-            # self.df.update(exp_occ)
 
     @staticmethod
     def print_df_composition(sheet_df, old_composition=None, fill=""):
@@ -826,21 +793,6 @@ class MatchClayComposition:
                 self.uc_df.index
             ), "Target composition and unit cell data must share index"
 
-        #
-        #
-        # # if all_ucs_df.hasnans:
-        # #     missing_uc_atoms = all_ucs_df.is
-        # #     accept = None
-        # #     while accept not in ['y', 'n']:
-        #
-        # # all_ucs_df = all_ucs_df.copy().loc[target_at_types]
-        #
-        # # unused_ucs_mask = (__target_df == 0 || __target_df == np.nan).values
-        # clay_m = (all_ucs_df[unused_ucs_mask] == 0)
-        # idx = clay_m.where(clay_m == True, np.nan).dropna(axis=1).columns
-        # new_all_ucs_df = all_ucs_df.loc[:, idx]
-        # return new_all_ucs_df
-
     @staticmethod
     def __abort(reason: Literal[Union["uc", "comp"]]):
         reason_dict = {
@@ -884,7 +836,6 @@ class MatchClayComposition:
 
     @cached_property
     def __unique_uc_match_df(self):
-        # rounded_target_composition = self.target_df.round(1)
         uc_df = self.uc_df.copy()
         uc_df.columns = uc_df.columns.astype(int)
         n_ucs_idx = pd.Index(
@@ -953,12 +904,6 @@ class MatchClayComposition:
         match_charge = match_data.groupby("sheet").sum()
         match_charge["tot"] = match_charge.sum()
         match_charge.name = "match_charge"
-        # match_data['charge'] = match_data['charge'].groupby('sheet').apply(lambda x: x * self.__uc_data.oxidation_numbers[x.index.values[0]])
-        # match_charge = self.match_composition.groupby(self.match_composition.index, group_keys=True, axis=0).apply(lambda x: x * (uc_data.loc[x.index.values[0]]))# - self.__uc_data.oxidation_numbers[x.index.get_level_values('sheet')[0]]))
-        # print(idx)#.apply(lambda group: self.match_composition[group.index] * self.__uc_data.atomic_charges[group.index])
-        # default_charge_occ = self.match_composition.groupby('sheet') *
-        # (self.__uc_data.full_df['charge']).reindex_like(self.match_composition)
-        # match_charges = self.match_composition.groupby('sheet', group_keys=True).apply(lambda x: x) * (self.__uc_data.full_df['charge']).reindex_like(self.match_composition)
         return match_charge
 
     @cached_property
@@ -1041,25 +986,17 @@ class MatchClayComposition:
                     duplicate_ids
                 )
 
-                # uc_numbers_splitting_remainder = (
-                #                 unique_uc_occs[sel_ids] % len(duplicate_ids[unique_id]))
-
                 unique_uc_occs[sel_ids[0] : sel_ids[0] + len(duplicate_ids)] //= len(
                     duplicate_ids
                 )
-                # print(uc_numbers_list[sel_idx[0]:sel_idx[0]+len(duplicate_array)])
                 unique_uc_occs[sel_ids] += uc_occ_splitting_remainder
-        # print(uc_numbers_list, uc_numbers_list.sum())
-        # [np.round(uc_numbers_list / np.sum(uc_numbers_list), 2)]
         uc_match_df["uc_weights"] = [unique_uc_occs]
         uc_match_df["uc_ids"] = [unique_uc_match_ids]
-        # , np.sum(*ratios_df['uc_numbers_list']))
         return uc_match_df
 
     @cached_property
     def unique_uc_array(self) -> NDArray[int]:
         unique_uc_ids = self.uc_df.T.drop_duplicates().index.values.astype(int)
-        # return self.uc_df.T.drop_duplicates().index.values
         return unique_uc_ids
 
     # @cached_property
@@ -1068,13 +1005,6 @@ class MatchClayComposition:
         Returns a list of lists with the combinations of 2, 3, sheet_n_ucs given the
         columns.
         """
-        all_sheet_uc_combinations = {}
-        # max_comb_len = len(self.unique_uc_array) + 1
-        # for n_ucs in range(2, max_comb_len):
-        #     temp_combs = np.asarray(
-        #         [x for x in self.get_uc_combination_list(self.sheet_n_ucs, n_ucs)])
-        #     all_sheet_uc_combinations[n_ucs] = temp_combs
-        # return all_sheet_uc_combinations
         sheet_uc_combinations = np.asarray(
             [x for x in self.get_uc_combination_list(self.sheet_n_ucs, n_ucs)]
         )
@@ -1087,15 +1017,6 @@ class MatchClayComposition:
         )
         for q in tqdm(itertools.combinations(range(N - 1), k - 1), total=n_combs):
             yield [j - i for i, j in zip((-1,) + q, q + (N - 1,))]
-
-    # @staticmethod
-    # def get_uc_combination_list_mp(N, k, n_workers):
-    #     n_combs = int(math.factorial(N-1) / (math.factorial(k-1) * math.factorial(N - k)))
-    #     def get_comb(N):
-    #         for q in itertools.combinations(range(N - 1), k - 1):
-    #             yield [j - i for i, j in zip((-1,) + q, q + (N - 1,))]
-    #     with multiprocessing.Pool(n_workers) as worker:
-    #         worker.map(get_comb, N)
 
     def get_uc_combinations(self, n_ucs):
         return np.asarray(list(itertools.combinations(self.unique_uc_array, n_ucs)))
@@ -1185,31 +1106,6 @@ class BulkIons:
                 select_min_charge(ion_slice_df["charge"]), False
             )
             self.df["neutralise"].update(ion_slice_df["neutralise"])
-        # n_itypes = {}
-        # for ion, conc in ion_con_dict.items():
-        #     if ion_charges[ion] > 0:
-        #         self.pions[ion] = conc
-        #     else:
-        #         self.nions[ion] = conc
-        # for ion, conc in default_ions:
-        #     if ion_charges[ion] > 0:
-        #         default_itypes['pion'] = ion
-        #     else:
-        #         default_itypes['nion'] = ion
-        # self._neutral_ions = {}
-        # for itype in ['pion', 'nion']:
-        #     ions = getattr(self, itype)
-        #     n_ions = len(ions)
-        #     if n_ions == 0:
-        #         setattr(self, itype, {default_itypes[itype]: 0.0})
-        #         self._neutral_ions[itype] = getattr(self, itype)
-        #     elif n_ions == 1:
-        #         self._neutral_ions[itype] = getattr(self, itype)
-        #     elif n_ions > 1:
-        #         all_ions, all_concs = ions.items()
-        #         all_charges = list(map(lambda ion: ion_charges[ion]))
-        #         default_idx = np.argwhere(np.min(np.abs(all_charges)))
-        #         self._neutral_ions[itype] = {all_ions[default_idx]: all_concs[default_idx]}
 
     @property
     def neutralise_ions(self):
@@ -1230,413 +1126,3 @@ class BulkIons:
     @property
     def nions(self):
         return self.df[self.df["charge"] < 0].dropna(how="all", subset="conc")
-
-        # ion_probs = ion_probs.rename(columns={c.X_EL: 'ratios'}
-        #                              ).rename_axis(index={'element': 'ion species'}
-        #                                            )
-        # ion_df = pd.merge(ion_probs.reset_index(),
-        #                   ion_charges.reset_index(),
-        #                   on='ion species')
-        # ion_df.sort_index(inplace=True, kind='mergesort')
-        # print(ion_df)
-        # return ion_df
-
-    # def get_ion_mols(tot_charge=r.CHARGE):
-    #     """Compute number of individual ion species atoms."""
-    #     tot_charge = -tot_charge
-    #     print(f'{tot_charge} total charge')
-    #     n_tot_add = tot_charge % compute_charge_average()
-    #     print(n_tot_add)
-    #     ion_df = get_ion_df().set_index('ion species')
-    #     print(ion_df)
-    #     ion_df['n_atoms'] = tot_charge * ion_df['ratios'] // ion_df['charge']
-    #     n_tot_add = tot_charge - (ion_df['charge'] * ion_df['n_atoms']).sum()
-    #     ion_df.at['Na', 'n_atoms'] += n_tot_add
-    #     ion_df = ion_df.where(ion_df['n_atoms'] != 0).dropna().convert_dtypes()
-    #     print(f'{ion_df} \n Ion dataframe')
-    #     print(ion_df)
-    #     print(ion_df['n_atoms'].to_dict())
-    #     return ion_df['n_atoms'].to_dict()
-
-
-# class ExpComposition:
-#     # print(ion_charges.head(5))
-#     charges_mapping = {
-#         "st": 4,
-#         "at": 3,
-#         "fet": 3,
-#         "ao": 3,
-#         "feo": 3,
-#         "fe2": 2,
-#         "mgo": 2,
-#         "lio": 1,
-#         "cao": 2,
-#     }
-#     exp_index = pd.MultiIndex(
-#         levels=[
-#             ["T", "O", "C", "I"],
-#             [
-#                 "st",
-#                 "at",
-#                 "fet",
-#                 "fe_tot",
-#                 "feo",
-#                 "ao",
-#                 "fe2",
-#                 "mgo",
-#                 "lio",
-#                 "cao",
-#                 "T",
-#                 "O",
-#                 "tot",
-#                 "Ca",
-#                 "Mg",
-#                 "K",
-#                 "Na",
-#             ],
-#         ],
-#         codes=[
-#             [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3],
-#             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-#         ],
-#         names=["sheet", "element"],
-#     )
-#     sheet_grouper = pd.Grouper(level="sheet", sort=False)
-#
-#     def __init__(self, data_dir, _target_comp, sysname, ions_ff, clay_ff, uc_type, n_cells):
-#         ion_charges = ions_ff.atomtypes
-#         self.target_comp = File(_target_comp).resolve()
-#         self.data_dir = data_dir
-#         self.clay_type = uc_type
-#         self.sysname = sysname
-#         self.n_cells = n_cells
-#         self.df = pd.DataFrame(
-#             index=self.__class__.exp_index, columns=["charge", sysname, "el_chg"], dtype="float"
-#         )
-#         self.add_element_charge_info()
-#         self.add_exp_data()
-#         self.charge_occ_info = self.get_uc_occ_charge_info()
-#         self.correct_occupancies()
-#         self.add_uc_charge_info()
-#         pd.to_numeric(self.df.loc[:, sysname])
-#         self.check_exp_charge_info()
-#         self.round_sheet_df_occ()
-#         self.get_fe2_feo_values()
-#         self.add_uc_charge_info()
-#         self.check_uc_charge()
-#         self.df.drop(index="fe_tot", level="element", inplace=True)
-#         self.df.loc[["T", "O"]] = self.df.loc[["T", "O"]].fillna(0)
-#
-#     @staticmethod
-#     def get_df_from_csv(fname, index):
-#         df = pd.read_csv(fname).fillna(method="ffill").set_index(index)
-#         return df
-#
-#     def add_element_charge_info(self):
-#         element_charges = pd.DataFrame.from_dict(
-#             self.__class__.charges_mapping, orient="index", columns=["charge"]
-#         )
-#         self.df.reset_index(level=0, inplace=True)
-#         self.df.update(element_charges)
-#         self.df = self.df.reset_index().set_index(["sheet", "element"])
-#
-#     def add_exp_data(self):
-#         exp_data = self.get_df_from_csv(self.target_comp, ["sheet", "element"])
-#         self.df.update(exp_data)
-#
-#     def get_occupations(self):
-#         return self.uc_df.iloc[:, :-1].groupby(['sheet']).sum().aggregate("unique",
-#                                                                           axis='columns')
-#
-#     def get_charges(self):
-#         charges = self.uc_df.iloc[:, -1].apply
-#
-#     def get_uc_occ_charge_info(self):
-#         charge_occ_info = self.get_df_from_csv(self.data_dir / "charge_occ.csv", ["sheet", "value"])
-#         charge_occ_info = charge_occ_info.xs(self.clay_type, level=1)
-#         return charge_occ_info
-#
-#     def get_tot_charge(self, x):
-#         return self.charge_occ_info.loc[x.name].product()
-#
-#     def get_occ_info(self, x):
-#         return self.charge_occ_info.loc[x.name, "occ"]
-#
-#     def get_chg_info(self, x):
-#         # print('get_chg_info')
-#         chg = x[self.sysname] * x["charge"] - x[self.sysname] / self.get_occ_info(
-#             x
-#         ) * self.get_tot_charge(x)
-#         return chg
-#
-#     def check_exp_charge_info(self):
-#         if self.df.at[("C", "tot"), self.sysname] != np.sum(
-#             self.df.loc[("C", ["T", "O"]), self.sysname]
-#         ):
-#             chg_t = self.df["el_chg"].groupby(self.sheet_grouper).sum().loc["T"]
-#             self.df.loc[("C", "O"), self.sysname] = (
-#                 self.df.at[("C", "tot"), self.sysname] - chg_t
-#             )
-#             self.df.loc[("C", "T"), self.sysname] = chg_t
-#         else:
-#             print(
-#                 self.df.at[("C", "tot"), self.sysname],
-#                 np.sum(self.df.loc[("C", ["T", "O"]), self.sysname]),
-#             )
-#
-#     def add_uc_charge_info(self):
-#         el_chg = self.df.loc[["T", "O"]]
-#         el_chg = el_chg.groupby(self.sheet_grouper).apply(
-#             lambda x: self.get_chg_info(x)
-#         )
-#         el_chg.reset_index(level=1, drop=True, inplace=True)
-#         el_chg.name = "el_chg"
-#         self.df.update(el_chg)
-#
-#     def get_fe2_feo_values(self):
-#         print("fe2_fe3")
-#         chg_o = self.df.at[("C", "O"), self.sysname]
-#         print(chg_o)
-#         chg_not_fe = (
-#             self.df[~self.df.index.isin(["fe2", "feo"], level=1)]
-#             .loc["O", "el_chg"]
-#             .sum()
-#         )
-#         self.df.loc[("O", "fe2"), self.sysname] = -chg_o + chg_not_fe
-#         x_fe_tot = self.df.at[("O", "fe_tot"), self.sysname]
-#         self.df.loc[("O", "feo"), self.sysname] = (
-#             x_fe_tot - self.df.loc[("O", "fe2"), self.sysname]
-#         )
-#
-#     def check_uc_charge(self):
-#         chg_df = self.df.loc[["T", "O"], "el_chg"]
-#         chg_df = chg_df.groupby(self.sheet_grouper).sum()
-#         chg_df.name = "el_chg"
-#         chg_df.index.name = "element"
-#         chg_df.index = pd.MultiIndex.from_product(
-#             [["C"], chg_df.index], names=self.df.index.names
-#         )
-#         self.df.update(chg_df)
-#         self.df.loc[("C", "tot")] = chg_df.sum()
-#         check = self.df.xs(("C", "tot")).loc[[self.sysname, "el_chg"]]
-#         if not check[self.sysname] == check["el_chg"]:
-#             raise ValueError(
-#                 f"Specified unit cell charge of {self.sysname} "
-#                 f"does not correspond to calculated unit cell "
-#                 "charge."
-#             )
-#
-#     def correct_occupancies(self, idx_sel=["T", "O"]):
-#         exp_occ = self.df.loc[[*idx_sel], self.sysname].dropna()
-#         print(self.df, exp_occ)
-#         exp_occ = exp_occ.loc[exp_occ != 0]
-#         exp_occ = exp_occ.groupby(self.sheet_grouper)
-#         check_occ = self.charge_occ_info["occ"] - exp_occ.sum()
-#         print(exp_occ, check_occ)
-#         print("Sheet occupancies found:")
-#         exp_occ.apply(lambda x: print(f"{x.name}: {x.sum()}"))
-#         if check_occ.values.any() != 0:
-#             print("Adjusting values to match expected values:")
-#             exp_occ = exp_occ.apply(lambda x: x + check_occ.at[x.name] / x.count())
-#             exp_group = exp_occ.groupby(self.sheet_grouper)
-#             exp_group.apply(lambda x: print(f"{x.name}: {x.sum()}"))
-#             self.df.update(exp_occ)
-#
-#     correct_t_occupancies = partialmethod(correct_occupancies, idx_sel=["T"])
-#     correct_o_occupancies = partialmethod(correct_occupancies, idx_sel=["O"])
-#
-#     def round_sheet_df_occ(self):
-#         self.df.loc[["T", "O", "C"]] = self.df.loc[["T", "O", "C"]].round(2)
-#
-#     def write_occ_df(self, outpath):
-#         if outpath.is_dir():
-#             self.df.to_csv(outpath / f"{self.sysname}_exp_df.csv")
-#         else:
-#             raise NotADirectoryError(f"{outpath} does not exist.")
-
-# e = ExpComposition(CLAY_UNITS_DIR, 'exp_4.csv', 'NAu-1', ions_ff='AmberIons', clay_ff='ClayFF_Fe',
-#                    uc_type='smec-dio', n_cells=35)
-
-# print(e.ion_charges, e.clay_charges)
-# class ExpComposition:
-#     ion_charges = ForceField(
-#         selection={"Ion_test": ["ffnonbonded", "ions"]}
-#     ).atomic_charges
-#     print(ion_charges.head(5))
-#     charges_mapping = {
-#         "st": 4,
-#         "at": 3,
-#         "fet": 3,
-#         "ao": 3,
-#         "feo": 3,
-#         "fe2": 2,
-#         "mgo": 2,
-#         "lio": 1,
-#         "cao": 2,
-#     }
-#     exp_index = pd.MultiIndex(
-#         levels=[
-#             ["T", "O", "C", "I"],
-#             [
-#                 "st",
-#                 "at",
-#                 "fet",
-#                 "fe_tot",
-#                 "feo",
-#                 "ao",
-#                 "fe2",
-#                 "mgo",
-#                 "lio",
-#                 "cao",
-#                 "T",
-#                 "O",
-#                 "tot",
-#                 "Ca",
-#                 "Mg",
-#                 "K",
-#                 "Na",
-#             ],
-#         ],
-#         codes=[
-#             [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3],
-#             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-#         ],
-#         names=["sheet", "element"],
-#     )
-#     sheet_grouper = pd.Grouper(level="sheet", sort=False)
-#
-#     def __init__(self, sysname, exp_index=exp_index):
-#         self._df = pd.DataFrame(
-#             index=exp_index, columns=["charge", sysname, "el_chg"], dtype="float"
-#         )
-#         self.add_element_charge_info()
-#         self.add_exp_data()
-#         self.charge_occ_info = self.get_uc_occ_charge_info()
-#         self.correct_occupancies()
-#         self.add_uc_charge_info()
-#         pd.to_numeric(self._df.loc[:, sysname])
-#         self.check_exp_charge_info()
-#         self.round_sheet_df_occ()
-#         self.get_fe2_feo_values()
-#         self.add_uc_charge_info()
-#         self.check_uc_charge()
-#         self._df.drop(index="fe_tot", level="element", inplace=True)
-#         self._df.loc[["T", "O"]] = self._df.loc[["T", "O"]].fillna(0)
-#
-#     @staticmethod
-#     def get_df_from_csv(fname, index):
-#         _df = pd.read_csv(pp.DATA_PATH / fname).fillna(method="ffill").set_index(index)
-#         return _df
-#
-#     def add_element_charge_info(self):
-#         element_charges = pd.DataFrame.from_dict(
-#             ExpComposition.charges_mapping, orient="index", columns=["charge"]
-#         )
-#         self._df.reset_index(level=0, inplace=True)
-#         self._df.update(element_charges)
-#         self._df = self._df.reset_index().set_index(["sheet", "element"])
-#
-#     def add_exp_data(self):
-#         exp_data = self.get_df_from_csv("exp_4.csv", ["sheet", "element"])
-#         self._df.update(exp_data)
-#
-#     def get_uc_occ_charge_info(self):
-#         charge_occ_info = self.get_df_from_csv("charge_occ.csv", ["sheet", "value"])
-#         charge_occ_info = charge_occ_info.xs(bp.UC_FOLDER, level=1)
-#         return charge_occ_info
-#
-#     def get_tot_charge(self, x):
-#         return self.charge_occ_info.loc[x.name].product()
-#
-#     def get_occ_info(self, x):
-#         return self.charge_occ_info.loc[x.name, "occ"]
-#
-#     def get_chg_info(self, x):
-#         # print('get_chg_info')
-#         chg = x[self.x_el] * x["charge"] - x[self.x_el] / self.get_occ_info(
-#             x
-#         ) * self.get_tot_charge(x)
-#         return chg
-#
-#     def check_exp_charge_info(self):
-#         if self._df.at[("C", "tot"), self.x_el] != np.sum(
-#             self._df.loc[("C", ["T", "O"]), self.x_el]
-#         ):
-#             chg_t = self._df["el_chg"].groupby(self.sheet_grouper).sum().loc["T"]
-#             self._df.loc[("C", "O"), self.x_el] = (
-#                 self._df.at[("C", "tot"), self.x_el] - chg_t
-#             )
-#             self._df.loc[("C", "T"), self.x_el] = chg_t
-#         else:
-#             print(
-#                 self._df.at[("C", "tot"), self.x_el],
-#                 np.sum(self._df.loc[("C", ["T", "O"]), self.x_el]),
-#             )
-#
-#     def add_uc_charge_info(self):
-#         el_chg = self._df.loc[["T", "O"]]
-#         el_chg = el_chg.groupby(self.sheet_grouper).apply(
-#             lambda x: self.get_chg_info(x)
-#         )
-#         el_chg.reset_index(level=1, drop=True, inplace=True)
-#         el_chg.name = "el_chg"
-#         self._df.update(el_chg)
-#
-#     def get_fe2_feo_values(self):
-#         print("fe2_fe3")
-#         chg_o = self._df.at[("C", "O"), self.x_el]
-#         print(chg_o)
-#         chg_not_fe = (
-#             self._df[~self._df.index.isin(["fe2", "feo"], level=1)]
-#             .loc["O", "el_chg"]
-#             .sum()
-#         )
-#         self._df.loc[("O", "fe2"), self.x_el] = -chg_o + chg_not_fe
-#         x_fe_tot = self._df.at[("O", "fe_tot"), self.x_el]
-#         self._df.loc[("O", "feo"), self.x_el] = (
-#             x_fe_tot - self._df.loc[("O", "fe2"), self.x_el]
-#         )
-#
-#     def check_uc_charge(self):
-#         chg_df = self._df.loc[["T", "O"], "el_chg"]
-#         chg_df = chg_df.groupby(self.sheet_grouper).sum()
-#         chg_df.name = "el_chg"
-#         chg_df.index.name = "element"
-#         chg_df.index = pd.MultiIndex.from_product(
-#             [["C"], chg_df.index], names=self._df.index.names
-#         )
-#         self._df.update(chg_df)
-#         self._df.loc[("C", "tot")] = chg_df.sum()
-#         check = self._df.xs(("C", "tot")).loc[[self.x_el, "el_chg"]]
-#         if not check[self.x_el] == check["el_chg"]:
-#             raise ValueError(
-#                 method"Specified unit cell charge of {self.x_el} "
-#                 method"does not correspond to calculated unit cell "
-#                 "charge."
-#             )
-#
-#     def correct_occupancies(self, idx_sel=["T", "O"]):
-#         exp_occ = self._df.loc[[*idx_sel], self.x_el].dropna()
-#         exp_occ = exp_occ.loc[exp_occ != 0]
-#         exp_occ = exp_occ.groupby(self.sheet_grouper)
-#         check_occ = self.charge_occ_info["occ"] - exp_occ.sum()
-#         print("Sheet occupancies found:")
-#         exp_occ.apply(lambda x: print(method"{x.name}: {x.sum()}"))
-#         if check_occ.values.any() != 0:
-#             print("Adjusting values to match expected values:")
-#             exp_occ = exp_occ.apply(lambda x: x + check_occ.at[x.name] / x.count())
-#             exp_group = exp_occ.groupby(self.sheet_grouper)
-#             exp_group.apply(lambda x: print(method"{x.name}: {x.sum()}"))
-#             self._df.update(exp_occ)
-#
-#     correct_t_occupancies = partialmethod(correct_occupancies, idx_sel=["T"])
-#     correct_o_occupancies = partialmethod(correct_occupancies, idx_sel=["O"])
-#
-#     def round_sheet_df_occ(self):
-#         self._df.loc[["T", "O", "C"]] = self._df.loc[["T", "O", "C"]].round(2)
-#
-#     def write_occ_df(self, outpath):
-#         if outpath.is_dir():
-#             self._df.to_csv(outpath / method"{self.x_el}_exp_df.csv")
-#         else:
-#             raise NotADirectoryError(method"{outpath} does not exist.")

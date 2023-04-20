@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import re
 import shutil
 import tempfile
@@ -76,8 +78,6 @@ class Builder:
             z_dim=self.args.il_solv_height,
         )
         spc_file: GROFile = self.get_filename("interlayer", suffix=".gro")
-        # self.il_solv.universe = Universe.empty(n_atoms=0)
-        # self.il_solv.write()
         solvent.write(spc_name=spc_file, topology=self.top)
         self.il_solv: GROFile = spc_file
         # self.il_solv = spc_file
@@ -96,8 +96,6 @@ class Builder:
         self.top.reset_molecules()
         self.top.add_molecules(il_u)
         self.top.write(self.il_solv.top)
-        # self.top.write(topout)
-        # self.il_solv = crdout
 
     def run_em(self):
         logger.info(get_subheader("Minimising energy"))
@@ -136,7 +134,6 @@ class Builder:
             if file not in crd_top_files:
                 file.unlink(missing_ok=True)
         return result
-        # logger.info(get_header('Done!'))
 
     def conclude(self):
         # run_em(
@@ -146,7 +143,7 @@ class Builder:
         #     odir=self.args.outpath,
         #     outname=self.stack.stem,
         # )
-        logger.info(get_subheader('Finishing up'))
+        logger.info(get_subheader("Finishing up"))
         self.stack: GROFile = self.args.outpath / self.stack.name
         self.__tmp_outpath.cleanup()
         logger.info(
@@ -156,19 +153,10 @@ class Builder:
 
     def remove_il_solv(self) -> None:
         logger.info(f"Removing interlayer solvent")
-        # crdout = self.get_filename('ions', suffix='.gro')
         il_u: Universe = Universe(str(self.il_solv))
         il_atoms: AtomGroup = il_u.select_atoms("not resname SOL iSL")
         self.il_solv.universe = il_atoms
         self.il_solv.write(topology=self.top)
-        # il_atoms.write(str(self.il_solv))
-        # shutil.move(self.il_solv, crdout)
-        # self.il_solv = crdout
-        # topout = crdout.top
-        # self.top.reset_molecules()
-        # self.top.add_molecules(il_u)
-        # # self.top.write(topout)
-        # self.top.write(self.il_solv.top)
 
     def extend_box(self) -> None:
         if type(self.args.box_height) in [int, float]:
@@ -178,15 +166,10 @@ class Builder:
                 ext_boxname: GROFile = self.get_filename("ext", suffix=".gro")
                 box_u: Universe = self.stack.universe
                 box_u.universe.dimensions[2] = self.args.box_height
-                # box_u = center_clay(box_u, crdout=ext_boxname)
-                # box_u.atoms.pack_into_box(box_u.dimensions, inplace=True)
                 self.stack: GROFile = ext_boxname
                 self.stack.universe = box_u
                 self.stack.write(topology=self.top)
-                # box_u.atoms.write(ext_boxname, topology=self.top)
-                # shutil.copy(self.stack.top,
-                #             ext_boxname.top)
-                # self.stack = ext_boxname
+
                 logger.info(f"Saving extended box as {self.stack.stem!r}\n")
             else:
                 self.__box_ext: bool = False
@@ -199,17 +182,12 @@ class Builder:
         add_resnum(crdin=self.stack, crdout=self.stack)
         self.stack.reset_universe()
         self.stack.write(topology=self.top)
-        # box_u.write(str(self.stack))
-        # self.top.reset_molecules()
-        # self.top.add_molecules(box_u)
-        # self.top.write(self.stack.top)
 
     def solvate_box(self, extra=2) -> None:
         if self.extended_box is True:
             logger.info("Adding bulk solvation:")
             solv_box_crd: GROFile = self.get_filename("solv", suffix=".gro")
-            # shutil.copy(self.stack, solv_box_crd)
-            # shutil.copy(self.stack.top, solv_box_crd.top)
+
             self.remove_SOL()
             run_gmx_solvate(
                 p=self.stack.top,
@@ -233,9 +211,6 @@ class Builder:
             )
             sol = _sol
             solv_box_u: AtomGroup = not_sol + sol
-            # new_dims = solv_box_u.dimensions
-            # solv_box_u.dimensions = new_dims
-            # solv_box_u.write(str(self.stack))
             solv_box_crd.universe: Union[Universe, AtomGroup, ResidueGroup] = solv_box_u
             solv_box_crd.write(self.top)
 
@@ -259,9 +234,6 @@ class Builder:
         stack_atoms = stack_u.atoms - il_ions
         self.stack.universe = stack_atoms
         self.stack.write(topology=self.top)
-        # self.top.reset_molecules()
-        # self.top.add_molecules(stack_atoms)
-        # self.top.write(self.stack.top)
 
     @property
     def clay(self):
@@ -277,10 +249,6 @@ class Builder:
         for residue_group in residue_groups:
             if residue_group.n_atoms != residue_group.residues.atoms.n_atoms:
                 atom_group -= residue_group
-        # max_clay = self.clay_max
-        # min_clay = self.clay_min
-        # ag = atomgroup.select_atoms(f'(prop z > {max_clay + extra}) or (prop z < {min_clay - extra})')
-        # ag = ag.residues.atoms
         return atom_group
 
     @property
@@ -301,9 +269,7 @@ class Builder:
             logger.debug(f"before n_atoms: {self.stack.universe.atoms.n_atoms}")
             self.remove_bulk_ions()
             logger.debug(f"after n_atoms: {self.stack.universe.atoms.n_atoms}")
-            # self.top.reset_molecules()
-            # self.top.add_molecules(self.stack.universe)
-            # self.top.write(self.stack.top)
+
             ion_df: pd.DataFrame = self.args.bulk_ion_df
             pion: str = self.args.default_bulk_pion[0]
             # pq = int(self.args.default_bulk_pion[1])
@@ -353,10 +319,6 @@ class Builder:
             self.stack.write(self.top)
             processed_top = Path("processed.top")
             processed_top.unlink(missing_ok=True)
-            # tempfiles = Path.cwd().glob(r'temp.top[a-zA-Z0-9]*')
-            # for file in tempfiles:
-            #     file.unlink(missing_ok=True)
-            #     logger.debug(f'Removing {file.name}')
         else:
             logger.info("\tSkipping bulk ion addition.")
 
@@ -407,20 +369,12 @@ class Builder:
         new_dimensions[2] = np.sum(sheet_heights)
         new_dimensions[3:] = [90.0, 90.0, 90.0]
         combined.dimensions = new_dimensions
-
-        # combined = center_clay(combined,
-        #             crdout=str(crdout),
-        #             uc_name=self.args.uc_stem)
         combined.atoms.pack_into_box(box=combined.dimensions, inplace=True)
         # combined.atoms.write(str(crdout))
         crdout: GROFile = self.get_filename(suffix=".gro")
         crdout.universe: Universe = combined
         crdout.write(self.top)
         add_resnum(crdin=crdout, crdout=crdout)
-        # topout = crdout.top
-        # self.top.reset_molecules()
-        # self.top.add_molecules(combined)
-        # self.top.write(str(topout))
         self.stack: GROFile = crdout
         logger.info(f"Saving sheet stack as {self.stack.stem!r}\n")
 
@@ -434,18 +388,10 @@ class Builder:
     @property
     def stack(self) -> GROFile:
         return self.__path_getter("stack")
-        # if self.__stack is not None:
-        #     return self.__stack
-        # else:
-        #     logger.debug('No sheet stack filename defined.')
 
     @stack.setter
     def stack(self, stack: Union[Path, str, GROFile]) -> None:
         self.__path_setter_copy("stack", stack)
-        # if self.stack is not None:
-        #     shutil.copy(self.stack, self.args.outpath / self.stack.name)
-        #     shutil.copy(self.stack.top, self.args.outpath / self.stack.top.name)
-        # self.__stack = FileFactory(Path(stack).with_suffix('.gro'))
 
     def write_sheet_crds(self) -> None:
         logger.info(get_subheader(f"1. Generating clay sheets."))
@@ -591,54 +537,14 @@ class Builder:
                                     f"Number of inserted molecules ({replace_check}) does not match target number "
                                     f"({n_ions})!"
                                 )
-            # added_ions_u = Universe(temp_gro)
             infile.universe: Universe = temp_gro.universe
             infile.write(topology=self.top)
             self.il_solv: GROFile = infile
-            # # solv_u = Universe(self.__il_solv.with_suffix('.gro'))
-            # self.il_solv.universe = added_ions_u
-            # self.il_solv.write(topology)
-            # self.top.reset_molecules()
-            # self.top.add_molecules(added_ions_u)
-            # self.top.write(self.il_solv.top)
-            # shutil.copy(temp_outfile.name, self.il_solv)
-        # self.il_solv = outfile
 
-    # def add_il_ions(self):
-    #     solvent_crds = Path(self.il_solv).with_suffix('.gro')
-    #     crdout = self.get_filename('spc', 'ions', suffix='gro')
-    #     topout = crdout.with_suffix('.top')
-    #     # tmpcrd = tempfile.NamedTemporaryFile(suffix='.gro')
-    #     # tmptop = tempfile.NamedTemporaryFile(suffix='.top')
-    #     shutil.copy(solvent_crds.with_suffix('.gro'), crdout)
-    #     shutil.copy(solvent_crds.with_suffix('.top'), topout)
-    #     for ion, n_atoms in self.args.n_il_ions.items():
-    #         # if self.args.ion_df.loc[ion, 'charges'] < 0:
-    #         #     nname = ion
-    #         #     nq = self.args.ion_df.loc[ion, 'charges']
-    #         #     nn = n_atoms
-    #         #     pname = 'Na'
-    #         #     pq = 1
-    #         #     pn = 0
-    #         # elif self.args.ion_df.loc[ion, 'charges'] > 0:
-    #         #     pname = ion
-    #         #     pq = self.args.ion_df.loc[ion, 'charges']
-    #         #     pn = n_atoms
-    #         #     nname = 'Cl'
-    #         #     nq = -1
-    #         #     nn = 0
-    #         # else:
-    #         #     raise ValueError('Invalid charge!')
-    #
-    #         add_ions_n_mols(odir=self.args.outpath,
-    #                    crdin=crdout,
-    #                    topin=topout, topout=topout,
-    #                    ion=ion, n_atoms=n_atoms)
     def center_clay_in_box(self) -> None:
         if self.__box_ext is True:
             logger.info("\nCentering clay in box")
             center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
-
 
 
 class Sheet:
@@ -679,7 +585,6 @@ class Sheet:
     def n_sheet(self, n_sheet: int):
         self.__n_sheet: int = n_sheet
         self.__random = np.random.default_rng(n_sheet)
-        # self.__random = np.random.Generator(n_sheet)
 
     @property
     def random_generator(self) -> Union[None, np.random._generator.Generator]:
@@ -687,10 +592,6 @@ class Sheet:
             return self.__random
         else:
             raise AttributeError(f"No sheet number set!")
-
-    # @property
-    # def __uc_array(self):
-    #     return np.repeat(self.uc_ids, self.uc_numbers)
 
     @property
     def uc_array(self) -> NDArray:
@@ -754,7 +655,6 @@ class Sheet:
         logger.info(f"Writing sheet {self.n_sheet} to {filename.name}")
         filename.universe = new_universe
         filename.write()
-        # filename.universe.atoms.write(str(filename.resolve()))
 
     def __cells_shift(self, n_cells: int, n_atoms: int) -> NDArray:
         shift: NDArray = np.atleast_2d(np.arange(n_cells)).repeat(n_atoms, axis=1)
@@ -771,24 +671,6 @@ class Sheet:
     @property
     def universe(self) -> Universe:
         return Universe(str(self.get_filename(suffix=".gro")))
-
-        # uc_array = np.repeat(self.tcb_namelist, uc_numbers_list)
-        #     # tcb_str = tcbSpec(sheet)
-        #     # tcb_namelist = TCBNameList(uc_names_list, tcb_str)
-        #     # uc_array = np.repeat(tcb_namelist, uc_numbers_list)
-        #     np.random.shuffle(uc_array)
-        #     print(uc_array)
-        #     sheet_uc_grofiles_dict[sheet] = uc_array
-        #     print(sheet_uc_grofiles_dict[sheet])
-        # np.save(sheetfile, [*sheet_uc_grofiles_dict.items()])
-        # return sheet_uc_grofiles_dict
-
-    # @cached_property
-    # def xy_mask(self):
-    #     xy_mask = pd.DataFrame({
-    #         'x': np.tile(np.arange(0, self.x_cells).repeat(self.uc_n_atoms), self.y_cells),
-    #         'y': np.arange(0, self.y_cells).repeat(self.uc_n_atoms * self.x_cells)})
-    #     xy_box = uc_dim[:2]
 
     # TODO: add n_atoms and uc data to match data
 
@@ -876,7 +758,7 @@ class Solvent:
             spc_gro: GROFile = GROFile(spc_name)  # .with_suffix('.gro')
         else:
             spc_gro: GROFile = spc_name
-        spc_top: TOPFile = spc_gro.top  # Path(outname).with_suffix('.top')
+        spc_top: TOPFile = spc_gro.top
         spc_gro.universe = Universe.empty(n_atoms=0)
         spc_gro.write(topology=topology)
         # if topology.__class__.__name__ == 'TopologyConstructorBase':
@@ -896,28 +778,6 @@ class Solvent:
         logger.debug(f"Saving solvent sheet as {spc_gro.stem!r}")
         self.__universe: Universe = spc_gro.universe
         self.__top: TopologyConstructorBase = topology
-
-    # def write_spc_topfile(self, outtop, clay_ff_path):
-    # """Generate header str for simulation box topology file."""
-    # ff_head = textwrap.dedent(f"""
-    #                                       ; include params for ClayFF_Fe
-    #                                       #include "{clay_ff_path}/forcefield.itp"
-    #                                       #include "{clay_ff_path}/ffnonbonded.itp"\n
-    #                                       #include "{clay_ff_path}/ffbonded.itp"\n
-    #                                        """)
-    # solv_head = textwrap.dedent(f"""
-    #                             ; include params for solvent
-    #                             #include "{clay_ff_path}/interlayer_spc.itp"
-    #                             #include "{clay_ff_path}/spc.itp"
-    #                             """)
-    # mol_head = textwrap.dedent(f"""
-    #                    [ system ]
-    #                    SPC water
-    #                    [ molecules ]
-    #                    ; Compound        #mols
-    #                    """)
-    # with open(outtop, 'w') as topfile:
-    #     topfile.write(ff_head + solv_head + mol_head)
 
     def check_solvent_nummols(self, solvate_stderr: str) -> None:
         added_wat: str = re.search(
