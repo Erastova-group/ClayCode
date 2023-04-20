@@ -34,6 +34,7 @@ parser.add_argument('--debug',
                     dest='DEBUG')
 
 subparsers = parser.add_subparsers(help="Select option.", dest="option")
+subparsers.required = True
 
 # Model setup parser
 buildparser = subparsers.add_parser("builder", help="Setup clay models.")
@@ -45,6 +46,7 @@ buildparser.add_argument(
     help="YAML file with builder parameters",
     metavar="yaml_file",
     dest="yaml_file",
+    required=True
 )
 
 # Clay model composition

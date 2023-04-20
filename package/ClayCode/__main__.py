@@ -5,7 +5,9 @@ from ClayCode import logger
 from ClayCode.core.parsing import parser, ArgsFactory, BuildArgs
 from ClayCode.core.utils import get_header, get_subheader
 
-if __name__ == "__main__":
+__all__ = ['run']
+
+def run():
     args = parser.parse_args(
         sys.argv[1:]
     )
@@ -75,3 +77,6 @@ if __name__ == "__main__":
     # #             builder.outpath,
     # #             builder.sysname,
     # #         )
+
+if __name__ == "__main__":
+    run()

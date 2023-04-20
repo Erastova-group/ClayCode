@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 
-from ClayCode.config.consts import (
+from ClayCode.core.consts import (
     KWD_DICT,
     exec_time,
     exec_date,
@@ -16,12 +16,10 @@ from ClayCode.config.consts import (
     FILE_SEARCHSTR_LIST,
     DATA
 )
-
-__all__ = ["analysis", "builder", "siminp", "config", 'logger']  # , 'check', 'edit']
-
-
 logging.basicConfig(format="%(message)s", level=logging.INFO)
 logger = logging.getLogger('ClayCode')
+
+__all__ = ["analysis", "builder", "siminp", "config", 'logger']  # , 'check', 'edit']
 
 # TODO: remove siminp?
 # TODO: take out setup/edit/molecule insertion from analysis

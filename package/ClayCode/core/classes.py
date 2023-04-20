@@ -41,7 +41,7 @@ from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
 
 from ClayCode import FF
-from ClayCode.config.consts import KWD_DICT as _KWD_DICT
+from ClayCode.core.consts import KWD_DICT as _KWD_DICT
 from ClayCode.core.utils import select_named_file
 
 logger = logging.getLogger(_Path(__file__).stem)
