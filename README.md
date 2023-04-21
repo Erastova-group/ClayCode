@@ -1,5 +1,6 @@
 # ClayCode
 Hannah Pollak, Matteo Degiacomi, Valentina Erastova
+
 University of Edinburgh, 2023
 
 ## Installation
