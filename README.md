@@ -1,9 +1,12 @@
 # ClayCode
 
+## Requirements
+- python >= 3.9
+
 ## Installation
 
 ```shell
-git clone https://github.com/Erastova-group/ClayCode.git
+gh repo clone Erastova-group/ClayCode
 cd ClayCode
 pip install .
 ````
