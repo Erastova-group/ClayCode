@@ -26,7 +26,7 @@ classifiers = [
 ClayCode = "ClayCode:__main__.run"
 
 [tool.setuptools.packages.find]
-where=['claycode']
+where=['package']
 
 [tool.setuptools]
 # ...
