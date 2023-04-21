@@ -31,7 +31,7 @@ where=['package']
 [tool.setuptools.package-data]
 ClayAnalysis = ['data/AA/*/*.gro', 'data/AA/*/*.itp', 'data/FF/*.ff/*.itp',
     'data/FF/*.itp', 'data/MDP/*.mdp', 'data/UCS/*/*.itp', 'data/UCS/*/*.itp',
-    'data/CLAYS/*/*/*/*.gro', 'data/CLAYS/*/*/*/*.top']
+    'data/CLAYS/*/*/*/*.gro', 'data/CLAYS/*/*/*/*.top', 'package/ClayCode/builder/config/defaults.yaml']
 
 [project.urls]
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"
