@@ -11,7 +11,7 @@ import pandas as pd
 import yaml
 from pathlib import Path
 from ClayCode import UCS
-import importlib
+import importlib.resources
 
 __all__ = ["BUILD_DEFAULTS", "UC_CHARGE_OCC"]
 
