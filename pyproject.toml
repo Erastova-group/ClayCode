@@ -33,7 +33,6 @@ where=['package']
 # By default, include-package-data is true in pyproject.toml, so you do
 # NOT have to specify this line.
 include-package-data = true
-namespaces=true
 
 [tool.setuptools.package-data]
 "ClayAnalysis.data" = ['**/*.top', '**/*.gro', '**/*.itp', '**/*/mdp',
