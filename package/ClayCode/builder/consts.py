@@ -15,7 +15,7 @@ from ClayCode import UCS
 __all__ = ["BUILD_DEFAULTS", "UC_CHARGE_OCC"]
 
 # BUILD_DEFAULTS: default parameters for model setup from 'defaults.yaml'
-defaults_file = Path(__file__).parent / "config/defaults.yaml"
+defaults_file = Path(__file__).parent.resolve() / "config/defaults.yaml"
 with open(defaults_file, "r") as file:
     BUILD_DEFAULTS = yaml.safe_load(file)
     for prm in ["UC_INDEX_LIST", "UC_RATIOS_LIST"]:
