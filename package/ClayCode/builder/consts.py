@@ -6,7 +6,6 @@ Adds:
 - Charge and occupation information for different unit cell types from ``data/UCS/charge_occ.csv``
 
 """
-import tempfile
 
 import pandas as pd
 import yaml

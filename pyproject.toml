@@ -26,12 +26,13 @@ classifiers = [
 ClayCode = "ClayCode:__main__.run"
 
 [tool.setuptools.packages.find]
-where=['package']
+where=['package', 'data']
 
 [tool.setuptools.package-data]
 ClayAnalysis = ['data/AA/*/*.gro', 'data/AA/*/*.itp', 'data/FF/*.ff/*.itp',
     'data/FF/*.itp', 'data/MDP/*.mdp', 'data/UCS/*/*.itp', 'data/UCS/*/*.itp',
-    'data/CLAYS/*/*/*/*.gro', 'data/CLAYS/*/*/*/*.top', 'package/ClayCode/builder/config/defaults.yaml']
+    'data/CLAYS/*/*/*/*.gro', 'data/CLAYS/*/*/*/*.top',
+    '*.yaml']
 
 [project.urls]
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"
