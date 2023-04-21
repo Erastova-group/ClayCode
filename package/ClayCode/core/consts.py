@@ -23,12 +23,12 @@ __all__ = [
 
 
 # PATH = Path(__file__)
-DATA = importlib_resources.files('ClayCode.data')#(PATH.parent / "../data").resolve()
-AA = DATA.joinpath("AA")
-FF = DATA.joinpath("FF")
-MDP = DATA.joinpath("MDP")
-CLAYS = DATA.joinpath("CLAYS")
-UCS = DATA.joinpath("UCS")
+DATA = importlib_resources.files('ClayCode').joinpath('data')#(PATH.parent / "../data").resolve()
+AA = DATA / "AA"
+FF = DATA / "FF"
+MDP = DATA / "MDP"
+CLAYS = DATA / "CLAYS"
+UCS = DATA / "UCS"
 
 IONS = ["Cl", "Na", "Ca", "K", "Mg", "Cs"]
 SOL_DENSITY = 1000  # g L-1
