@@ -20,7 +20,7 @@ __all__ = [
 ]
 
 PATH = Path(__file__)
-DATA = (PATH.parent / "../../data").resolve()
+DATA = (PATH.parent / "../data").resolve()
 AA = (DATA / "AA").resolve()
 FF = (DATA / "FF").resolve()
 MDP = (DATA / "MDP").resolve()
