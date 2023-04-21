@@ -2,6 +2,8 @@
 
 ## Installation
 
+This package requires python version >=3.9.
+
 ```shell
 git clone https://github.com/Erastova-group/ClayCode.git
 cd ClayCode
@@ -12,7 +14,7 @@ pip install .
 
 ClayCode is called in the following way:
 
-```
+```shell
 ClayCode <option> <option arguments>
 ```
 
@@ -38,7 +40,7 @@ Arguments for `builder` are:
 
 #### Example:
 
-```
+```shell
 ClayCode builder -f path/to/input.yaml
 ```
 
