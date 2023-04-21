@@ -8,12 +8,12 @@ gh repo clone Erastova-group/ClayCode
 cd ClayCode
 pip install .
 ````
-
-## Requirements
+### Dependancies:
+#### Requirements
 - python >= 3.9
 - parmed
 - 
-## Installs
+#### Installs
 - numpy
 - scipy
 - ...
