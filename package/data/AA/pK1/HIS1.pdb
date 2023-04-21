@@ -1,0 +1,26 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     12:33:39      CREATED BY USER: apache                  
+ATOM      1  N   HIS H   1      -3.084  -1.964  -1.027  1.00  0.00      HIS1
+ATOM      2  CA  HIS H   1      -1.848  -1.254  -0.524  1.00  0.00      HIS1
+ATOM      3  CB  HIS H   1      -1.289  -1.993   0.739  1.00  0.00      HIS1
+ATOM      4  CG  HIS H   1      -0.055  -1.365   1.363  1.00  0.00      HIS1
+ATOM      5  CD2 HIS H   1       1.222  -1.821   1.435  1.00  0.00      HIS1
+ATOM      6  NE2 HIS H   1       1.982  -0.801   1.955  1.00  0.00      HIS1
+ATOM      7  CE1 HIS H   1       1.196   0.238   2.192  1.00  0.00      HIS1
+ATOM      8  ND1 HIS H   1      -0.046  -0.078   1.836  1.00  0.00      HIS1
+ATOM      9  C   HIS H   1      -0.718  -1.117  -1.609  1.00  0.00      HIS1
+ATOM     10  O   HIS H   1      -1.096  -0.401  -2.720  1.00  0.00      HIS1
+ATOM     11  OXT HIS H   1       0.392  -1.598  -1.527  1.00  0.00      HIS1
+ATOM     12  H1  HIS H   1      -3.812  -2.026  -0.285  1.00  0.00      HIS1
+ATOM     13  H2  HIS H   1      -2.844  -2.928  -1.342  1.00  0.00      HIS1
+ATOM     14  HA  HIS H   1      -2.159  -0.224  -0.232  1.00  0.00      HIS1
+ATOM     15  HB1 HIS H   1      -1.030  -3.037   0.445  1.00  0.00      HIS1
+ATOM     16  HB2 HIS H   1      -2.076  -2.066   1.522  1.00  0.00      HIS1
+ATOM     17  HD2 HIS H   1       1.616  -2.779   1.103  1.00  0.00      HIS1
+ATOM     18  HE1 HIS H   1       1.514   1.190   2.597  1.00  0.00      HIS1
+ATOM     19  HD1 HIS H   1      -0.829   0.539   1.918  1.00  0.00      HIS1
+ATOM     20  H   HIS H   1      -0.365  -0.367  -3.347  1.00  0.00      HIS1
+ATOM     21  H3  HIS H   1      -3.480  -1.442  -1.839  1.00  0.00      HIS1
+ATOM     22  HE2 HIS H   1       2.977  -0.840   2.102  1.00  0.00      HIS1
+TER      23      HIS1     1
+END
