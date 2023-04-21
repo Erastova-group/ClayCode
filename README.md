@@ -2,6 +2,12 @@
 
 ## Requirements
 - python >= 3.9
+- parmed
+- 
+## Installs
+- numpy
+- scipy
+- ...
 
 ## Installation
 
