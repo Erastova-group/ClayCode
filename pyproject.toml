@@ -43,5 +43,5 @@ include-package-data = true
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"
 
 [build-system]
-requires = ["setuptools>=62"]
+requires = ["setuptools>=62", "importlib_resources"]
 build-backend = "setuptools.build_meta"
