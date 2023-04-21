@@ -30,6 +30,7 @@ UCS = (DATA / "UCS").resolve()
 IONS = ["Cl", "Na", "Ca", "K", "Mg", "Cs"]
 SOL_DENSITY = 1000  # g L-1
 SOL = "SOL"
+GRO_FMT = '{:>5s}{:<5s}{:5s}{:5d}{:8.3f}{:8.3f}{:8.3f}\n'
 
 shandler = logging.StreamHandler()
 shandler.setLevel(logging.INFO)

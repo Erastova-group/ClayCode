@@ -12,8 +12,7 @@ import pandas as pd
 
 from ClayCode import logger, MDP
 from ClayCode.builder.claycomp import UCData
-from ClayCode.builder.consts import GRO_FMT
-from ClayCode.builder.solvent import logger
+from ClayCode.core.consts import GRO_FMT
 from ClayCode.builder.topology import TopologyConstructorBase
 from ClayCode.core.classes import FileFactory, GROFile, TOPFile, Dir
 from ClayCode.core.gmx import run_gmx_insert_mols, run_gmx_solvate
