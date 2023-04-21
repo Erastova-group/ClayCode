@@ -37,7 +37,7 @@ include-package-data = true
 [tool.setuptools.package-data]
 "ClayAnalysis.data" = ['**/*.top', '**/*.gro', '**/*.itp', '**/*/mdp',
 '**/*.yaml', '**/*.csv', '**/*.atp', '**/*.ndx']
-"ClayAnalysis.builder.config" = ['*.yaml']
+"ClayAnalysis.builder" = ['**/*.yaml']
 
 [project.urls]
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"

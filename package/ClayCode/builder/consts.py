@@ -6,7 +6,7 @@ Adds:
 - Charge and occupation information for different unit cell types from ``data/UCS/charge_occ.csv``
 
 """
-
+import importlib_resources
 import pandas as pd
 import yaml
 from pathlib import Path
@@ -15,7 +15,8 @@ from ClayCode import UCS
 __all__ = ["BUILD_DEFAULTS", "UC_CHARGE_OCC"]
 
 # BUILD_DEFAULTS: default parameters for model setup from 'defaults.yaml'
-defaults_file = Path(__file__).parent.resolve() / "config/defaults.yaml"
+build_config = importlib_resources.files('ClayCode.builder.config')
+defaults_file = build_config / "config/defaults.yaml"
 with open(defaults_file, "r") as file:
     BUILD_DEFAULTS = yaml.safe_load(file)
     for prm in ["UC_INDEX_LIST", "UC_RATIOS_LIST"]:
