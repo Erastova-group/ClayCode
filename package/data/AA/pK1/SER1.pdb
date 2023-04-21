@@ -1,0 +1,19 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     13:46:56      CREATED BY USER: apache                  
+ATOM      1  N   SER S   1       1.210   0.166  -0.009  1.00  0.00      SER1
+ATOM      2  CA  SER S   1      -0.302   0.086  -0.103  1.00  0.00      SER1
+ATOM      3  CB  SER S   1      -0.916   1.513  -0.104  1.00  0.00      SER1
+ATOM      4  OG  SER S   1      -0.492   2.223   1.060  1.00  0.00      SER1
+ATOM      5  C   SER S   1      -0.848  -0.645  -1.350  1.00  0.00      SER1
+ATOM      6  O   SER S   1      -0.428  -1.955  -1.461  1.00  0.00      SER1
+ATOM      7  OXT SER S   1      -1.552  -0.150  -2.210  1.00  0.00      SER1
+ATOM      8  H1  SER S   1       1.431   0.833   0.765  1.00  0.00      SER1
+ATOM      9  H2  SER S   1       1.609   0.539  -0.894  1.00  0.00      SER1
+ATOM     10  HA  SER S   1      -0.670  -0.454   0.800  1.00  0.00      SER1
+ATOM     11  HB1 SER S   1      -2.028   1.450  -0.116  1.00  0.00      SER1
+ATOM     12  HB2 SER S   1      -0.591   2.071  -1.013  1.00  0.00      SER1
+ATOM     13  H4  SER S   1      -0.987   3.055   1.116  1.00  0.00      SER1
+ATOM     14  H5  SER S   1      -0.809  -2.348  -2.252  1.00  0.00      SER1
+ATOM     15  H3  SER S   1       1.619  -0.768   0.198  1.00  0.00      SER1
+TER      16      SER1     1
+END

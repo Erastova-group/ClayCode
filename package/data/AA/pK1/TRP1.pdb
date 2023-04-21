@@ -1,0 +1,32 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     14: 2:59      CREATED BY USER: apache                  
+ATOM      1  N   TRP T   1       0.256   5.641   1.246  1.00  0.00      TRP1
+ATOM      2  CA  TRP T   1       0.458   4.296   0.601  1.00  0.00      TRP1
+ATOM      3  CB  TRP T   1       0.651   4.514  -0.932  1.00  0.00      TRP1
+ATOM      4  CG  TRP T   1       0.778   3.224  -1.717  1.00  0.00      TRP1
+ATOM      5  CD1 TRP T   1       1.924   2.516  -1.952  1.00  0.00      TRP1
+ATOM      6  NE1 TRP T   1       1.577   1.314  -2.538  1.00  0.00      TRP1
+ATOM      7  CE2 TRP T   1       0.220   1.233  -2.712  1.00  0.00      TRP1
+ATOM      8  CD2 TRP T   1      -0.316   2.425  -2.195  1.00  0.00      TRP1
+ATOM      9  CE3 TRP T   1      -1.694   2.634  -2.212  1.00  0.00      TRP1
+ATOM     10  CZ3 TRP T   1      -2.525   1.650  -2.760  1.00  0.00      TRP1
+ATOM     11  CH2 TRP T   1      -1.980   0.465  -3.269  1.00  0.00      TRP1
+ATOM     12  CZ2 TRP T   1      -0.598   0.255  -3.236  1.00  0.00      TRP1
+ATOM     13  C   TRP T   1       1.661   3.502   1.242  1.00  0.00      TRP1
+ATOM     14  O   TRP T   1       1.430   3.101   2.545  1.00  0.00      TRP1
+ATOM     15  OXT TRP T   1       2.747   3.292   0.738  1.00  0.00      TRP1
+ATOM     16  H1  TRP T   1      -0.559   6.127   0.822  1.00  0.00      TRP1
+ATOM     17  H2  TRP T   1       1.108   6.223   1.103  1.00  0.00      TRP1
+ATOM     18  HA  TRP T   1      -0.471   3.701   0.765  1.00  0.00      TRP1
+ATOM     19  HB1 TRP T   1       1.568   5.121  -1.108  1.00  0.00      TRP1
+ATOM     20  HB2 TRP T   1      -0.205   5.086  -1.353  1.00  0.00      TRP1
+ATOM     21  HD1 TRP T   1       2.938   2.776  -1.655  1.00  0.00      TRP1
+ATOM     22  HE1 TRP T   1       2.209   0.565  -2.797  1.00  0.00      TRP1
+ATOM     23  HE3 TRP T   1      -2.129   3.547  -1.837  1.00  0.00      TRP1
+ATOM     24  HZ3 TRP T   1      -3.595   1.804  -2.804  1.00  0.00      TRP1
+ATOM     25  HH2 TRP T   1      -2.633  -0.286  -3.694  1.00  0.00      TRP1
+ATOM     26  HZ2 TRP T   1      -0.172  -0.660  -3.621  1.00  0.00      TRP1
+ATOM     27  H   TRP T   1       2.207   2.625   2.855  1.00  0.00      TRP1
+ATOM     28  H3  TRP T   1       0.093   5.519   2.269  1.00  0.00      TRP1
+TER      29      TRP1     1
+END
