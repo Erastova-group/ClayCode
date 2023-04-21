@@ -8,7 +8,7 @@ This package requires python version >=3.9.
 ```shell
 gh repo clone Erastova-group/ClayCode
 cd ClayCode
-pip install .
+python3 pip install .
 ````
 
 
