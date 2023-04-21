@@ -24,11 +24,11 @@ __all__ = [
 
 # PATH = Path(__file__)
 DATA = importlib_resources.files('ClayCode.data')#(PATH.parent / "../data").resolve()
-AA = (DATA / "AA").resolve()
-FF = (DATA / "FF").resolve()
-MDP = (DATA / "MDP").resolve()
-CLAYS = (DATA / "CLAYS").resolve()
-UCS = (DATA / "UCS").resolve()
+AA = DATA.joinpath("AA")
+FF = DATA.joinpath("FF")
+MDP = DATA.joinpath("MDP")
+CLAYS = DATA.joinpath("CLAYS")
+UCS = DATA.joinpath("UCS")
 
 IONS = ["Cl", "Na", "Ca", "K", "Mg", "Cs"]
 SOL_DENSITY = 1000  # g L-1
@@ -155,3 +155,4 @@ def set_globals() -> Dict[str, Dict[str, str]]:
 
 
 KWD_DICT = set_globals()
+
