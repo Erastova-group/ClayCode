@@ -263,7 +263,7 @@ class UCData(Dir):
     @cached_property
     def tot_charge(self) -> pd.Series:
         charge = self.full_df.apply(lambda x: x * self.full_df["charge"], raw=True)
-        total_charge = charge.loc[:, self.uc_idxs].sum().round(2).convert_dtypes()
+        total_charge = charge.loc[:, self.uc_idxs].sum().astype(np.float64).round(2)
         total_charge.name = "charge"
         return total_charge
 
@@ -598,7 +598,7 @@ class TargetClayComposition:
         check_occ: pd.Series = input_uc_occ - correct_uc_occ
         check_occ.dropna(inplace=True)
         logger.info(f"\nGetting sheet occupancies:")
-        for sheet, occ in check_occ.iteritems():
+        for sheet, occ in check_occ.items():
             logger.info(
                 f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.2f}/{correct_uc_occ[sheet]:.2f} ({occ:+.2f})"
             )
