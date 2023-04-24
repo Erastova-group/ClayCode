@@ -11,12 +11,12 @@ import pandas as pd
 import yaml
 from pathlib import Path
 from ClayCode import UCS
-import importlib.resources
+import importlib_resources
 
 __all__ = ["BUILD_DEFAULTS", "UC_CHARGE_OCC"]
 
 # BUILD_DEFAULTS: default parameters for model setup from 'defaults.yaml'
-BUILD_CONFIG_DEFAULTS = importlib.resources.files('ClayCode.builder').joinpath('config/defaults.yaml')
+BUILD_CONFIG_DEFAULTS = importlib_resources.files('ClayCode.builder').joinpath('config/defaults.yaml')
 with open(BUILD_CONFIG_DEFAULTS, "r") as file:
     BUILD_DEFAULTS = yaml.safe_load(file)
     for prm in ["UC_INDEX_LIST", "UC_RATIOS_LIST"]:

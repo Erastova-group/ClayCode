@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Dict
 import logging
-import importlib.resources
+import importlib_resources
 
 __all__ = [
     "exec_time",
@@ -23,7 +22,7 @@ __all__ = [
 
 
 # PATH = Path(__file__)
-DATA = importlib.resources.files('ClayCode').joinpath('data')#(PATH.parent / "../data").resolve()
+DATA = importlib_resources.files('ClayCode').joinpath('data')#(PATH.parent / "../data").resolve()
 AA = DATA / "AA"
 FF = DATA / "FF"
 MDP = DATA / "MDP"
