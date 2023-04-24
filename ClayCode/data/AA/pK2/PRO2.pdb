@@ -1,0 +1,21 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     13:44:35      CREATED BY USER: apache                  
+ATOM      1  N   PRO P   1       0.470   0.477   0.686  1.00  0.00      PRO2
+ATOM      2  CD  PRO P   1       0.850  -0.362  -0.536  1.00  0.00      PRO2
+ATOM      3  CG  PRO P   1       1.618   0.658  -1.383  1.00  0.00      PRO2
+ATOM      4  CB  PRO P   1       0.962   2.016  -1.055  1.00  0.00      PRO2
+ATOM      5  CA  PRO P   1       0.043   1.803   0.171  1.00  0.00      PRO2
+ATOM      6  C   PRO P   1      -1.407   1.522  -0.127  1.00  0.00      PRO2
+ATOM      7  O   PRO P   1      -1.767   1.564  -1.331  1.00  0.00      PRO2
+ATOM      8  OXT PRO P   1      -2.121   1.234   0.875  1.00  0.00      PRO2
+ATOM      9  H1  PRO P   1       1.200   0.610   1.364  1.00  0.00      PRO2
+ATOM     10  HD1 PRO P   1      -0.092  -0.641  -1.091  1.00  0.00      PRO2
+ATOM     11  HD2 PRO P   1       1.421  -1.292  -0.305  1.00  0.00      PRO2
+ATOM     12  HG1 PRO P   1       1.566   0.428  -2.458  1.00  0.00      PRO2
+ATOM     13  HG2 PRO P   1       2.687   0.668  -1.112  1.00  0.00      PRO2
+ATOM     14  HB1 PRO P   1       0.396   2.415  -1.910  1.00  0.00      PRO2
+ATOM     15  HB2 PRO P   1       1.721   2.776  -0.822  1.00  0.00      PRO2
+ATOM     16  HA  PRO P   1       0.109   2.524   0.974  1.00  0.00      PRO2
+ATOM     17  H2  PRO P   1      -0.380   0.177   1.161  1.00  0.00      PRO2
+TER      18      PRO2     1
+END

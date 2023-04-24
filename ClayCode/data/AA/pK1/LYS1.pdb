@@ -1,0 +1,30 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     13:22: 2      CREATED BY USER: apache                  
+ATOM      1  NZ  LYS L   1       4.109  -2.871   0.001  1.00  0.00      LYS1
+ATOM      2  CE  LYS L   1       3.598  -1.471   0.013  1.00  0.00      LYS1
+ATOM      3  CD  LYS L   1       2.065  -1.483   0.038  1.00  0.00      LYS1
+ATOM      4  CG  LYS L   1       1.544  -0.041   0.060  1.00  0.00      LYS1
+ATOM      5  CB  LYS L   1       0.006   0.021   0.007  1.00  0.00      LYS1
+ATOM      6  CA  LYS L   1      -0.544   1.474  -0.051  1.00  0.00      LYS1
+ATOM      7  N   LYS L   1      -2.047   1.436   0.025  1.00  0.00      LYS1
+ATOM      8  C   LYS L   1      -0.011   2.199  -1.338  1.00  0.00      LYS1
+ATOM      9  O   LYS L   1      -0.338   3.538  -1.388  1.00  0.00      LYS1
+ATOM     10  OXT LYS L   1       0.585   1.687  -2.262  1.00  0.00      LYS1
+ATOM     11  HZ1 LYS L   1       3.762  -3.364  -0.848  1.00  0.00      LYS1
+ATOM     12  HZ2 LYS L   1       3.767  -3.375   0.845  1.00  0.00      LYS1
+ATOM     13  HE1 LYS L   1       3.977  -0.953  -0.887  1.00  0.00      LYS1
+ATOM     14  HE2 LYS L   1       4.004  -0.956   0.900  1.00  0.00      LYS1
+ATOM     15  HD1 LYS L   1       1.676  -2.022   0.930  1.00  0.00      LYS1
+ATOM     16  HD2 LYS L   1       1.668  -1.985  -0.876  1.00  0.00      LYS1
+ATOM     17  HG1 LYS L   1       1.993   0.479  -0.816  1.00  0.00      LYS1
+ATOM     18  HG2 LYS L   1       1.910   0.479   0.974  1.00  0.00      LYS1
+ATOM     19  HB1 LYS L   1      -0.387  -0.504   0.908  1.00  0.00      LYS1
+ATOM     20  HB2 LYS L   1      -0.341  -0.542  -0.890  1.00  0.00      LYS1
+ATOM     21  HA  LYS L   1      -0.170   2.028   0.841  1.00  0.00      LYS1
+ATOM     22  H1  LYS L   1      -2.360   0.948   0.889  1.00  0.00      LYS1
+ATOM     23  H2  LYS L   1      -2.426   0.933  -0.804  1.00  0.00      LYS1
+ATOM     24  H   LYS L   1       0.006   3.906  -2.208  1.00  0.00      LYS1
+ATOM     25  HZ3 LYS L   1       5.150  -2.879  -0.003  1.00  0.00      LYS1
+ATOM     26  H3  LYS L   1      -2.418   2.411   0.029  1.00  0.00      LYS1
+TER      27      LYS1     1
+END

@@ -1,0 +1,21 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     13:53: 6      CREATED BY USER: apache                  
+ATOM      1  CG2 THR T   1      -0.892  -1.925  -1.079  1.00  0.00      THR2
+ATOM      2  CB  THR T   1       0.460  -1.408  -0.553  1.00  0.00      THR2
+ATOM      3  OG1 THR T   1       1.328  -1.254  -1.666  1.00  0.00      THR2
+ATOM      4  CA  THR T   1       0.241  -0.097   0.196  1.00  0.00      THR2
+ATOM      5  N   THR T   1      -0.392   0.976  -0.653  1.00  0.00      THR2
+ATOM      6  C   THR T   1       1.546   0.444   0.792  1.00  0.00      THR2
+ATOM      7  O   THR T   1       2.532  -0.343   0.768  1.00  0.00      THR2
+ATOM      8  OXT THR T   1       1.497   1.618   1.223  1.00  0.00      THR2
+ATOM      9 HG21 THR T   1      -0.764  -2.949  -1.491  1.00  0.00      THR2
+ATOM     10 HG22 THR T   1      -1.277  -1.280  -1.896  1.00  0.00      THR2
+ATOM     11 HG23 THR T   1      -1.643  -1.969  -0.263  1.00  0.00      THR2
+ATOM     12  HB  THR T   1       0.887  -2.172   0.143  1.00  0.00      THR2
+ATOM     13  HG1 THR T   1       2.180  -1.057  -1.238  1.00  0.00      THR2
+ATOM     14  HA  THR T   1      -0.432  -0.279   1.061  1.00  0.00      THR2
+ATOM     15  H1  THR T   1      -1.411   0.838  -0.765  1.00  0.00      THR2
+ATOM     16  H2  THR T   1       0.095   0.932  -1.574  1.00  0.00      THR2
+ATOM     17  H3  THR T   1      -0.161   1.882  -0.185  1.00  0.00      THR2
+TER      18      THR2     1
+END

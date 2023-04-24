@@ -23,10 +23,10 @@ classifiers = [
 ]
 
 [project.scripts]
-ClayCode = "ClayCode:__main__.run"
+ClayCode = "ClayCode:main.run"
 
 [tool.setuptools.packages.find]
-where=['package']
+where=['ClayCode']
 
 [tool.setuptools]
 # ...
