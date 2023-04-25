@@ -12,7 +12,7 @@ With conda, you can create a working environment, then activate it:
 conda create -n py39 python=3.9
 conda activate py39
 ````
-
+To install the ClayCode:
 ```shell
 gh repo clone Erastova-group/ClayCode
 cd ClayCode
