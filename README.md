@@ -7,6 +7,12 @@ University of Edinburgh, 2023
 
 This package requires python version >=3.9.
 
+With conda, you can create a working environment, then activate it:
+```shell
+conda create -n py39 python=3.9
+conda activate py39
+````
+
 ```shell
 gh repo clone Erastova-group/ClayCode
 cd ClayCode
