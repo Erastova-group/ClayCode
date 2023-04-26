@@ -35,10 +35,11 @@ from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
 from numpy.typing import NDArray
 
-from ClayCode import SOL, SOL_DENSITY, IONS, MDP, FF, DATA, AA, UCS, logger
-from ClayCode.analysis.analysisbase import analysis_class
-from ClayCode.core import gmx
-from ClayCode.core.classes import GROFile
+from .consts import SOL, SOL_DENSITY, IONS, MDP, FF, DATA, AA, UCS
+from .log import logger
+from ..analysis.analysisbase import analysis_class
+from . import gmx
+from .classes import GROFile
 from ClayCode.core.utils import select_file
 
 tpr_logger = logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(

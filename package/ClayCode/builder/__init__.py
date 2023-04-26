@@ -1,6 +1,3 @@
-import tempfile
-
-from ClayCode.builder.assembly import Builder
-
+from .assembly import Builder
 
 __all__ = ["Builder"]

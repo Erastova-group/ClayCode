@@ -13,7 +13,8 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 
-from ClayCode import exec_time, exec_date, logger
+from .consts import exec_time, exec_date
+from .log import logger
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)

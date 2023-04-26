@@ -6,12 +6,11 @@ Adds:
 - Charge and occupation information for different unit cell types from ``data/UCS/charge_occ.csv``
 
 """
-import tempfile
 
 import pandas as pd
 import yaml
 from pathlib import Path
-from ClayCode import UCS
+from ..core.consts import UCS
 
 __all__ = ["BUILD_DEFAULTS", "UC_CHARGE_OCC"]
 

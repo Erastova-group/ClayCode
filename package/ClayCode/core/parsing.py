@@ -11,11 +11,12 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from ClayCode import UCS, FF, logger
-from ClayCode.builder.claycomp import MatchClayComposition, InterlayerIons, BulkIons
-from ClayCode.core.classes import File, Dir, init_path
-from ClayCode.core.lib import get_ion_charges
-from ClayCode.core.utils import get_header, get_subheader
+from .consts import UCS, FF
+from .log import logger
+from ..builder.claycomp import MatchClayComposition, InterlayerIons, BulkIons
+from .classes import File, Dir, init_path
+from .lib import get_ion_charges
+from .utils import get_header, get_subheader
 
 
 __all__ = {

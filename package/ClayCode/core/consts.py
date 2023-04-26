@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
 import logging
+from importlib_resources import files
 
 __all__ = [
     "exec_time",
@@ -18,19 +19,20 @@ __all__ = [
     "FILE_SEARCHSTR_LIST",
     "DATA",
 ]
-
-PATH = Path(__file__)
-DATA = (PATH.parent / "../../../data").resolve()
-AA = (DATA / "AA").resolve()
-FF = (DATA / "FF").resolve()
-MDP = (DATA / "MDP").resolve()
-CLAYS = (DATA / "CLAYS").resolve()
-UCS = (DATA / "UCS").resolve()
+# PATH = files('ClayCode')
+DATA = files('ClayCode.data')
+# PATH = Path(__file__)
+# DATA = (PATH.parent / "../../../data").resolve()
+AA = DATA.joinpath("AA")
+FF = DATA.joinpath("FF")
+MDP = DATA.joinpath("MDP")
+CLAYS = DATA.joinpath("CLAYS")
+UCS = DATA.joinpath("UCS")
 
 IONS = ["Cl", "Na", "Ca", "K", "Mg", "Cs"]
 SOL_DENSITY = 1000  # g L-1
 SOL = "SOL"
-GRO_FMT = '{:>5s}{:<5s}{:5s}{:5d}{:8.3f}{:8.3f}{:8.3f}\n'
+GRO_FMT = "{:>5s}{:<5s}{:5s}{:5d}{:8.3f}{:8.3f}{:8.3f}\n"
 
 shandler = logging.StreamHandler()
 shandler.setLevel(logging.INFO)

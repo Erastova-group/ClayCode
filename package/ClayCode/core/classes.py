@@ -40,9 +40,9 @@ from MDAnalysis import Universe, ResidueGroup, AtomGroup
 from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
 
-from ClayCode import FF
-from ClayCode.core.consts import KWD_DICT as _KWD_DICT
-from ClayCode.core.utils import select_named_file
+from .consts import FF
+from .consts import KWD_DICT as _KWD_DICT
+from .utils import select_named_file
 
 logger = logging.getLogger(_Path(__file__).stem)
 logger.setLevel(logging.INFO)

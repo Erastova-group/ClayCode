@@ -1,27 +1,44 @@
 from __future__ import annotations
-import logging
+from .core.log import logger
 
-from ClayCode.core.consts import (
-    KWD_DICT,
-    exec_time,
-    exec_date,
-    AA,
-    FF,
-    MDP,
-    CLAYS,
-    IONS,
-    SOL,
-    SOL_DENSITY,
-    UCS,
-    FILE_SEARCHSTR_LIST,
-    DATA,
-)
+# from .core.consts import (
+#     KWD_DICT,
+#     exec_time,
+#     exec_date,
+#     AA,
+#     FF,
+#     MDP,
+#     CLAYS,
+#     IONS,
+#     SOL,
+#     SOL_DENSITY,
+#     UCS,
+#     FILE_SEARCHSTR_LIST,
+#     DATA,
+# )
 
-logging.basicConfig(format="%(message)s", level=logging.INFO)
-logger = logging.getLogger("ClayCode")
 
-__all__ = ["analysis", "builder", "siminp", "config", "logger"]  # , 'check', 'edit']
-
+__all__ = [
+    "analysis",
+    "builder",
+    "siminp",
+    "logger",
+    # "KWD_DICT",
+    # "exec_date",
+    # "exec_time",
+    # "AA",
+    # "FF",
+    # "MDP",
+    # "CLAYS",
+    # "IONS",
+    # "SOL",
+    # "SOL_DENSITY",
+    # "UCS",
+    # "FILE_SEARCHSTR_LIST",
+    # "DATA",
+]
+import importlib.metadata
+__version__ = importlib.metadata.version("ClayCode")
 # TODO: remove siminp?
 # TODO: take out setup/edit/molecule insertion from analysis
 # TODO: Now analysis has analysis but also checks

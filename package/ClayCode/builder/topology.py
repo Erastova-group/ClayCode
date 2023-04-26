@@ -7,7 +7,7 @@ import logging
 
 from MDAnalysis import ResidueGroup
 
-from ClayCode.core.classes import ITPList
+from ..core.classes import ITPList
 
 logger = logging.getLogger(Path(__file__).name)
 

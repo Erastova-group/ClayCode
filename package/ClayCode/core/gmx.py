@@ -4,8 +4,8 @@ import subprocess as sp
 import tempfile
 import warnings
 from pathlib import Path
-from ClayCode import logger
-from ClayCode.core.utils import execute_bash_command
+from .log import logger
+from .utils import execute_bash_command
 
 GMX = "gmx"
 

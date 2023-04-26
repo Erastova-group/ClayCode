@@ -1,0 +1,44 @@
+[ moleculetype ]
+; Name            nrexcl
+ B31               3
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   1 B31rtp B31  q +1.0
+  1  ohs  1    B31     o1     1     -0.974       16.0   ; qtot -0.974
+  2  ho   1    B31     h1     2     0.425      1.008   ; qtot -0.549
+  3  ohs  1    B31     o2     3    -0.974         16   ; qtot -1.523
+  4   ho  1    B31     h2     4     0.425      1.008   ; qtot -1.098
+  5  ohs  1    B31     o3     5    -0.974         16   ; qtot -2.072
+  6   ho  1    B31     h3     6     0.425      1.008   ; qtot -1.647
+  7  ohs  1    B31     o4     7    -0.974         16   ; qtot -2.621
+  8   ho  1    B31     h4     8     0.425      1.008   ; qtot -2.196
+  9  mgo  1    B31    mg1     9       1.3      24.31   ; qtot -0.896
+ 10   ao  1    B31    al1     10     1.492      26.98   ; qtot 0.596
+ 11  ohs  1    B31     o5     11    -0.974         16   ; qtot -0.378
+ 12   ho  1    B31     h5     12     0.425      1.008   ; qtot 0.047
+ 13  ohs  1    B31     o6     13    -0.974         16   ; qtot -0.927
+ 14   ho  1    B31     h6     14     0.425      1.008   ; qtot -0.502
+ 15  ohs  1    B31     o7     15    -0.974         16   ; qtot -1.476
+ 16   ho  1    B31     h7     16     0.425      1.008   ; qtot -1.051
+ 17  ohs  1    B31     o8     17    -0.974         16   ; qtot -2.025
+ 18   ho  1    B31     h8     18     0.425      1.008   ; qtot -1.6
+ 19  mgo  1    B31    mg2     19       1.3      24.31   ; qtot -0.3
+ 20  mgo  1    B31    mg3     20       1.3      24.31   ; qtot 1
+
+[ bonds ]
+;  ai    aj funct            c0            c1            c2            c3
+    1     2     1    b-ohs
+    3     4     1    b-ohs
+    5     6     1    b-ohs
+    7     8     1    b-ohs
+   11    12     1    b-ohs
+   13    14     1    b-ohs
+   15    16     1    b-ohs
+   17    18     1    b-ohs
+
+; Include Position restraint file
+;#ifdef POSRES
+;#include "ldh31-posre.itp"
+;#endif
+

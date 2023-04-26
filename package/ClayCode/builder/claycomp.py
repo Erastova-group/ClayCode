@@ -18,10 +18,10 @@ import numpy as np
 import pandas as pd
 from typing import Union, List, Dict, Optional, Literal, Tuple
 
-from ClayCode import logger
-from ClayCode.core.classes import File, Dir, ITPFile, PathFactory
-from ClayCode.core.lib import get_ion_charges
-from ClayCode.core.utils import get_subheader
+from ..core.log import logger
+from ..core.classes import File, Dir, ITPFile, PathFactory
+from ..core.lib import get_ion_charges
+from ..core.utils import get_subheader
 from numpy._typing import NDArray
 from tqdm import tqdm
 
@@ -430,7 +430,7 @@ class UCData(Dir):
     @cache
     def _get_ox_dict():
         import yaml
-        from ClayCode import UCS
+        from ..core.consts import UCS
 
         with open(UCS / "clay_charges.yaml", "r") as file:
             ox_dict: dict = yaml.safe_load(file)
@@ -1078,11 +1078,11 @@ class InterlayerIons:
 
     @property
     def df(self):
-        return self.__df[["charges", "numbers"]]
+        return self.__df[["charges", "numbers"]].astype(np.int32)
 
     @property
     def numbers(self):
-        return self.df["numbers"].to_dict()
+        return self.df["numbers"].astype(np.int32).to_dict()
 
 
 class BulkIons:

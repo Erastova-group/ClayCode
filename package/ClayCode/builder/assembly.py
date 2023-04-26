@@ -10,13 +10,13 @@ from typing import Optional, List, Union, Callable
 import numpy as np
 import pandas as pd
 
-from ClayCode import logger, MDP
-from ClayCode.builder.claycomp import UCData
-from ClayCode.core.consts import GRO_FMT
-from ClayCode.builder.topology import TopologyConstructorBase
-from ClayCode.core.classes import FileFactory, GROFile, TOPFile, Dir
-from ClayCode.core.gmx import run_gmx_insert_mols, run_gmx_solvate
-from ClayCode.core.lib import (
+from ..core.log import logger
+from .claycomp import UCData
+from ..core.consts import GRO_FMT
+from .topology import TopologyConstructorBase
+from ..core.classes import FileFactory, GROFile, TOPFile, Dir
+from ..core.gmx import run_gmx_insert_mols, run_gmx_solvate
+from ..core.lib import (
     add_resnum,
     add_ions_n_mols,
     write_insert_dat,
@@ -28,7 +28,7 @@ from ClayCode.core.lib import (
     set_mdp_freeze_clay,
     set_mdp_parameter,
 )
-from ClayCode.core.utils import get_header, get_subheader
+from ..core.utils import get_header, get_subheader
 from MDAnalysis import Universe, Merge, AtomGroup, ResidueGroup
 from MDAnalysis.units import constants
 from numpy._typing import NDArray

@@ -9,13 +9,12 @@ requires-python = ">=3.9"
 dependencies = ['matplotlib>=3.6.2',
     'mdanalysis==2.3',
     'numpy>=1.23.5',
-    'pandas>=1.5.2',
+    'pandas~=1.5.2',
     'pyyaml>=6',
     'scipy>=1.9.3',
     'tqdm>=4.43.0',
     'parmed>=4.1'
     ]
-
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: BSD License",
@@ -26,12 +25,18 @@ classifiers = [
 ClayCode = "ClayCode:__main__.run"
 
 [tool.setuptools.packages.find]
+namespaces = true
 where=['package']
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.package-data]
-ClayAnalysis = ['data/AA/*/*.gro', 'data/AA/*/*.itp', 'data/FF/*.ff/*.itp',
-    'data/FF/*.itp', 'data/MDP/*.mdp', 'data/UCS/*/*.itp', 'data/UCS/*/*.itp',
-    'data/CLAYS/*/*/*/*.gro', 'data/CLAYS/*/*/*/*.top', 'package/ClayCode/builder/config/defaults.yaml']
+"ClayCode.data" = ['AA/*/*.gro', 'AA/*/*.itp', 'FF/*.ff/*.itp',
+    'FF/*.itp', 'MDP/*.mdp', 'UCS/*/*.itp', 'UCS/*/*.itp',
+    'UCS/*/*.itp', 'CLAYS/*/*/*/*.gro', 'CLAYS/*/*/*/*.top',
+    'UCS/*.csv']
+"ClayCode.builder.config" = ['defaults.yaml']
 
 [project.urls]
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"
@@ -39,3 +44,4 @@ ClayAnalysis = ['data/AA/*/*.gro', 'data/AA/*/*.itp', 'data/FF/*.ff/*.itp',
 [build-system]
 requires = ["setuptools>=62"]
 build-backend = "setuptools.build_meta"
+
