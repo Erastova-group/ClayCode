@@ -1,0 +1,16 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22      9:48:39      CREATED BY USER: apache                  
+ATOM      1  N   ALA A   1       1.345  -0.322   0.014  1.00  0.00      ALA3
+ATOM      2  CA  ALA A   1      -0.113   0.125   0.002  1.00  0.00      ALA3
+ATOM      3  CB  ALA A   1      -0.121   1.644   0.287  1.00  0.00      ALA3
+ATOM      4  C   ALA A   1      -1.082  -0.248  -1.200  1.00  0.00      ALA3
+ATOM      5  O   ALA A   1      -1.130  -1.472  -1.510  1.00  0.00      ALA3
+ATOM      6  OXT ALA A   1      -1.726   0.697  -1.732  1.00  0.00      ALA3
+ATOM      7  H1  ALA A   1       1.395  -1.266  -0.362  1.00  0.00      ALA3
+ATOM      8  H2  ALA A   1       1.891   0.237  -0.631  1.00  0.00      ALA3
+ATOM      9  HA  ALA A   1      -0.590  -0.368   0.881  1.00  0.00      ALA3
+ATOM     10  HB1 ALA A   1       0.247   2.197  -0.602  1.00  0.00      ALA3
+ATOM     11  HB2 ALA A   1       0.524   1.882   1.156  1.00  0.00      ALA3
+ATOM     12  HB3 ALA A   1      -1.156   1.983   0.503  1.00  0.00      ALA3
+TER      13      ALA3     1
+END

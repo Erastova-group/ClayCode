@@ -1,0 +1,17 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     11:44:44      CREATED BY USER: apache                  
+ATOM      1  N   CYS C   1       1.092   0.255   0.097  1.00  0.00      CYS3
+ATOM      2  CA  CYS C   1      -0.357   0.089  -0.188  1.00  0.00      CYS3
+ATOM      3  CB  CYS C   1      -0.998   1.520  -0.181  1.00  0.00      CYS3
+ATOM      4  SG  CYS C   1      -0.703   2.510   1.371  1.00  0.00      CYS3
+ATOM      5  C   CYS C   1      -0.556  -0.848  -1.425  1.00  0.00      CYS3
+ATOM      6  O   CYS C   1       0.210  -1.850  -1.442  1.00  0.00      CYS3
+ATOM      7  OXT CYS C   1      -1.433  -0.559  -2.278  1.00  0.00      CYS3
+ATOM      8  H1  CYS C   1       1.104   0.982   0.857  1.00  0.00      CYS3
+ATOM      9  H2  CYS C   1       1.509   0.637  -0.771  1.00  0.00      CYS3
+ATOM     10  HA  CYS C   1      -0.781  -0.466   0.678  1.00  0.00      CYS3
+ATOM     11  HB1 CYS C   1      -2.092   1.375  -0.333  1.00  0.00      CYS3
+ATOM     12  HB2 CYS C   1      -0.648   2.070  -1.080  1.00  0.00      CYS3
+ATOM     13  H3  CYS C   1       1.507  -0.651   0.358  1.00  0.00      CYS3
+TER      14      CYS3     1
+END

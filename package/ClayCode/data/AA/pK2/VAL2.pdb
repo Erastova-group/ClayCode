@@ -1,0 +1,23 @@
+REMARK  GENERATE LIGAND                                                               
+REMARK   DATE:     5/10/22     14:15:15      CREATED BY USER: apache                  
+ATOM      1  CG1 VAL V   1      -1.051  -1.713  -1.366  1.00  0.00      VAL2
+ATOM      2  CB  VAL V   1       0.356  -1.113  -1.144  1.00  0.00      VAL2
+ATOM      3  CG2 VAL V   1       1.336  -2.247  -0.768  1.00  0.00      VAL2
+ATOM      4  CA  VAL V   1       0.285  -0.070  -0.019  1.00  0.00      VAL2
+ATOM      5  N   VAL V   1      -0.765   0.980  -0.256  1.00  0.00      VAL2
+ATOM      6  C   VAL V   1       1.594   0.671   0.287  1.00  0.00      VAL2
+ATOM      7  O   VAL V   1       2.622   0.343  -0.338  1.00  0.00      VAL2
+ATOM      8  OXT VAL V   1       1.477   1.589   1.158  1.00  0.00      VAL2
+ATOM      9 HG11 VAL V   1      -1.457  -2.117  -0.414  1.00  0.00      VAL2
+ATOM     10 HG12 VAL V   1      -0.983  -2.554  -2.090  1.00  0.00      VAL2
+ATOM     11 HG13 VAL V   1      -1.759  -0.970  -1.782  1.00  0.00      VAL2
+ATOM     12  HB  VAL V   1       0.703  -0.638  -2.090  1.00  0.00      VAL2
+ATOM     13 HG21 VAL V   1       1.090  -3.182  -1.311  1.00  0.00      VAL2
+ATOM     14 HG22 VAL V   1       1.317  -2.446   0.323  1.00  0.00      VAL2
+ATOM     15 HG23 VAL V   1       2.373  -1.957  -1.044  1.00  0.00      VAL2
+ATOM     16  HA  VAL V   1       0.005  -0.596   0.921  1.00  0.00      VAL2
+ATOM     17  H1  VAL V   1      -1.723   0.596  -0.228  1.00  0.00      VAL2
+ATOM     18  H2  VAL V   1      -0.558   1.431  -1.169  1.00  0.00      VAL2
+ATOM     19  H3  VAL V   1      -0.606   1.694   0.496  1.00  0.00      VAL2
+TER      20      VAL2     1
+END
