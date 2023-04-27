@@ -74,7 +74,6 @@ class TopologyConstructorBase:
         return wrapper
 
     def add_molecules(self, universe: MDAnalysis.Universe) -> None:
-        prev_res = None
         try:
             if type(universe) != ResidueGroup:
                 res_groups = universe.residues
