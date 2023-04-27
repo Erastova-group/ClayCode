@@ -1418,7 +1418,7 @@ def run_em(
             prefix=topin.stem, suffix=".top", dir=odir
         )
         topout = odir / tmp_top.name
-        logger.debug(f"Creating temportary output file {tmp_top}")
+        logger.debug(f"Creating temporary output file {tmp_top}")
         otop_copy = True
     else:
         otop_copy = False
@@ -1466,17 +1466,12 @@ def add_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ]*"):
     return new_str
 
 
-def set_mdp_freeze_clay(uc_stem, uc_list, em_template, freeze_dims=["Y", "Y", "Y"]):
-    uc_list = [f"{uc_stem}{uc_id:02d}" for uc_id in np.ravel(*uc_list).astype(int)]
-    freezegrpstr = " ".join(uc_list)
-    freezearray = np.tile(freeze_dims, (len(uc_list)))
+def set_mdp_freeze_clay(uc_names, em_template, freeze_dims=["Y", "Y", "Y"]):
+    freezegrpstr = " ".join(uc_names)
+    freezearray = np.tile(freeze_dims, (len(uc_names)))
     freezedimstr = " ".join(freezearray)
     with open(MDP / em_template, "r") as emfile:
         em_filestr = emfile.read()
     em_filestr = set_mdp_parameter("freezegrps", freezegrpstr, em_filestr)
     em_filestr = set_mdp_parameter("freezedim", freezedimstr, em_filestr)
     return em_filestr
-    # em_filestr = add_mdp_parameter('freezegrps', ' SOL', em_filestr)
-    # em_filestr = add_mdp_parameter('freezedim', ' Y Y Y', em_filestr)
-    # em_outfile.write(em_filestr)
-    # return em_outfile
