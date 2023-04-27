@@ -138,7 +138,7 @@ dmypy.json
 *.npy
 
 *.trr
-*.gro
+.gro
 *.tpr
 *.zip
 *.png
