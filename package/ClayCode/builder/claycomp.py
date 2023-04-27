@@ -431,7 +431,7 @@ class UCData(Dir):
     def _get_ox_dict():
         import yaml
         from ..core.consts import UCS
-
+        logger.info(UCS.resolve())
         with open(UCS / "clay_charges.yaml", "r") as file:
             ox_dict: dict = yaml.safe_load(file)
         return ox_dict

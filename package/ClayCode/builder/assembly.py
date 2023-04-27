@@ -99,9 +99,11 @@ class Builder:
     def run_em(self):
         logger.info(get_subheader("Minimising energy"))
         em_inp = "em.mdp"
+        uc_names = np.unique(self.clay.residues.resnames)
         em_filestr = set_mdp_freeze_clay(
-            uc_stem=self.args.uc_stem,
-            uc_list=self.args.sheet_uc_ids,
+            # uc_stem=self.args.uc_stem,
+            # uc_list=self.args.sheet_uc_ids,
+            uc_names = uc_names,
             em_template=em_inp,
             freeze_dims=["Y", "Y", "N"],
         )
