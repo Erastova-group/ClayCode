@@ -1,13 +1,10 @@
-from functools import (
-    cached_property,
-    wraps,
-)
-from pathlib import Path
 import logging
+from functools import cached_property, wraps
+from pathlib import Path
 
+import MDAnalysis
+from ClayCode.core.classes import ITPList
 from MDAnalysis import ResidueGroup
-
-from ..core.classes import ITPList
 
 logger = logging.getLogger(Path(__file__).name)
 
@@ -61,7 +58,9 @@ class TopologyConstructorBase:
             if fname is None:
                 try:
                     fname = self.filename
-                    print(f"No filename selected, writing topology to {self.filename}")
+                    print(
+                        f"No filename selected, writing topology to {self.filename}"
+                    )
                 except AttributeError:
                     raise AttributeError("No filename assigned.")
             outstr = self.header + func(self, *args, **kwargs)
@@ -74,7 +73,8 @@ class TopologyConstructorBase:
 
         return wrapper
 
-    def add_molecules(self, universe):
+    def add_molecules(self, universe: MDAnalysis.Universe) -> None:
+        prev_res = None
         try:
             if type(universe) != ResidueGroup:
                 res_groups = universe.residues
@@ -90,7 +90,9 @@ class TopologyConstructorBase:
                 prev_res = residue
             self.__mol_str += f"{prev_res.resname}\t{n_residues}\n"
         except UnboundLocalError:
-            logger.debug(f"Empty Universe, not adding any molecules to topology")
+            logger.debug(
+                "Empty Universe, not adding any molecules to topology"
+            )
         # print(self.__mol_str)
 
     def reset_molecules(self):

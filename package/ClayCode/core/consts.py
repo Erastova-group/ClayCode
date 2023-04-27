@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict
 import logging
+from datetime import datetime, timezone
+from typing import Dict
+
 from importlib_resources import files
 
 __all__ = [
@@ -19,10 +19,8 @@ __all__ = [
     "FILE_SEARCHSTR_LIST",
     "DATA",
 ]
-# PATH = files('ClayCode')
-DATA = files('ClayCode.data')
-# PATH = Path(__file__)
-# DATA = (PATH.parent / "../../../data").resolve()
+
+DATA = files("ClayCode.data")
 AA = DATA.joinpath("AA")
 FF = DATA.joinpath("FF")
 MDP = DATA.joinpath("MDP")
@@ -78,7 +76,6 @@ ITP_KWDS = TOP_KWDS = {
     "molecules": ["res-name", "mol-number"],
     "settles": ["at-type", "func", "doh", "dhh"],
     "exclusions": ["ai", "aj", "ak"],
-    "nonbond_params": ["ai", "aj", "V", "W"],
 }
 DTYPES = {
     "at-type": "str",
@@ -138,7 +135,9 @@ def set_globals() -> Dict[str, Dict[str, str]]:
     combined_dict = {}
     global_dict = lambda key: globals()[key]
     del_global = lambda key: globals().__delitem__(key)
-    kwds = sorted(re.findall(r"[A-Z]+_KWDS", " ".join(globals().keys())), reverse=True)
+    kwds = sorted(
+        re.findall(r"[A-Z]+_KWDS", " ".join(globals().keys())), reverse=True
+    )
     for kwd_dict in kwds:
         kwd = kwd_dict.split("_")[0]
         # assert len(dicts) % 2 == 0, ValueError(f'Expected even number of KWD and DTYPE dictionaries.')

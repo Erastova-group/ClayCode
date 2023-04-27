@@ -5,16 +5,16 @@ import re
 import shutil
 import subprocess as sp
 import warnings
+from functools import partial, singledispatch
 from itertools import chain
 from pathlib import Path
-from functools import singledispatch, partial
-from typing import Union, Literal, Optional, List
+from typing import List, Literal, Optional, Union
+
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-
-from .consts import exec_time, exec_date
-from .log import logger
+from ClayCode.core.consts import exec_date, exec_time
+from ClayCode.core.log import logger
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -64,7 +64,9 @@ def change_suffix(path: Path, new_suffix: str):
 def convert_num_to_int(f):
     def wrapper(number: Union[int, float]):
         if type(number) not in [float, int, np.int_, np.float_]:
-            raise TypeError(f"Expected float or int type, found {type(number)}!")
+            raise TypeError(
+                f"Expected float or int type, found {type(number)}!"
+            )
         else:
             return f(int(np.round(number, 0)))
 
@@ -161,12 +163,16 @@ def get_search_str(match_dict: dict):
     return "|".join(match_dict.keys())
 
 
-def convert_str_list_to_arr(str_list: Union[List[str], List[List[str]]]) -> np.array:
+def convert_str_list_to_arr(
+    str_list: Union[List[str], List[List[str]]]
+) -> np.array:
     array = np.array(list(map(lambda x: x.split(), str_list)), dtype=str)
     arr_strip = np.vectorize(lambda x: x.strip())
     try:
         array = arr_strip(array)
-    except:
+    except TypeError:
+        logger.debug("Could not convert list to array")
+    except IndexError:
         logger.debug("Could not convert list to array")
     return array
 
@@ -203,10 +209,13 @@ def select_named_file(
         suffix = ""
     if searchstr is None:
         searchstr = ""
-    f_iter = list(path.glob(rf"*{searchstr.strip('*')}[.]*{suffix.strip('.')}"))
+    f_iter = list(
+        path.glob(rf"*{searchstr.strip('*')}[.]*{suffix.strip('.')}")
+    )
     searchlist = list(
         map(
-            lambda x: rf'.*{searchstr}{x.strip("*")}[.]*{suffix.strip(".")}', searchlist
+            lambda x: rf'.*{searchstr}{x.strip("*")}[.]*{suffix.strip(".")}',
+            searchlist,
         )
     )
     searchstr = "|".join(searchlist)
@@ -222,7 +231,8 @@ def select_named_file(
         match = None
     else:
         logger.error(
-            f"Found {len(f_list)} matches: " + ", ".join([f.name for f in f_list])
+            f"Found {len(f_list)} matches: "
+            + ", ".join([f.name for f in f_list])
         )
         check_func_dict = {
             "latest": lambda x: x.st_mtime,
@@ -294,7 +304,9 @@ def select_file(
 def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]):
     idx_names = idx.names
     idx_values = [
-        idx.get_level_values(level=name) for name in idx_names if name in name_sel
+        idx.get_level_values(level=name)
+        for name in idx_names
+        if name in name_sel
     ]
     idx_product = np.array(
         np.meshgrid(*[idx_value for idx_value in idx_values])

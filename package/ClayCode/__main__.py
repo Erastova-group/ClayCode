@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import sys
 
-from .core.log import logger
-from .core.parsing import parser, ArgsFactory, BuildArgs
-from .core.utils import get_subheader
+from ClayCode.core.log import logger
+from ClayCode.core.parsing import ArgsFactory, BuildArgs, parser
+from ClayCode.core.utils import get_subheader
 
 __all__ = ["run"]
 
@@ -14,7 +14,7 @@ def run():
     args_factory = ArgsFactory()
     args = args_factory.init_subclass(args)
     if isinstance(args, BuildArgs):
-        from .builder import Builder
+        from ClayCode.builder import Builder
 
         clay_builder = Builder(args)
         clay_builder.write_sheet_crds()

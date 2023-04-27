@@ -5,44 +5,44 @@ import logging
 import os
 import re
 import tempfile
-from copy import copy, deepcopy
 from collections import UserList
 from collections.abc import Sequence
+from copy import copy as _copy
+from copy import deepcopy
 from functools import (
+    cached_property,
     partialmethod,
     singledispatch,
-    wraps,
-    cached_property,
     update_wrapper,
+    wraps,
 )
 from io import StringIO
-from pathlib import Path as _Path, PosixPath as _PosixPath
+from pathlib import Path as _Path
+from pathlib import PosixPath as _PosixPath
 from typing import (
-    Union,
+    Any,
+    AnyStr,
+    Callable,
+    Dict,
+    Iterable,
     List,
     Literal,
-    AnyStr,
-    Iterable,
-    Optional,
-    Tuple,
-    Dict,
-    Any,
     NewType,
     NoReturn,
+    Optional,
+    Tuple,
+    Union,
     cast,
-    Callable,
 )
-
 
 import numpy as np
 import pandas as pd
-from MDAnalysis import Universe, ResidueGroup, AtomGroup
+from ClayCode.core.consts import FF
+from ClayCode.core.consts import KWD_DICT as _KWD_DICT
+from ClayCode.core.utils import select_named_file
+from MDAnalysis import AtomGroup, ResidueGroup, Universe
 from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
-
-from .consts import FF
-from .consts import KWD_DICT as _KWD_DICT
-from .utils import select_named_file
 
 logger = logging.getLogger(_Path(__file__).stem)
 logger.setLevel(logging.INFO)
@@ -181,9 +181,13 @@ class Kwd(str):
             check = match_str(self, pattern)
         else:
             if mode == "parts":
-                check = re.match(rf"[a-zA-Z-_\d.]*{pattern}[a-zA-Z-_\d.]*", self)
+                check = re.match(
+                    rf"[a-zA-Z-_\d.]*{pattern}[a-zA-Z-_\d.]*", self
+                )
             else:
-                raise ValueError(f'{mode!r} is not a valid value for {"mode"!r}')
+                raise ValueError(
+                    f'{mode!r} is not a valid value for {"mode"!r}'
+                )
         if check is not None:
             check = self
         return check
@@ -330,7 +334,9 @@ class BasicPath(_Path):
                         rf"[a-zA-Z-_\d.]*{pattern}[a-zA-Z-_\d.]*", self.name
                     )
                 else:
-                    raise ValueError(f'{mode!r} is not a valid value for {"mode"!r}')
+                    raise ValueError(
+                        f'{mode!r} is not a valid value for {"mode"!r}'
+                    )
             if check is not None:
                 check = method(self)
             return check
@@ -362,7 +368,9 @@ class BasicPath(_Path):
         return (
             cls
             if os.name == "posix"
-            else NotImplementedError("ClayCode does not support Windows systems.")
+            else NotImplementedError(
+                "ClayCode does not support Windows systems."
+            )
         )
 
     @_match_deorator
@@ -435,7 +443,7 @@ class ParametersBase:
 
     kwd_list = []
 
-    def _arithmetic_type_check(method):
+    def _arithmetic_type_check(method: Callable) -> Union[Callable, None]:
         @wraps(method)
         def wrapper(self, other):
             if other.__class__ == self.__class__:
@@ -443,11 +451,11 @@ class ParametersBase:
             elif hasattr(other, "collection"):
                 if self.__class__ == other.collection:
                     return method(self, other)
-            raise TypeError(
-                "Only Parameters of the same class can be combined.\n"
-                f"Found {self.__class__.__name__!r} and {other.__class__.__name__!r}"
-            )
-            return result
+            else:
+                raise TypeError(
+                    "Only Parameters of the same class can be combined.\n"
+                    f"Found {self.__class__.__name__!r} and {other.__class__.__name__!r}"
+                )
 
         return wrapper
 
@@ -490,7 +498,9 @@ class ParametersBase:
         return self
 
     def __mul__(self, other: int):
-        assert isinstance(other, int), f"Multiplicator must be type {int.__name__!r}"
+        assert isinstance(
+            other, int
+        ), f"Multiplicator must be type {int.__name__!r}"
         for i in range(other):
             yield self
 
@@ -537,7 +547,7 @@ class ParametersFactory:
         if type(data) == dict:
             data_list = []
             for key in data:
-                if key != None:
+                if key is None:
                     data_list.append(
                         ParameterFactory({key: data[key]}, *args, **kwargs)
                     )
@@ -606,7 +616,9 @@ class ParameterBase:
             new = other - self
         elif other.kwd == self.kwd:
             new_str = re.search(
-                f"(.*){other.string}(.*)", self.__string, flags=re.MULTILINE | re.DOTALL
+                f"(.*){other.string}(.*)",
+                self.__string,
+                flags=re.MULTILINE | re.DOTALL,
             )
             new_str = "".join([new_str.group(1), new_str.group(2)])
             new = self.__class__(self.kwd, new_str, self.__path)
@@ -615,7 +627,9 @@ class ParameterBase:
         return new
 
     def __mul__(self, other: int):
-        assert isinstance(other, int), f"Multiplicator must be type {int.__name__!r}"
+        assert isinstance(
+            other, int
+        ), f"Multiplicator must be type {int.__name__!r}"
         for i in range(other):
             yield self
 
@@ -642,7 +656,9 @@ class ParameterBase:
 
     def init_df(self) -> None:
         try:
-            df = pd.DataFrame(columns=list(_KWD_DICT[self.suffix][self.__kwd].keys()))
+            df = pd.DataFrame(
+                columns=list(_KWD_DICT[self.suffix][self.__kwd].keys())
+            )
             df = df.astype(dtype=_KWD_DICT[self.suffix][self.kwd])
             self._df = df
         except KeyError:
@@ -1001,7 +1017,9 @@ class ITPFile(File):
         new_str = re.sub(r"\n+", "\n", new_str, flags=re.MULTILINE)
         return new_str
 
-    def _split_str(self, section: Literal["system", "molecules", "parameters"]):
+    def _split_str(
+        self, section: Literal["system", "molecules", "parameters"]
+    ):
         """Split file string into 'parameters', 'moleculetype', 'system' sections"""
         if section == "parameters":
             prms_str = self.string.split(sep="[ moleculetype")[0]
@@ -1145,7 +1163,7 @@ class ITPFile(File):
         prms = None
         kwd_dict = _KWD_DICT[".itp"]
         sections = string.split(sep="[ ")
-        if kwds == None:
+        if kwds is None:
             kwds = get_match_pattern(kwd_dict)
         else:
             if isinstance(kwds, list):
@@ -1154,7 +1172,8 @@ class ITPFile(File):
                 kwds = Kwd(kwds)
             kwds = get_match_pattern(kwds)
         section_pattern = re.compile(
-            rf"\s*({kwds}) ]\s*\n([\sa-zA-Z\d#_.-]*)", flags=re.MULTILINE | re.DOTALL
+            rf"\s*({kwds}) ]\s*\n([\sa-zA-Z\d#_.-]*)",
+            flags=re.MULTILINE | re.DOTALL,
         )
         for section in sections:
             match = re.search(section_pattern, section)
@@ -1163,7 +1182,7 @@ class ITPFile(File):
             else:
                 kwd = match.group(1)
                 prm = ParameterFactory(kwd, match.group(2), self.resolve())
-                if prms == None:
+                if prms is None:
                     prms = prm
                 else:
                     prms += prm
@@ -1268,7 +1287,7 @@ class GROFile(File):
         try:
             self.universe.atoms.write(str(self.resolve()))
         except IndexError:
-            logger.debug(f"Not writing empty Universe")
+            logger.debug("Not writing empty Universe")
         if topology is not None:
             self.__topology = topology
         if self.__topology is not None:
@@ -1365,7 +1384,7 @@ class Dir(BasicPath):
         return GROList(self)
 
     def __copy__(self):
-        return copy(self)
+        return _copy(self)
 
 
 class FFDir(Dir):
@@ -1376,7 +1395,9 @@ class FFDir(Dir):
     def check(self):
         if not self.is_dir():
             raise FileNotFoundError(f"{self.name} is not a directory.")
-        assert self.suffix == ".ff", f"Expected {self._suffix!r}, found {self.suffix!r}"
+        assert (
+            self.suffix == ".ff"
+        ), f"Expected {self._suffix!r}, found {self.suffix!r}"
 
     def _get_ff_parameter(self, prm_name: str):
         assert (
@@ -1398,7 +1419,9 @@ class FFDir(Dir):
 
 
 class BasicPathList(UserList):
-    def __init__(self, path: Union[BasicPath, Dir], ext="*", check=False, order=None):
+    def __init__(
+        self, path: Union[BasicPath, Dir], ext="*", check=False, order=None
+    ):
         if not isinstance(path, list):
             self.path = DirFactory(path)
             # if order is not None:
@@ -1525,11 +1548,13 @@ class ITPList(FileList):
                     order[key] = 6
 
         # super().__init__(path, check, order)
-        self._data = self.data = sorted(self._data, key=lambda itp: order[itp.stem])
+        self._data = self.data = sorted(
+            self._data, key=lambda itp: order[itp.stem]
+        )
         self.order = [order[key.stem] for key in self._data]
 
     def __copy__(self):
-        return copy(self)
+        return _copy(self)
 
 
 class GROList(FileList):
@@ -1537,7 +1562,7 @@ class GROList(FileList):
     pass
 
     def __copy__(self):
-        return copy(self)
+        return _copy(self)
 
 
 class MDPList(FileList):
@@ -1568,7 +1593,10 @@ class FFList(DirList):
         "n_atoms": cast(
             Callable[[Universe], Dict[str, int]],
             lambda u: dict(
-                [(r, u.select_atoms(f"moltype {r}").n_atoms) for r in u.atoms.moltypes]
+                [
+                    (r, u.select_atoms(f"moltype {r}").n_atoms)
+                    for r in u.atoms.moltypes
+                ]
             ),
         ),
         "charges": cast(
@@ -1591,7 +1619,9 @@ class ForceField:
         r".*?((non)?bonded)": 5,
     }
 
-    def __init__(self, path: Union[BasicPath, Dir], include="all", exclude=None):
+    def __init__(
+        self, path: Union[BasicPath, Dir], include="all", exclude=None
+    ):
         self._init_path(path)
         self.include(include)
         self.exclude(exclude)
@@ -1622,7 +1652,9 @@ class ForceField:
             pass
         else:
             exclude_list = self.itp_filelist
-            exclude_list = exclude_list.filter(itp_names, mode="stem", keep_dims=False)
+            exclude_list = exclude_list.filter(
+                itp_names, mode="stem", keep_dims=False
+            )
             self.itp_filelist = [
                 item for item in self.itp_filelist if item not in exclude_list
             ]
@@ -1673,7 +1705,12 @@ class DirFactory(_PathFactoryBase):
 
 
 class FileFactory(_PathFactoryBase):
-    _file_types = {".itp": ITPFile, ".gro": GROFile, ".top": TOPFile, ".mdp": MDPFile}
+    _file_types = {
+        ".itp": ITPFile,
+        ".gro": GROFile,
+        ".top": TOPFile,
+        ".mdp": MDPFile,
+    }
     _default = File
 
 
@@ -1849,21 +1886,28 @@ class SimDir(Dir):
     @property
     def pathdict(self):
         file_dict = dict(
-            [(k, getattr(self, k)) for k in ["gro", "top", "trr", "log", "tpr"]]
+            [
+                (k, getattr(self, k))
+                for k in ["gro", "top", "trr", "log", "tpr"]
+            ]
         )
         return file_dict
 
     @property
     def missing(self):
         suffices = [
-            path_type for path_type, path in self.pathdict.items() if path is None
+            path_type
+            for path_type, path in self.pathdict.items()
+            if path is None
         ]
         return suffices
 
     @property
     def suffices(self):
         suffices = [
-            path_type for path_type, path in self.pathdict.items() if path is not None
+            path_type
+            for path_type, path in self.pathdict.items()
+            if path is not None
         ]
         return suffices
 

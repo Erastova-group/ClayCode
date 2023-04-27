@@ -4,8 +4,9 @@ import subprocess as sp
 import tempfile
 import warnings
 from pathlib import Path
-from .log import logger
-from .utils import execute_bash_command
+
+from ClayCode.core.log import logger
+from ClayCode.core.utils import execute_bash_command
 
 GMX = "gmx"
 
@@ -48,7 +49,7 @@ def run_gmx_command(commandargs_dict, opt_args_list):
             error = search_gmx_error(err)
             if error is None:
                 logger.debug(f"{GMX} {command} completed successfully.")
-            if command is "mdrun":
+            if command == "mdrun":
                 return (
                     error,
                     err,
@@ -401,7 +402,8 @@ def run_gmx_genion_add_n_ions(
 
 
 @run_gmx_command(
-    commandargs_dict={"nsteps": -1}, opt_args_list=["s", "o", "extend", "until"]
+    commandargs_dict={"nsteps": -1},
+    opt_args_list=["s", "o", "extend", "until"],
 )
 def run_gmx_convert_tpr():
     return "convert-tpr", {"capture_output": True, "text": True}
@@ -410,7 +412,9 @@ def run_gmx_convert_tpr():
 def search_gmx_error(out: str) -> None:
     check = re.search(r":-\) GROMACS", out, flags=re.IGNORECASE | re.MULTILINE)
     if check is None:
-        raise ValueError(f"\n{out}\nNo GROMACS output string used for GROMACS check!")
+        raise ValueError(
+            f"\n{out}\nNo GROMACS output string used for GROMACS check!"
+        )
     err = re.search(
         r"\n?(.?)(error|exception|invalid)(.?\n).*(GROMACS reminds you)?",
         out,

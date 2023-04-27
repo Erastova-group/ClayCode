@@ -7,10 +7,11 @@ Adds:
 
 """
 
+from pathlib import Path
+
 import pandas as pd
 import yaml
-from pathlib import Path
-from ..core.consts import UCS
+from ClayCode.core.consts import UCS
 
 __all__ = ["BUILD_DEFAULTS", "UC_CHARGE_OCC"]
 

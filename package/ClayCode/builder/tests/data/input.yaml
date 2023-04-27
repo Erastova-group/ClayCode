@@ -147,4 +147,4 @@ BULK_IONS:
 # bash alias for used GROMACS version
 # -----------------------------------------------------------------------------
 
-GMX: gmx
+GMX: gmx_mpi

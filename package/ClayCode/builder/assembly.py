@@ -5,31 +5,30 @@ import shutil
 import tempfile
 from functools import cached_property
 from pathlib import Path
-from typing import Optional, List, Union, Callable
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import pandas as pd
-
-from ..core.log import logger
-from .claycomp import UCData
-from ..core.consts import GRO_FMT
-from .topology import TopologyConstructorBase
-from ..core.classes import FileFactory, GROFile, TOPFile, Dir
-from ..core.gmx import run_gmx_insert_mols, run_gmx_solvate
-from ..core.lib import (
-    add_resnum,
+from ClayCode.builder.claycomp import UCData
+from ClayCode.builder.topology import TopologyConstructorBase
+from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
+from ClayCode.core.consts import GRO_FMT
+from ClayCode.core.gmx import run_gmx_insert_mols, run_gmx_solvate
+from ClayCode.core.lib import (
     add_ions_n_mols,
-    write_insert_dat,
-    center_clay,
     add_ions_neutral,
-    select_outside_clay_stack,
+    add_resnum,
+    center_clay,
     check_insert_numbers,
     run_em,
+    select_outside_clay_stack,
     set_mdp_freeze_clay,
     set_mdp_parameter,
+    write_insert_dat,
 )
-from ..core.utils import get_header, get_subheader
-from MDAnalysis import Universe, Merge, AtomGroup, ResidueGroup
+from ClayCode.core.log import logger
+from ClayCode.core.utils import get_header, get_subheader
+from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.units import constants
 from numpy._typing import NDArray
 
@@ -38,7 +37,9 @@ __all__ = ["Builder", "Sheet"]
 
 class Builder:
     __tmp_outpath = tempfile.TemporaryDirectory()
-    __tmp_file = tempfile.NamedTemporaryFile(dir=__tmp_outpath.name, delete=False)
+    __tmp_file = tempfile.NamedTemporaryFile(
+        dir=__tmp_outpath.name, delete=False
+    )
 
     def __init__(self, build_args):
         self.args = build_args
@@ -69,7 +70,7 @@ class Builder:
         return self.__box_ext
 
     def solvate_clay_sheets(self) -> None:
-        logger.info(get_subheader(f"2. Generating interlayer solvent."))
+        logger.info(get_subheader("2. Generating interlayer solvent."))
         solvent: Solvent = Solvent(
             x_dim=self.sheet.dimensions[0],
             y_dim=self.sheet.dimensions[1],
@@ -101,9 +102,7 @@ class Builder:
         em_inp = "em.mdp"
         uc_names = np.unique(self.clay.residues.resnames)
         em_filestr = set_mdp_freeze_clay(
-            # uc_stem=self.args.uc_stem,
-            # uc_list=self.args.sheet_uc_ids,
-            uc_names = uc_names,
+            uc_names=uc_names,
             em_template=em_inp,
             freeze_dims=["Y", "Y", "N"],
         )
@@ -153,7 +152,7 @@ class Builder:
         logger.info(get_header(f"{self.args.name} model setup complete"))
 
     def remove_il_solv(self) -> None:
-        logger.info(f"Removing interlayer solvent")
+        logger.info("Removing interlayer solvent")
         il_u: Universe = Universe(str(self.il_solv))
         il_atoms: AtomGroup = il_u.select_atoms("not resname SOL iSL")
         self.il_solv.universe = il_atoms
@@ -162,7 +161,9 @@ class Builder:
     def extend_box(self) -> None:
         if type(self.args.box_height) in [int, float]:
             if self.args.box_height > self.stack.universe.dimensions[2]:
-                logger.info(f"Extending simulation box to {self.args.box_height:.1f} A")
+                logger.info(
+                    f"Extending simulation box to {self.args.box_height:.1f} A"
+                )
                 self.__box_ext: bool = True
                 ext_boxname: GROFile = self.get_filename("ext", suffix=".gro")
                 box_u: Universe = self.stack.universe
@@ -198,13 +199,15 @@ class Builder:
                 scale=0.57,
                 o=solv_box_crd,
                 maxsol=0,
-                box="{} {} {}".format(*self.stack.universe.dimensions[:3] * 0.10),
+                box="{} {} {}".format(
+                    *self.stack.universe.dimensions[:3] * 0.10
+                ),
             )
             # self.stack = solv_box_crd
             # solv_box_u = self.stack.universe
             solv_box_u: Universe = solv_box_crd.universe.copy()
-            not_sol: AtomGroup = solv_box_u.select_atoms(f"not resname SOL")
-            sol: AtomGroup = solv_box_u.select_atoms(f"resname SOL")
+            not_sol: AtomGroup = solv_box_u.select_atoms("not resname SOL")
+            sol: AtomGroup = solv_box_u.select_atoms("resname SOL")
             _sol = self.select_molecules_outside_clay(sol, extra=extra)
             # logger.info(f'\tInserted {sol.n_atoms} {np.unique(sol.resnames)[0]} molecules')
             logger.info(
@@ -212,7 +215,9 @@ class Builder:
             )
             sol = _sol
             solv_box_u: AtomGroup = not_sol + sol
-            solv_box_crd.universe: Union[Universe, AtomGroup, ResidueGroup] = solv_box_u
+            solv_box_crd.universe: Union[
+                Universe, AtomGroup, ResidueGroup
+            ] = solv_box_u
             solv_box_crd.write(self.top)
 
             self.stack: GROFile = solv_box_crd
@@ -238,7 +243,9 @@ class Builder:
 
     @property
     def clay(self):
-        return self.stack.universe.select_atoms(f"resname {self.args.uc_stem}*")
+        return self.stack.universe.select_atoms(
+            f"resname {self.args.uc_stem}*"
+        )
 
     def select_molecules_outside_clay(
         self, atomgroup: AtomGroup, extra: Union[int, float] = 0
@@ -262,12 +269,14 @@ class Builder:
 
     def add_bulk_ions(self) -> None:
         if self.extended_box is True:
-            logger.info(f"Adding bulk ions:")
+            logger.info("Adding bulk ions:")
             outcrd: GROFile = self.get_filename("solv", "ions", suffix=".gro")
             shutil.copy(self.stack, outcrd)
             outcrd.write(topology=self.top)
             self.stack: GROFile = outcrd
-            logger.debug(f"before n_atoms: {self.stack.universe.atoms.n_atoms}")
+            logger.debug(
+                f"before n_atoms: {self.stack.universe.atoms.n_atoms}"
+            )
             self.remove_bulk_ions()
             logger.debug(f"after n_atoms: {self.stack.universe.atoms.n_atoms}")
 
@@ -281,12 +290,21 @@ class Builder:
             for ion, values in ion_df.iterrows():
                 charge, conc = values
                 n_ions: int = np.rint(
-                    bulk_z * bulk_x * bulk_y * constants["N_Avogadro"] * conc * 1e-27
+                    bulk_z
+                    * bulk_x
+                    * bulk_y
+                    * constants["N_Avogadro"]
+                    * conc
+                    * 1e-27
                 ).astype(
                     int
                 )  # 1 mol/L = 10^-27 mol/A
-                logger.info(f"\tAdding {conc} mol/L ({n_ions} atoms) {ion} to bulk")
-                logger.debug(f"before n_atoms: {self.stack.universe.atoms.n_atoms}")
+                logger.info(
+                    f"\tAdding {conc} mol/L ({n_ions} atoms) {ion} to bulk"
+                )
+                logger.debug(
+                    f"before n_atoms: {self.stack.universe.atoms.n_atoms}"
+                )
                 replaced: int = add_ions_n_mols(
                     odir=self.__tmp_outpath.name,
                     crdin=self.stack,
@@ -297,8 +315,12 @@ class Builder:
                     charge=int(charge),
                     n_atoms=n_ions,
                 )
-                logger.debug(f"after n_atoms: {self.stack.universe.atoms.n_atoms}")
-                logger.info(f"\t\tReplaced {replaced} SOL molecules with {ion}")
+                logger.debug(
+                    f"after n_atoms: {self.stack.universe.atoms.n_atoms}"
+                )
+                logger.info(
+                    f"\t\tReplaced {replaced} SOL molecules with {ion}"
+                )
                 self.stack.reset_universe()
                 self.stack.write(self.top)
             logger.info(f"\tNeutralising with {pion} and {nion}")
@@ -315,7 +337,9 @@ class Builder:
             )
             logger.debug(f"n_atoms: {self.stack.universe.atoms.n_atoms}")
             logger.info(f"\t\tReplaced {replaced} SOL molecules")
-            logger.info(f"Saving solvated box with ions as {self.stack.stem!r}")
+            logger.info(
+                f"Saving solvated box with ions as {self.stack.stem!r}"
+            )
             self.stack.reset_universe()
             self.stack.write(self.top)
             processed_top = Path("processed.top")
@@ -336,7 +360,7 @@ class Builder:
             logger.info(get_subheader("3. Assembling box"))
             logger.info("Combining clay sheets and interlayer")
         else:
-            logger.info(f"Combining clay sheets\n")
+            logger.info("Combining clay sheets\n")
         for sheet_id in range(self.args.n_sheets):
             self.sheet.n_sheet = sheet_id
             sheet_u = self.sheet.universe.copy()
@@ -349,7 +373,9 @@ class Builder:
                             il_u_copy.residues.resnames,
                         )
                     )
-                il_u_copy.atoms.translate([0, 0, sheet_u.dimensions[2] + extra])
+                il_u_copy.atoms.translate(
+                    [0, 0, sheet_u.dimensions[2] + extra]
+                )
                 new_dimensions: NDArray = sheet_u.dimensions
                 sheet_u: Universe = Merge(sheet_u.atoms, il_u_copy.atoms)
                 sheet_u.dimensions = new_dimensions
@@ -361,7 +387,9 @@ class Builder:
                 )
                 sheet_u.dimensions[2]: float = sheet_u.dimensions[2] + extra
             else:
-                sheet_u.atoms.translate([0, 0, sheet_id * sheet_u.dimensions[2]])
+                sheet_u.atoms.translate(
+                    [0, 0, sheet_id * sheet_u.dimensions[2]]
+                )
             sheet_universes.append(sheet_u.atoms.copy())
             sheet_heights.append(sheet_u.dimensions[2])
         combined: Universe = Merge(*sheet_universes)
@@ -395,7 +423,7 @@ class Builder:
         self.__path_setter_copy("stack", stack)
 
     def write_sheet_crds(self) -> None:
-        logger.info(get_subheader(f"1. Generating clay sheets."))
+        logger.info(get_subheader("1. Generating clay sheets."))
         for sheet_id in range(self.args.n_sheets):
             self.sheet.n_sheet: int = sheet_id
             self.sheet.write_gro()
@@ -410,7 +438,11 @@ class Builder:
         self.sheet.n_sheet = None
 
     def get_filename(
-        self, *solv_ion_args, suffix=None, sheetnum: Optional[int] = None, tcb_spec=None
+        self,
+        *solv_ion_args,
+        suffix=None,
+        sheetnum: Optional[int] = None,
+        tcb_spec=None,
     ) -> Union[GROFile, TOPFile]:
         if sheetnum is not None:
             sheetnum: str = f"_{int(sheetnum)}"
@@ -477,18 +509,26 @@ class Builder:
                 shutil.copy(path.top, self.args.outpath / path.top.name)
             finally:
                 logger.debug(
-                    logger.debug(f"Copied {path.top.name} to {self.args.outpath.name}")
+                    logger.debug(
+                        f"Copied {path.top.name} to {self.args.outpath.name}"
+                    )
                 )
-        setattr(self, f"__{property_name}", FileFactory(Path(file).with_suffix(".gro")))
+        setattr(
+            self,
+            f"__{property_name}",
+            FileFactory(Path(file).with_suffix(".gro")),
+        )
 
     def add_il_ions(self) -> None:
         if self.il_solv is None:
             self.solvate_clay_sheets()
-        logger.info(f"Adding interlayer ions:")  # to {self.il_solv.name!r}')
+        logger.info("Adding interlayer ions:")  # to {self.il_solv.name!r}')
         infile: GROFile = self.il_solv
         # outfile = self.get_filename('solv', 'ions', suffix='gro')
         # import tempfile
-        with tempfile.NamedTemporaryFile(suffix=self.il_solv.suffix) as temp_outfile:
+        with tempfile.NamedTemporaryFile(
+            suffix=self.il_solv.suffix
+        ) as temp_outfile:
             temp_gro: GROFile = GROFile(temp_outfile.name)
             shutil.copy(infile, temp_gro)
             dr: NDArray = self.sheet.dimensions[:3] / 10
@@ -497,7 +537,9 @@ class Builder:
                 for ion, n_ions in self.args.n_il_ions.items():
                     if n_ions != 0:
                         logger.info(f"\tInserting {n_ions} {ion} atoms")
-                        with tempfile.NamedTemporaryFile(suffix=".gro") as ion_gro:
+                        with tempfile.NamedTemporaryFile(
+                            suffix=".gro"
+                        ) as ion_gro:
                             ion_u: Universe = Universe.empty(
                                 n_atoms=1,
                                 n_residues=1,
@@ -515,8 +557,12 @@ class Builder:
                             # ion_u = insert_u.select_atoms(f'resname {ion}')
                             ion_u.atoms.write(ion_gro.name)
                             # determine positions for adding ions
-                            with tempfile.NamedTemporaryFile(suffix=".dat") as posfile:
-                                write_insert_dat(n_mols=n_ions, save=posfile.name)
+                            with tempfile.NamedTemporaryFile(
+                                suffix=".dat"
+                            ) as posfile:
+                                write_insert_dat(
+                                    n_mols=n_ions, save=posfile.name
+                                )
                                 assert Path(posfile.name).is_file()
                                 insert_err, insert_out = run_gmx_insert_mols(
                                     f=temp_gro,
@@ -527,7 +573,9 @@ class Builder:
                                     replace="SOL",
                                     dr="{} {} {}".format(*dr),
                                 )
-                            center_clay(crdname=temp_gro, crdout=temp_gro, uc_name=ion)
+                            center_clay(
+                                crdname=temp_gro, crdout=temp_gro, uc_name=ion
+                            )
                             _ = Universe(temp_gro)
                             assert Path(temp_gro).is_file()
                             replace_check: int = check_insert_numbers(
@@ -563,7 +611,11 @@ class Sheet:
         self.uc_data: UCData = uc_data
         self.uc_ids: list = uc_ids
         self.uc_numbers: list = uc_numbers
-        self.dimensions: NDArray = self.uc_data.dimensions[:3] * [x_cells, y_cells, 1]
+        self.dimensions: NDArray = self.uc_data.dimensions[:3] * [
+            x_cells,
+            y_cells,
+            1,
+        ]
         # self.dimensions[:3] *=
         self.x_cells: int = x_cells
         self.y_cells: int = y_cells
@@ -573,14 +625,16 @@ class Sheet:
         self.__random = None
 
     def get_filename(self, suffix: str) -> Union[GROFile, TOPFile]:
-        return FileFactory(self.outpath / f"{self.fstem}_{self.n_sheet}{suffix}")
+        return FileFactory(
+            self.outpath / f"{self.fstem}_{self.n_sheet}{suffix}"
+        )
 
     @property
     def n_sheet(self) -> Union[int, None]:
         if self.__n_sheet is not None:
             return self.__n_sheet
         else:
-            raise AttributeError(f"No sheet number set!")
+            raise AttributeError("No sheet number set!")
 
     @n_sheet.setter
     def n_sheet(self, n_sheet: int):
@@ -592,7 +646,7 @@ class Sheet:
         if self.__random is not None:
             return self.__random
         else:
-            raise AttributeError(f"No sheet number set!")
+            raise AttributeError("No sheet number set!")
 
     @property
     def uc_array(self) -> NDArray:
@@ -623,7 +677,9 @@ class Sheet:
         sheet_df = sheet_df.loc[:, ["at-type", "atom-id", "x", "y", "z"]]
         sheet_n_atoms: int = len(sheet_df)
         with open(filename, "w") as grofile:
-            grofile.write(f"{self.fstem} sheet {self.n_sheet}\n{sheet_n_atoms}\n")
+            grofile.write(
+                f"{self.fstem} sheet {self.n_sheet}\n{sheet_n_atoms}\n"
+            )
             for idx, entry in sheet_df.reset_index().iterrows():
                 line: list = entry.to_list()
                 grofile.write(
@@ -658,7 +714,9 @@ class Sheet:
         filename.write()
 
     def __cells_shift(self, n_cells: int, n_atoms: int) -> NDArray:
-        shift: NDArray = np.atleast_2d(np.arange(n_cells)).repeat(n_atoms, axis=1)
+        shift: NDArray = np.atleast_2d(np.arange(n_cells)).repeat(
+            n_atoms, axis=1
+        )
         return shift
 
     @staticmethod
@@ -680,7 +738,9 @@ class Sheet:
         backups = filename.parent.glob(f"*.{filename.suffix}.*")
         for backup in reversed(list(backups)):
             n_backup: int = int(backup.suffices[-1].strip("."))
-            new_backup: Path = backup.with_suffix(f"{filename.suffix}.{n_backup + 1}")
+            new_backup: Path = backup.with_suffix(
+                f"{filename.suffix}.{n_backup + 1}"
+            )
             shutil.move(backup, new_backup)
         shutil.move(filename, sheets_backup)
 
@@ -706,7 +766,9 @@ class Solvent:
             self.z_dim = float(z_dim)
             self.n_mols = self.get_sheet_solvent_mols(self.z_dim)
         else:
-            raise ValueError(f"No sheet height or number of molecules specified")
+            raise ValueError(
+                "No sheet height or number of molecules specified"
+            )
         if n_ions is None:
             self.n_ions = 0
         else:
@@ -732,7 +794,10 @@ class Solvent:
 
     def get_solvent_sheet_height(self, mols_sol: int) -> float:
         z_dim = (self.mw_sol * mols_sol) / (
-            constants["N_Avogadro"] * self.x_dim * self.y_dim * self.solv_density
+            constants["N_Avogadro"]
+            * self.x_dim
+            * self.y_dim
+            * self.solv_density
         )
         return z_dim
 
@@ -753,7 +818,9 @@ class Solvent:
         return f"SOL\t{self.n_mols}\n"
 
     def write(
-        self, spc_name: GROFile, topology: Optional[TopologyConstructorBase] = None
+        self,
+        spc_name: GROFile,
+        topology: Optional[TopologyConstructorBase] = None,
     ) -> None:
         if spc_name.__class__.__name__ != "GROFile":
             spc_gro: GROFile = GROFile(spc_name)  # .with_suffix('.gro')
@@ -786,7 +853,7 @@ class Solvent:
         ).group(1)
         if int(added_wat) < self.n_mols:
             raise ValueError(
-                f"With chosen box height, GROMACS was only able to "
+                "With chosen box height, GROMACS was only able to "
                 f"insert {added_wat} instead of {self.n_mols} water "
                 f"molecules.\nIncrease box size!"
             )

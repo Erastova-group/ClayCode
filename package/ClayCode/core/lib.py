@@ -2,26 +2,25 @@
 import logging
 import os
 import pathlib as pl
+import pickle as pkl
 import re
 import shutil
 import tempfile
 from functools import partial, update_wrapper, wraps
 from pathlib import Path, PosixPath
-import pickle as pkl
-import logging
 from typing import (
-    NoReturn,
-    Union,
-    List,
-    Optional,
-    Literal,
-    TypeVar,
-    overload,
-    Tuple,
     Callable,
     Dict,
-    cast,
+    List,
+    Literal,
+    NoReturn,
+    Optional,
     Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+    overload,
 )
 
 import MDAnalysis
@@ -29,18 +28,15 @@ import MDAnalysis as mda
 import MDAnalysis.coordinates
 import numpy as np
 import pandas as pd
-
+from ClayCode.analysis.analysisbase import analysis_class
+from ClayCode.core import gmx
+from ClayCode.core.classes import GROFile
+from ClayCode.core.consts import AA, DATA, FF, IONS, MDP, SOL, SOL_DENSITY, UCS
+from ClayCode.core.log import logger
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
 from numpy.typing import NDArray
-
-from .consts import SOL, SOL_DENSITY, IONS, MDP, FF, DATA, AA, UCS
-from .log import logger
-from ..analysis.analysisbase import analysis_class
-from . import gmx
-from .classes import GROFile
-from ClayCode.core.utils import select_file
 
 tpr_logger = logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
     level=logging.WARNING
@@ -88,7 +84,9 @@ def init_temp_inout(
         )
         outp = outp.parent / temp_outp.name
         new_tmp_dict[which] = True
-        logger.debug(f"Creating temporary output file {outp.parent / outp.name!r}")
+        logger.debug(
+            f"Creating temporary output file {outp.parent / outp.name!r}"
+        )
     else:
         temp_outp = None
     if type(inf) == str:
@@ -137,7 +135,7 @@ def temp_file_wrapper(f: Callable):
             if new is True:
                 infile = Path(fargs_dict[f"{ftype}in"])
                 outfile = Path(fargs_dict[f"{ftype}out"])
-                assert outfile.exists(), f"No file generated!"
+                assert outfile.exists(), "No file generated!"
                 shutil.move(outfile, infile)
                 logger.debug(f"Renaming {outfile.name!r} to {infile.name!r}")
         return r
@@ -322,7 +320,9 @@ def save_selection(
         outsel.write(str(otraj), frames="all")
 
 
-def check_traj(instance: analysis_class, check_len: Union[int, Literal[False]]) -> None:
+def check_traj(
+    instance: analysis_class, check_len: Union[int, Literal[False]]
+) -> None:
     """Check length of trajectory in analysis class instance.
     :param instance: analysis class instance
     :type instance: analysis_class
@@ -334,7 +334,8 @@ def check_traj(instance: analysis_class, check_len: Union[int, Literal[False]]) 
     if type(check_len) == int:
         if instance._universe.trajectory.n_frames != check_len:
             raise SystemExit(
-                "Wrong number of frames: " f"{instance._universe.trajectory.n_frames}"
+                "Wrong number of frames: "
+                f"{instance._universe.trajectory.n_frames}"
             )
 
 
@@ -364,7 +365,9 @@ def process_box(instance: analysis_class) -> None:
 
 
 def process_orthogonal_axes(
-    distances: NDArray[np.float64], dimensions: NDArray[np.float64], axes: List[int]
+    distances: NDArray[np.float64],
+    dimensions: NDArray[np.float64],
+    axes: List[int],
 ) -> None:
     """
     Correct x, x2, z interatomic distances for periodic boundary conditions
@@ -383,7 +386,9 @@ def process_orthogonal_axes(
         distances.shape[-1] == len(axes) or distances.ndim == 2
     ), f"Shape of distance array ({distances.shape[-1]}) does not match selected axes {axes}"
     for idx, dist in np.ma.ndenumerate(distances):
-        distances[idx] -= dimensions[:3][axes] * np.rint(dist / dimensions[:3][axes])
+        distances[idx] -= dimensions[:3][axes] * np.rint(
+            dist / dimensions[:3][axes]
+        )
 
 
 def process_orthogonal(
@@ -404,7 +409,9 @@ def process_orthogonal(
 
 
 def process_triclinic_axes(
-    distances: NDArray[np.float64], dimensions: NDArray[np.float64], axes: List[int]
+    distances: NDArray[np.float64],
+    dimensions: NDArray[np.float64],
+    axes: List[int],
 ) -> None:
     """
     Correct x, x2, z interatomic distances for periodic boundary conditions
@@ -451,7 +458,10 @@ def process_triclinic(
 
 
 def select_cyzone(
-    distances: MaskedArray, z_dist: float, xy_rad: float, mask_array: MaskedArray
+    distances: MaskedArray,
+    z_dist: float,
+    xy_rad: float,
+    mask_array: MaskedArray,
 ) -> None:
     """
     Select all distances corresponding to atoms within a cylindrical volume
@@ -469,7 +479,9 @@ def select_cyzone(
     """
     z_col = distances[:, :, 2]
     z_col.mask = np.abs(distances[:, :, 2]) > z_dist
-    distances.mask = np.broadcast_to(z_col.mask[:, :, np.newaxis], distances.shape)
+    distances.mask = np.broadcast_to(
+        z_col.mask[:, :, np.newaxis], distances.shape
+    )
     np.ma.sum(distances[:, :, [0, 1]].__pow__(2), axis=2, out=mask_array)
     mask_array.harden_mask()
     mask_array.mask = mask_array > xy_rad.__pow__(2)
@@ -576,7 +588,9 @@ def select_solvent(
 def update_universe(f):
     wraps(f)
 
-    def wrapper(crdname: str, crdout: Union[str, Path], **kwargs) -> mda.Universe:
+    def wrapper(
+        crdname: str, crdout: Union[str, Path], **kwargs
+    ) -> mda.Universe:
         if type(crdname) != Universe:
             u = mda.Universe(str(crdname))
             f(u=u, crdout=crdout, **kwargs)
@@ -609,7 +623,9 @@ def get_n_mols(
     return n_mols
 
 
-def write_insert_dat(n_mols: Union[int, float], save: Union[str, Literal[False]]):
+def write_insert_dat(
+    n_mols: Union[int, float], save: Union[str, Literal[False]]
+):
     pos = np.zeros((int(n_mols), 3), dtype=np.float16)
     if save:
         save = pl.Path(save)
@@ -659,7 +675,7 @@ def add_mol_list_to_top(
         raise FileNotFoundError(
             f"Specified force field path: {ff_path.resolve()!r} does not exist!"
         )
-    with open(ff_path / f"new_tophead.itp", "r") as tophead:
+    with open(ff_path / "new_tophead.itp", "r") as tophead:
         tophead = tophead.read()
     if len(insert_list) != 0:
         topstr = "\n".join([tophead, topmatch, *insert_list])
@@ -743,7 +759,9 @@ def add_ions_n_mols(
             nn=nn,
         )
         logger.debug(f"{GROFile(crdin).universe.atoms.n_atoms} atoms")
-        replaced = re.findall("Replacing solvent molecule", err, flags=re.MULTILINE)
+        replaced = re.findall(
+            "Replacing solvent molecule", err, flags=re.MULTILINE
+        )
         logger.debug(
             f"Replaced {len(replaced)} SOL molecules with {ion} in {crdin.name!r}"
         )
@@ -757,7 +775,13 @@ def add_ions_n_mols(
 
 @temp_file_wrapper
 def add_ions_neutral(
-    odir: Path, crdin: Path, topin: Path, nion: str, pion: str, nq=None, pq=None
+    odir: Path,
+    crdin: Path,
+    topin: Path,
+    nion: str,
+    pion: str,
+    nq=None,
+    pq=None,
 ) -> str:
     """
     Neutralise system charge with selected anion and cation types.
@@ -805,12 +829,23 @@ def add_ions_neutral(
             nq = int(get_ion_charges()[nion])
         if pq is None:
             pq = int(get_ion_charges()[pion])
-        logger.debug(f"gmx grompp completed successfully.")
+        logger.debug("gmx grompp completed successfully.")
         err, out = gmx.run_gmx_genion_neutralise(
-            s=tpr, p=topin, o=crdin, n=ndx, pname=pion, pq=pq, nname=nion, nq=nq
+            s=tpr,
+            p=topin,
+            o=crdin,
+            n=ndx,
+            pname=pion,
+            pq=pq,
+            nname=nion,
+            nq=nq,
         )
-        replaced = re.findall("Replacing solvent molecule", err, flags=re.MULTILINE)
-        logger.debug(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
+        replaced = re.findall(
+            "Replacing solvent molecule", err, flags=re.MULTILINE
+        )
+        logger.debug(
+            f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}"
+        )
         # add_resnum(crdin=crdout, crdout=crdout)
         # rename_il_solvent(crdin=crdout, crdout=crdout)
         # shutil.move('processed.top', topin)
@@ -822,7 +857,10 @@ def add_ions_neutral(
 
 @update_universe
 def _remove_excess_gro_ions(
-    u: MDAnalysis.Universe, crdout: Union[Path, str], n_ions: int, ion_type: str
+    u: MDAnalysis.Universe,
+    crdout: Union[Path, str],
+    n_ions: int,
+    ion_type: str,
 ) -> None:
     last_sol_id = u.select_atoms("resname SOL")[-1].index
     ions = u.select_atoms(f"resname {ion_type}")
@@ -838,7 +876,10 @@ def _remove_excess_gro_ions(
 
 @temp_file_wrapper
 def _remove_excess_top_ions(
-    topin: Union[Path, str], topout: Union[Path, str], n_ions: int, ion_type: str
+    topin: Union[Path, str],
+    topout: Union[Path, str],
+    n_ions: int,
+    ion_type: str,
 ) -> None:
     with open(topin, "r") as topfile:
         topstr = topfile.read()
@@ -848,7 +889,7 @@ def _remove_excess_top_ions(
         flags=re.MULTILINE | re.DOTALL,
     )
     sol_matches = re.search(
-        rf"(.*system.*SOL\s+\d+\n).*", topstr, flags=re.MULTILINE | re.DOTALL
+        r"(.*system.*SOL\s+\d+\n).*", topstr, flags=re.MULTILINE | re.DOTALL
     )
     topstr = sol_matches.group(1) + ion_matches.group(2)
     with open(topout, "w") as topfile:
@@ -867,15 +908,19 @@ def remove_excess_ions(crdin, topin, crdout, topout, n_ions, ion_type) -> None:
 
 
 @temp_file_wrapper
-def rename_il_solvent(crdin: MDAnalysis.Universe, crdout: Union[Path, str]) -> None:
+def rename_il_solvent(
+    crdin: MDAnalysis.Universe, crdout: Union[Path, str]
+) -> None:
     u = Universe(str(crdin))
-    if "isl" not in list(map(lambda n: n.lower(), np.unique(u.residues.resnames))):
-        logger.debug(f"Renaming interlayer SOL to iSL")
+    if "isl" not in list(
+        map(lambda n: n.lower(), np.unique(u.residues.resnames))
+    ):
+        logger.debug("Renaming interlayer SOL to iSL")
         isl: MDAnalysis.AtomGroup = u.select_atoms("resname SOL").residues
         try:
             idx: int = isl[np.ediff1d(isl.resnums, to_end=1) != 1][-1].resnum
         except IndexError:
-            logger.info(f"No interlayer solvation")
+            logger.info("No interlayer solvation")
         isl: MDAnalysis.AtomGroup = isl.atoms.select_atoms(f"resnum 0 - {idx}")
         isl.residues.resnames = "iSL"
         if type(crdout) != Path:
@@ -883,7 +928,7 @@ def rename_il_solvent(crdin: MDAnalysis.Universe, crdout: Union[Path, str]) -> N
         crdout = str(crdout.resolve())
         u.atoms.write(crdout)
     else:
-        logger.debug(f"No interlayer SOL to rename")
+        logger.debug("No interlayer SOL to rename")
         if str(Path(crdin).resolve()) != str(Path(crdout.resolve())):
             logger.debug(f"Overwriting {crdin.name!r}")
             shutil.move(crdin, crdout)
@@ -936,12 +981,17 @@ PRM_INFO_DICT = {
     "n_atoms": cast(
         Callable[[Universe], Dict[str, int]],
         lambda u: dict(
-            [(r, u.select_atoms(f"moltype {r}").n_atoms) for r in u.atoms.moltypes]
+            [
+                (r, u.select_atoms(f"moltype {r}").n_atoms)
+                for r in u.atoms.moltypes
+            ]
         ),
     ),
     "charges": cast(
         Callable[[Universe], Dict[str, float]],
-        lambda u: dict(zip(u.atoms.moltypes, np.round(u.atoms.residues.charges, 4))),
+        lambda u: dict(
+            zip(u.atoms.moltypes, np.round(u.atoms.residues.charges, 4))
+        ),
     ),
 }
 
@@ -1116,13 +1166,17 @@ def get_all_prms(prm_str, force_update=True, write=True, name=None):
         aa_dict = {}
         for aa in aa_types:
             aa_dict.update(
-                get_aa_prms(prm_str=prm_str, aa_name=aa, force_update=force_update)
+                get_aa_prms(
+                    prm_str=prm_str, aa_name=aa, force_update=force_update
+                )
             )
         clay_types = ["D21"]
         clay_dict = {}
         for uc in clay_types:
             clay_dict.update(
-                get_clay_prms(prm_str=prm_str, uc_name=uc, force_update=force_update)
+                get_clay_prms(
+                    prm_str=prm_str, uc_name=uc, force_update=force_update
+                )
             )
         sol_dict = get_sol_prms(prm_str=prm_str, force_update=force_update)
         charge_dict = {**ion_dict, **clay_dict, **sol_dict, **aa_dict}
@@ -1156,10 +1210,13 @@ def get_system_prms(
             logger.error(f"Could not create Universe from {crds}")
             return None
     prm_df = pd.Series(
-        get_all_prms(prm_str, write=write, force_update=force_update), name=name
+        get_all_prms(prm_str, write=write, force_update=force_update),
+        name=name,
     )
     if prm_str == "charges":
-        residue_df = pd.Series(u.residues.resnames, name="residues", dtype="str")
+        residue_df = pd.Series(
+            u.residues.resnames, name="residues", dtype="str"
+        )
         residue_df = residue_df.aggregate("value_counts")
         prm_df = pd.concat(
             {prm_str: prm_df, "counts": residue_df}, axis=1, join="inner"
@@ -1189,7 +1246,9 @@ def add_mols_to_top(
         itp_path = pl.Path(insert).parent.resolve()
         itp = pl.Path(insert).stem
         insert = Universe(
-            str(itp_path / f"{itp}.itp"), topology_format="ITP", include_dir=include_dir
+            str(itp_path / f"{itp}.itp"),
+            topology_format="ITP",
+            include_dir=include_dir,
         )
     else:
         itp_path = pl.Path(topin).parent
@@ -1205,7 +1264,11 @@ def add_mols_to_top(
         if n_mols != 0:
             topfile.write(
                 "\n".join(
-                    [tophead, topmatch, f"\n{insert.residues.moltypes[0]}  {n_mols}\n"]
+                    [
+                        tophead,
+                        topmatch,
+                        f"\n{insert.residues.moltypes[0]}  {n_mols}\n",
+                    ]
                 )
             )
         else:
@@ -1224,27 +1287,32 @@ def remove_replaced_SOL(
         pattern = rf"{substr}(?!.*{substr})"
 
         try:
-            topmatch = re.search(pattern, topstr, flags=re.MULTILINE | re.DOTALL).group(
-                2
-            )
+            topmatch = re.search(
+                pattern, topstr, flags=re.MULTILINE | re.DOTALL
+            ).group(2)
+        except AttributeError:
+            raise ValueError("No solvent found")
+        except IndexError:
+            raise IndexError("Not enough interlayer solvent groups found!")
             n_sol = int(topmatch) - n_mols
-            logger.debug(f"Removing {n_mols} SOL residues from topology.")
+        logger.debug(f"Removing {n_mols} SOL residues from topology.")
 
-            if n_sol < 0:
-                raise ValueError
+        if n_sol < 0:
+            raise ValueError(f"Invalid number of solvent residues: {n_sol}")
 
-            else:
-                topstr = re.sub(
-                    pattern, rf"\1 {n_sol}", topstr, flags=re.MULTILINE | re.DOTALL
+        else:
+            topstr = re.sub(
+                pattern,
+                rf"\1 {n_sol}",
+                topstr,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+
+            with open(topout, "w") as topfile:
+                logger.debug(
+                    f"New topology {topout.name!r} has {n_sol} SOL molecules."
                 )
-
-                with open(topout, "w") as topfile:
-                    logger.debug(
-                        f"New topology {topout.name!r} has {n_sol} SOL molecules."
-                    )
-                    topfile.write(topstr)
-        except:
-            raise ValueError
+                topfile.write(topstr)
 
 
 @update_universe
@@ -1280,7 +1348,7 @@ def remove_ag(
     if first is not False:
         if last is not False:
             raise ValueError(
-                f"Not possible to select first and last ends of atom group at the same time"
+                "Not possible to select first and last ends of atom group at the same time"
             )
     elif last is not False:
         first = -last
@@ -1339,7 +1407,13 @@ def add_ions_conc(
         # else:
         # logger.debug(f"gmx grompp completed successfully.")
         err, out = gmx.run_gmx_genion_conc(
-            s=tpr, p=topin, o=crdout, n=ndx, iname=ion, iq=ion_charge, conc=conc
+            s=tpr,
+            p=topin,
+            o=crdout,
+            n=ndx,
+            iname=ion,
+            iq=ion_charge,
+            conc=conc,
         )
         # err = search_gmx_error(out)
         # if err is not None:
@@ -1353,8 +1427,12 @@ def add_ions_conc(
         # isl = grep_file(crdin, 'iSL')
         # if otop_copy is True:
         #     shutil.move(topout, topin)
-        replaced = re.findall("Replacing solvent molecule", err, flags=re.MULTILINE)
-        logger.info(f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}")
+        replaced = re.findall(
+            "Replacing solvent molecule", err, flags=re.MULTILINE
+        )
+        logger.info(
+            f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}"
+        )
         # add_resnum(crdin=crdout, crdout=crdout)
         # rename_il_solvent(crdin=crdout, crdout=crdout)
         # shutil.move('processed.top', topin)
@@ -1364,7 +1442,9 @@ def add_ions_conc(
     return len(replaced)
 
 
-def check_insert_numbers(add_repl: Literal["Added", "Replaced"], searchstr: str) -> int:
+def check_insert_numbers(
+    add_repl: Literal["Added", "Replaced"], searchstr: str
+) -> int:
     """Get number of inserted/replaced molecules.
 
     :param add_repl: specify if molecules search for added or replaced molecules
@@ -1424,7 +1504,13 @@ def run_em(
         otop_copy = False
     tpr = outname.with_suffix(".tpr")
     gmx.run_gmx_grompp(
-        f=mdp, c=crdin, p=topin, o=tpr, pp=topout, v="", po=tpr.with_suffix(".mdp")
+        f=mdp,
+        c=crdin,
+        p=topin,
+        o=tpr,
+        pp=topout,
+        v="",
+        po=tpr.with_suffix(".mdp"),
     )
     error, em, out = gmx.run_gmx_mdrun(s=tpr, deffnm=outname)
     if error is None:
@@ -1437,8 +1523,8 @@ def run_em(
             logger.error("Energy minimisation run not converged!\n")
         else:
             fmax, n_steps = conv.groups()
-            logger.debug(f"Fmax: {fmax}, reached in {n_steps} steps")
-            logger.debug(f"Output written to {outname!r}")
+            logger.info(f"Fmax: {fmax}, reached in {n_steps} steps")
+            logger.debug(f"Output written to {outname.name!r}")
             conv = (
                 f"Fmax: {fmax}, reached in {n_steps} steps."
                 f"Output written to {outname!r}\n"
@@ -1452,7 +1538,9 @@ def run_em(
 
 def set_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ]*"):
     new_str = re.sub(
-        rf"(?<={parameter})(\s*)(=\s*)({searchex})(?=\n)", r"\1" + f"={value}", mdp_str
+        rf"(?<={parameter})(\s*)(=\s*)({searchex})(?=\n)",
+        r"\1" + f"={value}",
+        mdp_str,
     )
     return new_str
 

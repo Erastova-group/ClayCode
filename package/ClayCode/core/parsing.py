@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-import argparse
+
 import logging
-import re
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserDict
@@ -10,14 +9,15 @@ from functools import cached_property
 import numpy as np
 import pandas as pd
 import yaml
-
-from .consts import UCS, FF
-from .log import logger
-from ..builder.claycomp import MatchClayComposition, InterlayerIons, BulkIons
-from .classes import File, Dir, init_path
-from .lib import get_ion_charges
-from .utils import get_header, get_subheader
-
+from ClayCode.builder.claycomp import (
+    BulkIons,
+    InterlayerIons,
+    MatchClayComposition,
+)
+from ClayCode.core.classes import Dir, File, init_path
+from ClayCode.core.consts import FF, UCS
+from ClayCode.core.log import logger
+from ClayCode.core.utils import get_header, get_subheader
 
 __all__ = {
     "ArgsFactory",
@@ -217,19 +217,29 @@ ion_add_group.add_argument(
 )
 
 # Clay simulation analysis parser
-analysisparser = subparsers.add_parser("analyse", help="Analyse clay simulations.")
+analysisparser = subparsers.add_parser(
+    "analyse", help="Analyse clay simulations."
+)
 
 # plot analysis results
-plotparser = subparsers.add_parser("plot", help="Plot simulation analysis results")
+plotparser = subparsers.add_parser(
+    "plot", help="Plot simulation analysis results"
+)
 
 # Clay simulation check parser
-checkparser = subparsers.add_parser("check", help="Check clay simulation data.")
+checkparser = subparsers.add_parser(
+    "check", help="Check clay simulation data."
+)
 
 equilparser = subparsers.add_parser(
     "equilibrate", help="Generate clay model equilibration run input files."
 )
 equilparser.add_argument(
-    "-d_space", help="d-spacing in A", metavar="d_spacing", dest="d_space", type=float
+    "-d_space",
+    help="d-spacing in A",
+    metavar="d_spacing",
+    dest="d_space",
+    type=float,
 )
 equilparser.add_argument(
     "-n_wat",
@@ -258,7 +268,7 @@ equilparser.add_argument(
 
 def read_yaml_decorator(f):
     def wrapper(self: _Args):
-        assert isinstance(self, _Args), f"Wrong class for decorator"
+        assert isinstance(self, _Args), "Wrong class for decorator"
         with open(self.data["yaml_file"], "r") as file:
             self.__yaml_data = yaml.safe_load(file)
         logger.info(f"Reading {file.name!r}:\n")
@@ -300,8 +310,8 @@ class BuildArgs(_Args):
     """Parameters for clay model setup with :mod:`ClayCode.builder`"""
 
     option = "builder"
-    from ClayCode.builder.consts import UC_CHARGE_OCC as _charge_occ_df
     from ClayCode.builder.consts import BUILD_DEFAULTS as _build_defaults
+    from ClayCode.builder.consts import UC_CHARGE_OCC as _charge_occ_df
 
     _arg_names = [
         "SYSNAME",
@@ -362,12 +372,14 @@ class BuildArgs(_Args):
             pass
         if "csv_file" in self.data.keys() and "CLAY_COMP" in self.data.keys():
             if csv_file.absolute() == yaml_csv_file.absolute():
-                logger.info(f"Clay composition {csv_file.absolute()} specified twice.")
+                logger.info(
+                    f"Clay composition {csv_file.absolute()} specified twice."
+                )
                 self.data["CLAY_COMP"] = csv_file
                 self.data.pop("csv_file")
             else:
                 raise ValueError(
-                    f"Two non-identical clay composition files specified:"
+                    "Two non-identical clay composition files specified:"
                     f"\n\t1) {csv_file}\n\t2) {yaml_csv_file}"
                 )
         elif "csv_file" in self.data.keys():
@@ -376,18 +388,19 @@ class BuildArgs(_Args):
         elif "CLAY_COMP" in self.data.keys():
             self.data["CLAY_COMP"] = yaml_csv_file
         else:
-            raise ValueError(f"No csv file with clay composition specified!")
+            raise ValueError("No csv file with clay composition specified!")
 
     def check(self) -> None:
         try:
             self.name = self.data["SYSNAME"]
             logger.info(f"\nSetting name: {self.name!r}")
         except KeyError:
-            raise KeyError(f"Clay system name must be given")
+            raise KeyError("Clay system name must be given")
         try:
             uc_type = self.data["CLAY_TYPE"]
             if (
-                uc_type in self._charge_occ_df.index.get_level_values("value").unique()
+                uc_type
+                in self._charge_occ_df.index.get_level_values("value").unique()
             ) and (UCS / uc_type).is_dir():
                 self._uc_name = uc_type
                 self.uc_stem = self._uc_name[:2]
@@ -428,7 +441,7 @@ class BuildArgs(_Args):
             outpath = self.data["OUTPATH"]
             self.outpath = Dir(outpath, check=False)
         except KeyError:
-            raise KeyError(f"No output directory specified")
+            raise KeyError("No output directory specified")
         try:
             GMX = self.data["GMX"]
         except KeyError:
@@ -456,7 +469,7 @@ class BuildArgs(_Args):
 
         water_sel_dict = {"SPC": ["ClayFF_Fe", ["spc", "interlayer_spc"]]}
         ff_dict = {}
-        logger.info(get_subheader(f"Getting force field data"))
+        logger.info(get_subheader("Getting force field data"))
         for ff_key, ff_sel in self.ff.items():
             if ff_key == "WATER":
                 ff_sel = water_sel_dict[ff_sel][0]
@@ -530,9 +543,9 @@ class BuildArgs(_Args):
     def target_df(self):
         return self._target_comp.df
 
-    @property
-    def match_df(self):
-        return self._match_comp.df
+    # @property
+    # def match_df(self):
+    #     return self._match_comp.df
 
     @property
     def ion_df(self):
@@ -543,7 +556,9 @@ class BuildArgs(_Args):
         return self.x_cells * self.y_cells
 
     def match_uc_combination(self):
-        self.match_comp = MatchClayComposition(self._target_comp, self.sheet_n_cells)
+        self.match_comp = MatchClayComposition(
+            self._target_comp, self.sheet_n_cells
+        )
         self.match_comp.write_csv(self.outpath)
 
     @property
@@ -566,11 +581,15 @@ class BuildArgs(_Args):
         tot_charge = self.match_charge["tot"]
         if tot_charge != 0:
             self.il_ions = InterlayerIons(
-                tot_charge=tot_charge, ion_ratios=self.ion_df, n_ucs=self.sheet_n_cells
+                tot_charge=tot_charge,
+                ion_ratios=self.ion_df,
+                n_ucs=self.sheet_n_cells,
             )
 
     def get_bulk_ions(self):
-        self._bulk_ions = BulkIons(self.bulk_ions, self._build_defaults["BULK_IONS"])
+        self._bulk_ions = BulkIons(
+            self.bulk_ions, self._build_defaults["BULK_IONS"]
+        )
 
     @property
     def bulk_ion_conc(self):
@@ -584,14 +603,18 @@ class BuildArgs(_Args):
     def default_bulk_pion(self):
         neutralise_ions = self._bulk_ions.neutralise_ions
         return tuple(
-            *neutralise_ions[neutralise_ions["charge"] > 0]["conc"].reset_index().values
+            *neutralise_ions[neutralise_ions["charge"] > 0]["conc"]
+            .reset_index()
+            .values
         )
 
     @cached_property
     def default_bulk_nion(self):
         neutralise_ions = self._bulk_ions.neutralise_ions
         return tuple(
-            *neutralise_ions[neutralise_ions["charge"] < 0]["conc"].reset_index().values
+            *neutralise_ions[neutralise_ions["charge"] < 0]["conc"]
+            .reset_index()
+            .values
         )
 
     @property
