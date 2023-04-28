@@ -17,7 +17,6 @@ This package requires python version >=3.9 and pipx.
      bash install.sh
      ````
 
-
 ## Usage
 
 ClayCode is called in the following way:

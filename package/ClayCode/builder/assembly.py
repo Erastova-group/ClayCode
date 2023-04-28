@@ -10,10 +10,11 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import pandas as pd
 from ClayCode.builder.claycomp import UCData
-from ClayCode.builder.topology import TopologyConstructorBase
+from ClayCode.builder.topology import TopologyConstructor
+from ClayCode.core import gmx
 from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
 from ClayCode.core.consts import GRO_FMT
-from ClayCode.core.gmx import run_gmx_insert_mols, run_gmx_solvate
+from ClayCode.core.gmx import GMXCommands, add_gmx_args, gmx_command_wrapper
 from ClayCode.core.lib import (
     add_ions_n_mols,
     add_ions_neutral,
@@ -52,7 +53,7 @@ class Builder:
             fstem=self.args.filestem,
             outpath=self.args.outpath,
         )
-        self.top = TopologyConstructorBase(self.args._uc_data, self.args.ff)
+        self.top = TopologyConstructor(self.args._uc_data, self.args.ff)
         self.__il_solv = None
         self.__stack = None
         self.__box_ext = False
@@ -64,6 +65,7 @@ class Builder:
             f"({self.sheet.x_cells} unit cells X {self.sheet.y_cells} unit cells)\n"
             f"Box height: {self.args.box_height:.1f} A"
         )
+        self.gmx_commands = GMXCommands(gmx_alias=self.args.gmx_alias)
 
     @property
     def extended_box(self) -> bool:
@@ -76,6 +78,7 @@ class Builder:
             y_dim=self.sheet.dimensions[1],
             n_mols=self.args.n_waters,
             z_dim=self.args.il_solv_height,
+            gmx_commands=self.gmx_commands,
         )
         spc_file: GROFile = self.get_filename("interlayer", suffix=".gro")
         solvent.write(spc_name=spc_file, topology=self.top)
@@ -99,6 +102,7 @@ class Builder:
 
     def run_em(self):
         logger.info(get_subheader("Minimising energy"))
+        # logger.info(f'{self.gmx_info()}')
         em_inp = "em.mdp"
         uc_names = np.unique(self.clay.residues.resnames)
         em_filestr = set_mdp_freeze_clay(
@@ -191,7 +195,7 @@ class Builder:
             solv_box_crd: GROFile = self.get_filename("solv", suffix=".gro")
 
             self.remove_SOL()
-            run_gmx_solvate(
+            self.gmx_commands.run_gmx_solvate(
                 p=self.stack.top,
                 pp=solv_box_crd.top,
                 cp=self.stack,
@@ -314,6 +318,7 @@ class Builder:
                     ion=ion,
                     charge=int(charge),
                     n_atoms=n_ions,
+                    gmx_commands=self.gmx_commands,
                 )
                 logger.debug(
                     f"after n_atoms: {self.stack.universe.atoms.n_atoms}"
@@ -333,6 +338,7 @@ class Builder:
                 nion=nion,
                 # nq=nq,
                 pion=pion,
+                gmx_commands=self.gmx_commands
                 # pq=pq)
             )
             logger.debug(f"n_atoms: {self.stack.universe.atoms.n_atoms}")
@@ -564,7 +570,10 @@ class Builder:
                                     n_mols=n_ions, save=posfile.name
                                 )
                                 assert Path(posfile.name).is_file()
-                                insert_err, insert_out = run_gmx_insert_mols(
+                                (
+                                    insert_err,
+                                    insert_out,
+                                ) = self.gmx_commands.run_gmx_insert_mols(
                                     f=temp_gro,
                                     ci=ion_gro.name,
                                     ip=posfile.name,
@@ -749,6 +758,7 @@ class Solvent:
     solv_density = 1000e-27  # g/L 1L = 10E27 A^3
     mw_sol = 18
 
+    @add_gmx_args
     def __init__(
         self,
         x_dim: Optional[Union[int, float]] = None,
@@ -782,7 +792,7 @@ class Solvent:
         return universe
 
     @property
-    def topology(self) -> TopologyConstructorBase:
+    def topology(self) -> TopologyConstructor:
         top = getattr(self, "__top", None)
         return top
 
@@ -820,7 +830,7 @@ class Solvent:
     def write(
         self,
         spc_name: GROFile,
-        topology: Optional[TopologyConstructorBase] = None,
+        topology: Optional[TopologyConstructor] = None,
     ) -> None:
         if spc_name.__class__.__name__ != "GROFile":
             spc_gro: GROFile = GROFile(spc_name)  # .with_suffix('.gro')
@@ -829,11 +839,11 @@ class Solvent:
         spc_top: TOPFile = spc_gro.top
         spc_gro.universe = Universe.empty(n_atoms=0)
         spc_gro.write(topology=topology)
-        # if topology.__class__.__name__ == 'TopologyConstructorBase':
+        # if topology.__class__.__name__ == 'TopologyConstructor':
         #     topology.write(spc_topname)
         # elif topology.__class__.__name__ == 'TOPFile':
         #     spc_topname = str(topology.resolve())
-        solv, out = run_gmx_solvate(
+        solv, out = self.gmx_commands.run_gmx_solvate(
             cs="spc216",
             maxsol=self.n_mols,
             o=spc_gro,
@@ -845,7 +855,7 @@ class Solvent:
         self.check_solvent_nummols(solv)
         logger.debug(f"Saving solvent sheet as {spc_gro.stem!r}")
         self.__universe: Universe = spc_gro.universe
-        self.__top: TopologyConstructorBase = topology
+        self.__top: TopologyConstructor = topology
 
     def check_solvent_nummols(self, solvate_stderr: str) -> None:
         added_wat: str = re.search(

@@ -9,7 +9,7 @@ from MDAnalysis import ResidueGroup
 logger = logging.getLogger(Path(__file__).name)
 
 
-class TopologyConstructorBase:
+class TopologyConstructor:
     def __init__(self, uc_data, ff):
         self.ff = ff
         self.uc_data = uc_data

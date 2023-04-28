@@ -14,6 +14,7 @@ from ClayCode.builder.claycomp import (
     InterlayerIons,
     MatchClayComposition,
 )
+from ClayCode.core import gmx
 from ClayCode.core.classes import Dir, File, init_path
 from ClayCode.core.consts import FF, UCS
 from ClayCode.core.log import logger
@@ -445,8 +446,9 @@ class BuildArgs(_Args):
         try:
             GMX = self.data["GMX"]
         except KeyError:
-            setattr(self, GMX, self._build_defaults["GMX"])
+            GMX = self._build_defaults["GMX"]
             logger.info(f"Using default GROMACS alias: {GMX}")
+        setattr(self, "gmx_alias", GMX)
 
     def process(self):
         logger.info(get_header("Getting build parameters"))
@@ -674,6 +676,8 @@ class EquilibrateArgs(_Args):
     def process(self):
         # convert d-spacing from A to nm
         self.d_space /= 10
+
+    # def ..
 
 
 class ArgsFactory:

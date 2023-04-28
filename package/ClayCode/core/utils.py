@@ -124,7 +124,7 @@ def _(str_obj: str):
 
 
 def execute_bash_command(command, **outputargs):
-    output = sp.run(["/bin/bash", "-c", command], **outputargs)
+    output = sp.run(["/bin/bash", "-c", "-i", command], **outputargs)
     return output
 
 

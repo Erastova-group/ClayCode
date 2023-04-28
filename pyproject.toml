@@ -45,15 +45,6 @@ include-package-data = true
 requires = ["setuptools>=62"]
 build-backend = "setuptools.build_meta"
 
-#[tool.black]
-#line-length = 80
-#target-version = ['py39']
-#
-#[tool.isort]
-#profile = "black"
-#multi_line_output = 3
-#py_version = 39
-#
 [tool.black]
 line-length = 79
 include = '.pyi?$'
@@ -70,10 +61,3 @@ exclude = '''
     | dist
 )/
 '''
-
-#[flake8]
-#ignore = E203, E266, E501, W503, F403, F401
-#max-line-length = 89
-#max-complexity = 18
-#select = B,C,E,F,W,T4,B9
-

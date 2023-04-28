@@ -32,6 +32,7 @@ from ClayCode.analysis.analysisbase import analysis_class
 from ClayCode.core import gmx
 from ClayCode.core.classes import GROFile
 from ClayCode.core.consts import AA, DATA, FF, IONS, MDP, SOL, SOL_DENSITY, UCS
+from ClayCode.core.gmx import gmx_command_wrapper
 from ClayCode.core.log import logger
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import minimize_vectors
@@ -686,9 +687,16 @@ def add_mol_list_to_top(
     assert Path(topout).exists()
 
 
+@gmx_command_wrapper
 @temp_file_wrapper
 def add_ions_n_mols(
-    odir: Path, crdin: Path, topin: Path, ion: str, n_atoms: int, charge=None
+    odir: Path,
+    crdin: Path,
+    topin: Path,
+    ion: str,
+    n_atoms: int,
+    gmx_commands,
+    charge=None,
 ) -> int:
     """
     Add a selected number of ions.
@@ -718,7 +726,7 @@ def add_ions_n_mols(
     assert odir.is_dir()
     tpr = odir / "add_ions.tpr"
     ndx = odir / "add_ions.ndx"
-    gmx.run_gmx_make_ndx(f=crdin, o=ndx)
+    gmx_commands.run_gmx_make_ndx(f=crdin, o=ndx)
     if charge is None:
         charge = int(get_ion_charges()[ion])
     if charge < 0:
@@ -736,7 +744,7 @@ def add_ions_n_mols(
         nq = -1
         nn = 0
     if ndx.is_file():
-        gmx.run_gmx_grompp(
+        gmx_commands.run_gmx_grompp(
             f=MDP / "genion.mdp",
             c=crdin,
             p=topin,
@@ -746,7 +754,7 @@ def add_ions_n_mols(
             v="",
             maxwarn=1,
         )
-        err, out = gmx.run_gmx_genion_add_n_ions(
+        err, out = gmx_commands.run_gmx_genion_add_n_ions(
             s=tpr,
             p=topin,
             o=crdin,
@@ -773,6 +781,7 @@ def add_ions_n_mols(
     return len(replaced)
 
 
+@gmx_command_wrapper
 @temp_file_wrapper
 def add_ions_neutral(
     odir: Path,
@@ -780,6 +789,7 @@ def add_ions_neutral(
     topin: Path,
     nion: str,
     pion: str,
+    gmx_commands,
     nq=None,
     pq=None,
 ) -> str:
@@ -813,9 +823,9 @@ def add_ions_neutral(
     assert odir.is_dir()
     tpr = odir / "neutral.tpr"
     ndx = odir / "neutral.ndx"
-    gmx.run_gmx_make_ndx(f=crdin, o=ndx)
+    gmx_commands.run_gmx_make_ndx(f=crdin, o=ndx)
     if ndx.is_file():
-        gmx.run_gmx_grompp(
+        gmx_commands.run_gmx_grompp(
             f=MDP / "genion.mdp",
             c=crdin,
             p=topin,
@@ -830,7 +840,7 @@ def add_ions_neutral(
         if pq is None:
             pq = int(get_ion_charges()[pion])
         logger.debug("gmx grompp completed successfully.")
-        err, out = gmx.run_gmx_genion_neutralise(
+        err, out = gmx_commands.run_gmx_genion_neutralise(
             s=tpr,
             p=topin,
             o=crdin,
@@ -1360,6 +1370,7 @@ def remove_ag(
     u.atoms.write(crdout)
 
 
+@gmx_command_wrapper
 @temp_file_wrapper
 def add_ions_conc(
     odir: Path,
@@ -1370,6 +1381,7 @@ def add_ions_conc(
     ion: str,
     ion_charge: float,
     conc: float,
+    gmx_commands,
 ):
     logger.debug(f"Adding {conc} mol/L {ion}")
     mdp = MDP / "genion.mdp"
@@ -1381,14 +1393,14 @@ def add_ions_conc(
     ndx = odir / "conc.ndx"
     # isl = grep_file(crdin, 'iSL')
     shutil.copy(crdin, crdout)
-    gmx.run_gmx_make_ndx(f=crdout, o=ndx)
+    gmx_commands.run_gmx_make_ndx(f=crdout, o=ndx)
     if ndx.is_file():
         # if topin.resolve() == topout.resolve():
         #     topout = topout.parent / method"{topout.stem}_n.top"
         #     otop_copy = True
         # else:
         #     otop_copy = False
-        gmx.run_gmx_grompp(
+        gmx_commands.run_gmx_grompp(
             f=MDP / "genion.mdp",
             c=crdout,
             p=topin,
@@ -1406,7 +1418,7 @@ def add_ions_conc(
         #     replaced = []
         # else:
         # logger.debug(f"gmx grompp completed successfully.")
-        err, out = gmx.run_gmx_genion_conc(
+        err, out = gmx_commands.run_gmx_genion_conc(
             s=tpr,
             p=topin,
             o=crdout,
@@ -1462,11 +1474,13 @@ def check_insert_numbers(
     )
 
 
+@gmx_command_wrapper
 def run_em(
     mdp: str,
     crdin: Union[str, Path],
     topin: Union[str, Path],
     odir: Path,
+    gmx_commands,
     outname: str = "em",
 ) -> Union[str, None]:
     """
@@ -1503,7 +1517,7 @@ def run_em(
     else:
         otop_copy = False
     tpr = outname.with_suffix(".tpr")
-    gmx.run_gmx_grompp(
+    gmx_commands.run_gmx_grompp(
         f=mdp,
         c=crdin,
         p=topin,
@@ -1512,7 +1526,7 @@ def run_em(
         v="",
         po=tpr.with_suffix(".mdp"),
     )
-    error, em, out = gmx.run_gmx_mdrun(s=tpr, deffnm=outname)
+    error, em, out = gmx_commands.run_gmx_mdrun(s=tpr, deffnm=outname)
     if error is None:
         conv = re.search(
             r"converged to Fmax < (\d+) in (\d+) steps",
