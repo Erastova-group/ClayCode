@@ -568,7 +568,7 @@ class TargetClayComposition:
             pass
         sheet_df = self.__df.copy()
         logger.info(
-            f"\nSplitting total iron content ({missing_o:.2f}) to match charge.\n"
+            f"\nSplitting total iron content ({missing_o:.4f}) to match charge.\n"
         )
         self.print_df_composition(
             sheet_df.loc[["T", "O"], :].dropna(), fill="\t"
@@ -648,7 +648,7 @@ class TargetClayComposition:
         logger.info("\nGetting sheet occupancies:")
         for sheet, occ in check_occ.iteritems():
             logger.info(
-                f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.2f}/{correct_uc_occ[sheet]:.2f} ({occ:+.2f})"
+                f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.4f}/{correct_uc_occ[sheet]:.4f} ({occ:+.4f})"
             )
         sheet_df: pd.Series = self.__df.loc[["T", "O"], :].copy()
         sheet_df = sheet_df.loc[sheet_df != 0]
@@ -675,18 +675,19 @@ class TargetClayComposition:
                         "\nAccept new composition? [y/n] (exit with c)\n"
                     ).lower()
                 if accept == "n":
+                    accept = None
                     sheet_df: pd.Series = old_composition.copy()
                     sheet_df = sheet_df.loc[["T", "O"], :]
                     sheet_df = sheet_df.loc[sheet_df != 0]
                     for k, v in check_occ.items():
                         if v != 0:
                             for atom, occ in sheet_df.loc[k, :].iteritems():
-                                sheet_df.loc[k, atom] = float(
-                                    input(
-                                        f"Enter new value for {k!r} - {atom!r}: ({occ:2.2f}) -> "
-                                    )
+                                new_occ = input(
+                                    f"Enter new value for {k!r} - {atom!r}: ({occ:2.4f}) -> "
                                 )
-                elif accept == "c":
+                                if new_occ != "":
+                                    sheet_df.loc[k, atom] = float(new_occ)
+                if accept == "c":
                     self.__abort()
 
     @staticmethod
@@ -703,11 +704,11 @@ class TargetClayComposition:
             try:
                 old_val = old_composition[idx]
                 logger.info(
-                    f"{fill}\t{sheet!r:5} - {atom!r:^10}: {old_val:2.2f} -> {occ:2.2f} ({occ - old_val:+2.2f})"
-                    # sheet occupancies of {new_occ[sheet]:.2f}/{correct_uc_occ[sheet]:.2f} ({occ:+.2f})")
+                    f"{fill}\t{sheet!r:5} - {atom!r:^10}: {old_val:2.4f} -> {occ:2.4f} ({occ - old_val:+2.4f})"
+                    # sheet occupancies of {new_occ[sheet]:.4f}/{correct_uc_occ[sheet]:.4f} ({occ:+.4f})")
                 )
             except TypeError:
-                logger.info(f"{fill}\t{sheet!r:5} - {atom!r:^10}: {occ:2.2f}")
+                logger.info(f"{fill}\t{sheet!r:5} - {atom!r:^10}: {occ:2.4f}")
 
     correct_t_occupancies = partialmethod(correct_occupancies, idx_sel=["T"])
     correct_o_occupancies = partialmethod(correct_occupancies, idx_sel=["O"])
