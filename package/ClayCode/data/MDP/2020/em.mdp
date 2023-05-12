@@ -1,0 +1,11 @@
+title = GMX 2020 EM
+define = -DPOSRES  ; To apply position restraints
+; Run control parameters
+integrator = steep  ; Steepest descent energy minimization
+emtol = 500.0     ; Maximum force tolerance (kJ/mol/nm)
+nsteps = 5000      ; Maximum number of steps to take
+emstep = 0.01      ; Maximum allowed step size during energy minimization (nm)
+; Output control parameters
+nstxout = 0        ; Do not write coordinates to output trajectory
+nstvout = 0        ; Do not write velocities to output trajectory
+nstenergy = 100    ; Write energy to log file every 100 steps

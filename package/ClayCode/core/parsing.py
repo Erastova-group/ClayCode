@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserDict
@@ -14,7 +15,6 @@ from ClayCode.builder.claycomp import (
     InterlayerIons,
     MatchClayComposition,
 )
-from ClayCode.core import gmx
 from ClayCode.core.classes import Dir, File, init_path
 from ClayCode.core.consts import FF, UCS
 from ClayCode.core.log import logger
@@ -26,7 +26,7 @@ __all__ = {
     "BuildArgs",
     "EditArgs",
     "CheckArgs",
-    "EquilibrateArgs",
+    "SiminpArgs",
     "PlotArgs",
     "AnalysisArgs",
 }
@@ -232,22 +232,70 @@ checkparser = subparsers.add_parser(
     "check", help="Check clay simulation data."
 )
 
-equilparser = subparsers.add_parser(
-    "equilibrate", help="Generate clay model equilibration run input files."
+siminpparser = subparsers.add_parser(
+    "siminp", help="Generate clay model equilibration run input files."
 )
-equilparser.add_argument(
-    "-d_space",
+siminp_subparsers = siminpparser.add_subparsers()
+
+dspace_arg_group = siminpparser.add_argument_group(
+    "il_spacing"
+)  # , help='Equilibrate d-spacing')
+
+dspace_arg_group.add_argument(
+    "-dspace",
     help="d-spacing in A",
     metavar="d_spacing",
-    dest="d_space",
+    dest="dspace",
     type=float,
+    required=True,
 )
-equilparser.add_argument(
+
+dspace_arg_group.add_argument(
     "-n_wat",
     help="number of water molecules to remove per cycle per unit cell",
     metavar="n_waters",
     dest="n_wat",
     type=float,
+    default=0.2,
+    required=False,
+)
+
+dspace_arg_group.add_argument(
+    "-n_steps",
+    help="water removal interval",
+    metavar="n_steps",
+    dest="n_steps",
+    type=int,
+    default=1000000,
+    required=False,
+)
+
+
+def valid_run_type(run_name):
+    try:
+        run_type, run_id = run_name.split("_")
+        assert re.match(
+            r"[0-9]*", run_id
+        ), f"Invalid run id option: {run_id!r}, must be numeric"
+    except ValueError as e:
+        run_type = run_name
+    assert run_type in [
+        "EQ",
+        "P",
+    ], f'Invalid run type option: {run_type!r}, select either "EQ" or "P"'
+    return run_name
+
+
+siminpparser.add_argument(
+    "-runs",
+    help="Run type specifications",
+    # type=str,
+    nargs="+",
+    type=valid_run_type,
+)
+
+siminpparser.add_argument(
+    "-run_config",
 )
 
 # TODO: add plotting?
@@ -666,18 +714,56 @@ class PlotArgs(_Args):
         super().__init__(data)
 
 
-class EquilibrateArgs(_Args):
-    option = "equilibrate"
+class SiminpArgs(_Args):
+    option = "siminp"
     # TODO: Add csv or yaml for eq run prms
+    _run_order = ["EQ", "P"]
 
     def __init__(self, data):
         super().__init__(data)
+        self.process()
 
     def process(self):
-        # convert d-spacing from A to nm
-        self.d_space /= 10
+        logger.info(get_header("Getting simulation input parameters"))
+        if "dspace" in self.data:
+            logger.info(get_subheader("d-spacing equilibration parameters"))
+            self.d_spacing = (
+                self.data["dspace"] / 10
+            )  # convert d-spacing from A to nm
+            self.n_wat = self.data["n_wat"]
+            self.n_steps = self.data["n_steps"]
+            self.data["runs"].append("D_SPACE")
+            logger.info(f"Target spacing: {self.d_spacing:2.2f} A")
+            logger.info(
+                f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"
+            )
+        if self.data["runs"] is not None:
+            self.run_sequence = sorted(self.data["runs"])
+            assigned_id = 1
+            for run_id, run_name in enumerate(self.run_sequence):
+                try:
+                    run_type, assigned_id = run_name.split("_")
+                except ValueError:
+                    run_type = run_name
+                    if run_id != 0:
+                        if prev == run_type:
+                            if assigned_id == 1:
+                                self.run_sequence[
+                                    run_id - 1
+                                ] = f"{prev}_{assigned_id}"
+                            assigned_id += 1
+                            self.run_sequence[
+                                run_id
+                            ] = f"{run_type}_{assigned_id}"
+                        else:
+                            assigned_id = 1
+                prev = run_type
+            logger.info(get_subheader("Selected the following run types:"))
+            for run_id, run_name in enumerate(self.run_sequence):
+                logger.info(f"\t{run_id + 1}: {run_name}")
 
-    # def ..
+    def check(self):
+        ...
 
 
 class ArgsFactory:
@@ -686,7 +772,7 @@ class ArgsFactory:
         "edit": EditArgs,
         "check": CheckArgs,
         "analysis": AnalysisArgs,
-        "equilibrate": EquilibrateArgs,
+        "siminp": SiminpArgs,
     }
 
     @classmethod

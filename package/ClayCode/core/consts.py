@@ -18,6 +18,11 @@ __all__ = [
     "UCS",
     "FILE_SEARCHSTR_LIST",
     "DATA",
+    "USER_MDP",
+    "USER_DATA",
+    "USER_FF",
+    "USER_UCS",
+    "USER_CLAYS",
 ]
 
 DATA = files("ClayCode.data")
@@ -26,6 +31,12 @@ FF = DATA.joinpath("FF")
 MDP = DATA.joinpath("MDP")
 CLAYS = DATA.joinpath("CLAYS")
 UCS = DATA.joinpath("UCS")
+
+USER_DATA = files("ClayCode.data.user")
+USER_MDP = USER_DATA.joinpath("MDP")
+USER_FF = USER_DATA.joinpath("FF")
+USER_UCS = USER_DATA.joinpath("UCS")
+USER_CLAYS = USER_DATA.joinpath("CLAYS")
 
 IONS = ["Cl", "Na", "Ca", "K", "Mg", "Cs"]
 SOL_DENSITY = 1000  # g L-1

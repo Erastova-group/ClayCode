@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import logging
 import sys
 
 from ClayCode.core.log import logger
@@ -13,6 +14,8 @@ def run():
     logger.setLevel(args.DEBUG)
     args_factory = ArgsFactory()
     args = args_factory.init_subclass(args)
+    # file_handler = logging.FileHandler(filename=args.)
+    # logger.addHandler(file_handler)
     if isinstance(args, BuildArgs):
         from ClayCode.builder import Builder
 

@@ -1,0 +1,97 @@
+; GROMACS 2020 MDP defaults file
+
+; Options for defining constants
+define =
+
+; Run control parameters
+integrator = md         ; integration algorithm (md, sd, etc.)
+tinit = 0               ; initial time for the simulation (ps)
+dt = 0.001              ; time step of the simulation (ps)
+nsteps = 0              ; total number of steps to simulate (0 = infinite)
+init-step = 0           ; initial step number
+simulation-part = 0     ; simulation part number
+comm-mode = Linear      ; mode of communication between nodes (Linear, PME, etc.)
+nstcomm = 100           ; frequency of communication steps
+comm-grps =             ; groups to communicate separately
+bd-fric = 0             ; Brownian dynamics friction coefficient
+ld-seed = -1            ; Langevin dynamics random seed (negative = use clock)
+
+; Output control parameters
+nstxout = 2000          ; frequency to write coordinates to trajectory file (steps)
+nstvout = 2000          ; frequency to write velocities to trajectory file (steps)
+nstfout = 0             ; frequency to write forces to trajectory file (steps)
+nstlog = 2000           ; frequency to write general output to log file (steps)
+nstcalcenergy = 100     ; frequency to calculate energies and write to energy file (steps)
+nstenergy = 2000        ; frequency to write energies to energy file (steps)
+energy-grps =           ; groups to include in energy calculations
+energygrp-table =       ; groups for which to print separate energy tables
+
+; File precision and compression
+table-extension = 1     ; extension of energy and potential tables (nm)
+compressed-x-precision = 1000  ; precision when writing compressed coordinates (ps)
+compressed-x-grps =     ; groups for which to write compressed coordinates
+
+; Box deformation
+deform = no             ; use box deformation (yes/no)
+deform-vec =            ; box deformation vector (nm)
+
+; Velocity generation
+gen-vel = no            ; generate velocities at start (yes/no)
+gen-temp = 300          ; temperature for velocity generation (K)
+gen-seed = -1           ; random seed for velocity generation (-1 = random)
+
+; Restarting
+continuation = no       ; continue from previous run (yes/no)
+
+; Neighborsearching parameters
+cutoff-scheme = verlet        ; Cut-off scheme (verlet, group)
+nstlist      = 10             ; Frequency to update neighbor list (steps)
+pbc          = xyz            ; Periodic boundary conditions (xyz, no)
+verlet-buffer-tolerance = 0.005  ; Verlet buffer tolerance (nm)
+rlist        = 1.2            ; Cut-off distance for short-range neighbor list (nm)
+
+; Electrostatics parameters
+coulombtype         = PME                      ; Method for electrostatics calculations (cut-off, PME, Ewald, PPPM)
+coulomb-modifier    = Potential-shift-Verlet    ; Method for modifying the Coulomb interaction
+rcoulomb            = 1.4                      ; Cut-off distance for Coulomb interaction (nm)
+
+; VDW parameters
+vdw-type            = Cut-off          ; Type of Van der Waals potential (cut-off, switch, shift, user)
+rvdw                = 1.4              ; Cut-off distance for Van der Waals interaction (nm)
+
+; PME parameters
+fourierspacing      = 0.12             ; Grid spacing for PME (nm)
+pme-order           = 4                ; Interpolation order for PME
+ewald-rtol          = 1e-05            ; Relative tolerance for Ewald summation
+ewald-rtol-lj       = 0.001            ; Relative tolerance for Lennard-Jones part of Ewald summation
+lj-pme-comb-rule    = Geometric        ; Combination rule for Lennard-Jones potential with PME
+ewald-geometry      = 3d               ; Geometry for Ewald summation
+
+; Temperature coupling
+tcoupl      = nose-hoover       ; Thermostat (No, v-rescale, Berendsen, Nose-Hoover)
+nsttcoupl   = -1                ; Number of steps for temperature coupling
+nh-chain-length = 10            ; Number of Nose-Hoover chains
+tau-t       = 0.2               ; Time constant for temperature coupling (ps)
+ref-t       = 300               ; Reference temperature (K)
+
+; Pressure coupling parameters
+pcoupl      = Parrinello-Rahman   ; Barostat (No, Berendsen, Parrinello-Rahman)
+pcoupltype  = semiisotropic       ; Pressure coupling type (isotropic, semiisotropic, anisotropic)
+nstpcouple  = -1                  ; Number of steps for pressure coupling
+tau-p       = 1.0                 ; Time constant for pressure coupling (ps)
+compressibility = 4.5e-5 4.5e-5   ; Compressibility for the system (bar^-1)
+ref-p       = 1.0 1.0             ; Reference pressure (bar)
+refcoord-scaling = no             ; Scale reference coordinates with box (yes/no)
+
+; Constraints parameters
+constraints          = h-bonds    ; Type of constraints to apply (none, h-bonds, all-bonds, h-angles, all-angles)
+constraint-algorithm = Lincs      ; Algorithm to use for constraints (LINCS, SHAKE, SETTLE)
+Shake-SOR            = no         ; Use successive overrelaxation to solve for bond constraints (yes, no)
+shake-tol            = 0.0001     ; Tolerance for shaking bonds (nm)
+lincs-order          = 4          ; Order of the LINCS constraint solver
+lincs-iter           = 1          ; Number of iterations for the LINCS constraint solver per time step
+
+; Freeze parameters
+freezegrps              =               ; Groups to freeze during the simulation
+freezedim               =               ; Dimensions to freeze (x, y, z)
+
