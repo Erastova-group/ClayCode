@@ -581,7 +581,7 @@ class TargetClayComposition:
         return sheet_df
 
     @staticmethod
-    def __abort(self):
+    def __abort():
         logger.info("Composition not accepted. Aborting model construction.")
         sys.exit(0)
 
