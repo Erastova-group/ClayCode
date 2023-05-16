@@ -16,9 +16,10 @@ from functools import (
     cached_property,
     partialmethod,
     singledispatchmethod,
+    wraps,
 )
 from pathlib import PosixPath
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -30,7 +31,6 @@ from numpy._typing import NDArray
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore", category=FutureWarning)
-
 
 __all__ = ["TargetClayComposition"]
 
@@ -473,13 +473,23 @@ class UCData(Dir):
 class TargetClayComposition:
     sheet_grouper = pd.Grouper(level="sheet", sort=False)
 
-    def __init__(self, name, csv_file: Union[str, File], uc_data: UCData):
+    def __init__(
+        self,
+        name,
+        csv_file: Union[str, File],
+        uc_data: UCData,
+        occ_tol,
+        sel_priority,
+    ):
         self.name: str = name
         self.match_file: File = File(csv_file, check=True)
         self.uc_data: UCData = uc_data
         self.uc_df: pd.DataFrame = self.uc_data.df
+        self.occ_tol = occ_tol
+        self.sel_priority = sel_priority
         logger.info(get_subheader("Processing target clay composition"))
-        match_df: pd.DataFrame = pd.read_csv(csv_file).fillna(method="ffill")
+        match_df: pd.DataFrame = pd.read_csv(csv_file)
+        match_df["sheet"].ffill(inplace=True)
         match_cols = match_df.columns.values
         match_cols[:2] = self.uc_df.index.names
         match_df.columns = match_cols
@@ -498,7 +508,8 @@ class TargetClayComposition:
             match_idx, names=self.uc_df.index.names
         )
         self.__df = match_df.reindex(match_idx)
-        self.__df = self.__df.loc[:, self.name].dropna()
+        self.__df = self.__df.loc[:, self.name]
+        # self.check_charged_occupancies()
         self.correct_occupancies()
         self.__df = self.__df.reindex(match_idx)
         # self.charge_df = None
@@ -588,20 +599,23 @@ class TargetClayComposition:
     def _get_charges(
         self, key: Literal[Union[Literal["tot"], Literal["T"], Literal["O"]]]
     ) -> float:
+        print(self.__df.xs("C"))
         return self.get_charges(self.__df.xs("C"))[key]
 
     get_total_charge = partialmethod(_get_charges, key="tot")
     get_t_charge = partialmethod(_get_charges, key="T")
     get_o_charge = partialmethod(_get_charges, key="O")
 
-    @staticmethod
-    def get_charges(charge_df: pd.Series):
+    def get_charges(self, charge_df: pd.Series):
         sheet_charges = charge_df.copy()
         charge_dict = sheet_charges.to_dict()
         # for sheet, charge in charge_df.items():
         #     if not charge_df.loc[sheet].isnan():
         #         charge_dict[sheet] = charge
-        tot_charge = sheet_charges.pop("tot")
+        try:
+            tot_charge = sheet_charges.pop("tot")
+        except KeyError:
+            tot_charge = np.NAN
         if charge_df.hasnans:
             # missing charge specifications
             if tot_charge == np.NAN and len(sheet_charges) != len(
@@ -619,9 +633,22 @@ class TargetClayComposition:
                 )
                 charge_dict.update(sheet_charges.to_dict())
         else:
-            assert (
-                sheet_charges.sum() == tot_charge
-            ), "Sheet charges are different from specified total charge"
+            charge_diff = sheet_charges.sum() - tot_charge
+            if charge_diff == 0.0:
+                pass
+            else:
+                logger.warning(
+                    f"Sheet charges ({sheet_charges.sum()}) "
+                    f"do not sum to specified total charge ({tot_charge})\n"
+                )
+                if np.abs(charge_diff) <= self.occ_tol:
+                    logger.info(
+                        f"Adjusting {re.sub('_', ' ', self.charge_priority)}."
+                    )
+            # assert (
+            #         sheet_charges.sum() == tot_charge
+            # ), "Sheet charges are different from specified total charge"
+            #     if
         return charge_dict
 
     @property
@@ -640,55 +667,265 @@ class TargetClayComposition:
     def occupancies(self):
         return UCData._get_occupancies(self.__df.loc[["T", "O"]].dropna())
 
-    def correct_occupancies(self, idx_sel=["T", "O"]):
+    def sheet_df_decorator(f):
+        @wraps(f)
+        def wrapper(self, idx_sel=["T", "O"], **kwargs):
+            sheet_df: pd.Series = self.__df.loc[idx_sel, :].copy()
+            sheet_df = sheet_df.loc[sheet_df != 0].dropna()
+            return f(self, sheet_df, idx_sel, **kwargs)
+
+        return wrapper
+
+    @sheet_df_decorator
+    def __get_sheet_df(self, sheet_df, idx_sel=["T", "O"]):
+        charge_substitutions = self.atom_types
+        charge_substitutions["charge"] = charge_substitutions.groupby(
+            "sheet"
+        ).apply(lambda x: x - self.uc_data.oxidation_numbers[x.name])
+        charge_substitutions["at-type"].update(sheet_df)
+        if "fe_tot" in self.df.index.get_level_values("at-type"):
+            fe_row = pd.DataFrame(
+                [[self.df.loc["O", "fe_tot"], 0]],
+                index=pd.MultiIndex.from_tuples([("O", "fe_tot")]),
+                columns=charge_substitutions.columns,
+            )
+            charge_substitutions = pd.concat([charge_substitutions, fe_row])
+        return charge_substitutions
+
+    def non_charged_sheet_df(self, idx_sel=["T", "O"]):
+        sheet_df = self.__get_sheet_df(idx_sel=idx_sel)
+        return sheet_df[sheet_df["charge"] == 0]
+
+    def charged_sheet_df(self, idx_sel=["T", "O"]):
+        sheet_df = self.__get_sheet_df(idx_sel=idx_sel)
+        return sheet_df[sheet_df["charge"] != 0]
+
+    @sheet_df_decorator
+    def check_charged_occupancies(
+        self,
+        sheet_df,
+        idx_sel=["T", "O"],
+        priority: Optional[
+            Union[Literal["charges"], Literal["occupancies"]]
+        ] = None,
+    ):
+        priorities = ["charges", "occupancies"]
+        priorities.remove(priority)
+        non_priority_sel = next(iter(priorities))
+        priority_sel = priority
+        charged_occ = self.charged_sheet_df(idx_sel=idx_sel)
+        non_charged_occ = self.non_charged_sheet_df(idx_sel=idx_sel)
+        charged_occ_sum = charged_occ.product(axis=1).groupby("sheet").sum()
+        charged_occ_check = charged_occ_sum.groupby("sheet").apply(
+            lambda x: self._get_charges(x.name) - x
+        )
+        if (charged_occ_check > 0.0).any():
+            target_charge = {}
+            subst_charges = charged_occ_sum[charged_occ_check > 0]
+            deviation = subst_charges.to_dict()
+            for dev_occ in deviation.keys():
+                target_charge[dev_occ] = self._get_charges(key=dev_occ)
+            deviation = self.__deviation_string(deviation=deviation)
+            target_charge = self.__deviation_string(target_charge)
+            logger.error(
+                f"\nCharge from specified substitution occupancy ({deviation})\n"
+                f"\texceeds specified charge values ({target_charge})!\n"
+            )
+            if (charged_occ_check > self.occ_tol).any():
+                while select_priority not in ["c", "o", "e"]:
+                    select_priority = input(
+                        "\nAdjust charges [c] or occupancies [o]? (exit with e)\n"
+                    )
+            else:
+                logger.info(
+                    f"Adjusting {non_priority_sel} to match specified "
+                    f"{priority_sel}."
+                )
+                priority_sel_dict = {"occupancies": "o", "charges": "c"}
+                select_priority = priority_sel_dict[priority]
+            if select_priority == "o":
+                new_charges = self.__df.loc["C"].copy()
+                new_charges.update(subst_charges)
+                new_charges["tot"] = new_charges.loc[idx_sel].sum()
+                self.__df.loc["C"].update(new_charges)
+                new_charge_str = self.__deviation_string(
+                    new_charges, join_str="\n\t"
+                )
+                logger.info(f"New charges: \n\t{new_charge_str}")
+            elif select_priority == "c":
+                new_charged_occs = (
+                    charged_occ["at-type"]
+                    .groupby("sheet")
+                    .apply(lambda x: x - charged_occ_check[x.name] / x.count())
+                )
+                new_uncharged_occs = (
+                    non_charged_occ["at-type"]
+                    .groupby("sheet")
+                    .apply(lambda x: x + charged_occ_check[x.name] / x.count())
+                )
+                sheet_df.update(new_charged_occs)
+                sheet_df.update(new_uncharged_occs)
+                self.print_df_composition(
+                    old_composition=self.df.loc[idx_sel], sheet_df=sheet_df
+                )
+                self.__df.loc[idx_sel].update(sheet_df)
+            else:
+                self.__abort()
+
+    @sheet_df_decorator
+    def correct_occupancies(self, sheet_df, idx_sel=["T", "O"]):
+        sheet_df = sheet_df.astype(np.float16)
         correct_uc_occ: pd.Series = pd.Series(self.uc_data.occupancies)
         input_uc_occ: pd.Series = pd.Series(self.occupancies)
         check_occ: pd.Series = input_uc_occ - correct_uc_occ
+        print(check_occ)
         check_occ.dropna(inplace=True)
         logger.info("\nGetting sheet occupancies:")
+        # correct_occ = lambda x, check_occ: x - check_occ.at[x].name / x.count()
         for sheet, occ in check_occ.iteritems():
             logger.info(
                 f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.4f}/{correct_uc_occ[sheet]:.4f} ({occ:+.4f})"
             )
-        sheet_df: pd.Series = self.__df.loc[["T", "O"], :].copy()
-        sheet_df = sheet_df.loc[sheet_df != 0]
         if check_occ.values.any() != 0:
             logger.info("\nAdjusting values to match expected occupancies:")
-            sheet_df = sheet_df.groupby("sheet").apply(
-                lambda x: x - check_occ.at[x.name] / x.count()
+            print(sheet_df.sum())
+            sheet_df.update(
+                self.non_charged_sheet_df(idx_sel=idx_sel)
+                .dropna()["at-type"]
+                .groupby("sheet")
+                .apply(lambda x: x - check_occ.at[x.name] / x.count())
             )
+            # sheet_df = sheet_df.groupby("sheet").apply(
+            #     lambda x: x - check_occ.at[x.name] / x.count()
+            # )
             accept = None
             old_composition = self.__df.copy()
+            self.__df.update(sheet_df)
+            self.__df.update(
+                self.__df.loc[idx_sel]
+                .groupby("sheet")
+                .head(1)
+                .apply(
+                    lambda x: x + (self.occupancies[x.name] - correct_uc_occ)
+                )
+            )
             while accept != "y":
                 self.__df.update(sheet_df)
+
                 new_occ = pd.Series(self.occupancies)
                 new_check_df: pd.Series = new_occ - correct_uc_occ
                 new_check_df.dropna(inplace=True)
-                assert (
-                    new_check_df == 0
-                ).all(), "New occupancies are non-integer!"
+                # assert (
+                #     new_check_df == 0
+                # ).all(), "New occupancies are non-integer!"
+                if not (new_check_df == 0.0).all():
+                    deviation = new_check_df[new_check_df != 0].to_dict()
+                    deviation = self.__deviation_string(deviation=deviation)
+                    logger.warning(
+                        "\nNew occupancies do not match expected values!"
+                    )
+                    if (new_check_df.abs() >= self.occ_tol).any():
+                        logger.error(
+                            f"New occupancy deviation ({deviation}) exceeds limit of {self.occ_tol:.2f}!"
+                        )
+                        print("\nPlease enter enter valid occupancies!")
+                        exit_setup = None
+                        exit_dict = {"y": "n", "n": "e"}
+                        accept = self.__select_input_option(
+                            query="Continue? [y/n]\n",
+                            options={"y", "n"},
+                            result=exit_setup,
+                            result_map=exit_dict,
+                        )
+                    else:
+                        logger.info(
+                            f"Deviation ({deviation}) is within acceptance limit of {self.occ_tol:.2f}.\n\n"
+                            "Correcting selected composition."
+                        )
+                        print(sheet_df)
+                        sheet_df.update(
+                            self.non_charged_sheet_df(idx_sel=idx_sel)
+                            .dropna()["at-type"]
+                            .groupby("sheet")
+                            .apply(
+                                lambda x: x
+                                - new_check_df.at[x.name] / x.count()
+                            )
+                        )
+                        print(sheet_df, sheet_df.sum())
+                    continue
                 self.print_df_composition(
-                    sheet_df, old_composition=old_composition, fill="\t"
+                    sheet_df=sheet_df,
+                    old_composition=old_composition,
+                    fill="\t",
                 )
-                while accept not in ["y", "n", "c"]:
-                    accept = input(
-                        "\nAccept new composition? [y/n] (exit with c)\n"
-                    ).lower()
+                accept = self.__select_input_option(
+                    query="\nAccept new composition? [y/n] (exit with e)\n",
+                    options=["y", "n", "e"],
+                    result=accept,
+                )
                 if accept == "n":
                     accept = None
-                    sheet_df: pd.Series = old_composition.copy()
-                    sheet_df = sheet_df.loc[["T", "O"], :]
-                    sheet_df = sheet_df.loc[sheet_df != 0]
-                    for k, v in check_occ.items():
-                        if v != 0:
-                            for atom, occ in sheet_df.loc[k, :].iteritems():
-                                new_occ = input(
-                                    f"Enter new value for {k!r} - {atom!r}: ({occ:2.4f}) -> "
-                                )
-                                if new_occ != "":
-                                    sheet_df.loc[k, atom] = float(new_occ)
-                if accept == "c":
+                    sheet_df = self.__set_new_value(
+                        old_composition, idx_sel, check_occ
+                    )
+                if accept == "e":
                     self.__abort()
+            self.check_charged_occupancies(
+                idx_sel=idx_sel, priority=self.sel_priority
+            )
+
+    @staticmethod
+    def __select_input_option(
+        query: str,
+        options: Union[List[str], Tuple[str], Set[str]],
+        result: Optional[str] = None,
+        result_map: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        while result not in options:
+            result = input(query).lower()
+        if result_map is not None:
+            result = result_map[result]
+        return result
+
+    @staticmethod
+    def __set_new_value(old_composition, idx_sel, check_occ):
+        sheet_df: pd.Series = old_composition.copy()
+        sheet_df = sheet_df.loc[idx_sel, :]
+        sheet_df = sheet_df.loc[sheet_df != 0]
+        for k, v in check_occ.items():
+            if v != 0:
+                for atom, occ in sheet_df.loc[k, :].iteritems():
+                    accept_input = None
+                    while accept_input is None:
+                        new_occ = input(
+                            f"Enter new value for {k!r} - {atom!r}: ({occ:2.4f}) -> "
+                        )
+                        if new_occ != "":
+                            try:
+                                new_occ = float(new_occ)
+                            except TypeError:
+                                logger.info(
+                                    f"Invalid value {new_occ} selected!"
+                                )
+                            if new_occ >= 0.0:
+                                sheet_df.loc[k, atom] = float(new_occ)
+                                print(f"\tSelecting {float(new_occ):2.4f}")
+                                accept_input = True
+                            else:
+                                logger.info(
+                                    f"Invalid value {new_occ:2.4f} selected!"
+                                )
+                        else:
+                            print(f"\tKeeping {float(occ):2.4f}")
+                            accept_input = True
+        return sheet_df
+
+    @staticmethod
+    def __deviation_string(deviation: dict, join_str=", ", sep=": ") -> str:
+        return f"{join_str}".join(
+            [f"{k!r}{sep}{v:2.2f}" for k, v in deviation.items()]
+        )
 
     @staticmethod
     def print_df_composition(sheet_df, old_composition=None, fill=""):

@@ -381,6 +381,8 @@ class BuildArgs(_Args):
         "OUTPATH",
         "FF",
         "GMX",
+        "OCC_TOL" "SEL_PRIORITY",
+        "CHARGE_PRIORITY",
     ]
 
     def __init__(self, data) -> None:
@@ -480,6 +482,9 @@ class BuildArgs(_Args):
             "FF",
             "UC_INDEX_LIST",
             "UC_RATIOS_LIST",
+            "OCC_TOL",
+            "SEL_PRIORITY",
+            "CHARGE_PRIORITY",
         ]:
             try:
                 prm_value = self.data[prm]
@@ -548,7 +553,11 @@ class BuildArgs(_Args):
         clay_atoms.append(pd.MultiIndex.from_tuples([("O", "fe_tot")]))
 
         self._target_comp = TargetClayComposition(
-            self.name, self.data["CLAY_COMP"], self._uc_data
+            self.name,
+            self.data["CLAY_COMP"],
+            self._uc_data,
+            self.occ_tol,
+            self.sel_priority,
         )
         self._target_comp.write_csv(self.outpath)
 

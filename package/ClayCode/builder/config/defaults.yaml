@@ -86,3 +86,34 @@ FF:
 # -----------------------------------------------------------------------------
 
 GMX: gmx
+
+# -----------------------------------------------------------------------------
+# Parameters for stoichiometry matching
+# -----------------------------------------------------------------------------
+
+# maximum occupancy/charge deviation unit cell that is
+# adjusted without querying to match expected values
+# e.g. with OCC_TOL = 0.1, with and expected tetrahedral occupancy of 4.0,
+# any composition with tetrahedral occupancies between 3.9 and 4.1 will be
+# automatically adjusted to match the expected value
+OCC_TOL: 0.1
+
+# Priority when correcting charges and substitution occupancies.
+# e.g. with a specified octahedral charge of -0.3 and a 'mgo' occupancy of
+# 0.4 is not possible and one of the two needs to be adjusted.
+# Available options:
+# 1. 'charges': Will conserve specified charges and adjust substitution
+#               occupancies, i.e. 'mgo' (0.4) -> (0.3)
+# 2. 'occupancies': Will conserve occupancies and adjust charges
+#                   i.e. octahedral charge (-0.3 e) -> (-0.4 e)
+SEL_PRIORITY: charges # occupancies
+
+# Priority when individual sheet and total charge do not match.
+# e.g. total charge: -1.00, tetrahedral charge: -0.70, octahedral charge: -0.40
+# Avaialble options:
+# 1. 'total_charge: Will adjust tetrahedral and octahedral occupancies
+#          i.e. tetrahedral charge (-0.70 e) -> (-0.65 e)
+#               octahedral charge (-0.40 e) -> (-0.35 e)
+# 2. 'sheet_charges': Will adjust total charge to sheet charges
+#          i.e. total charge (-1.00 e) -> (1.10 e)
+CHARGE_PRIORITY: total_charge

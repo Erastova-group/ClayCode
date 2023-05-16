@@ -22,7 +22,6 @@ def add_gmx_args(f):
                 gmx_commands.__class__.__name__ == "GMXCommands"
             ), "Wrong type: Expected GMXCommands instance!"
         else:
-            # logger.info(f'Using GROMACS alias {gmx_alias}')
             gmx_commands = GMXCommands(gmx_alias=gmx_alias)
         result = f(instance, *args, **kwargs)
         instance.gmx_commands = gmx_commands
@@ -39,7 +38,6 @@ def gmx_command_wrapper(f):
                 gmx_commands.__class__.__name__ == "GMXCommands"
             ), "Wrong type: Expected GMXCommands instance!"
         else:
-            # logger.info(f'Using GROMACS alias {gmx_alias}')
             gmx_commands = GMXCommands(gmx_alias=gmx_alias)
         result = f(*args, gmx_commands=gmx_commands, **kwargs)
         return result
@@ -77,7 +75,6 @@ class GMXCommands:
                     )
                 )
                 with tempfile.TemporaryDirectory() as odir:
-                    # logger.info(self.gmx_alias)
                     output = sp.run(
                         [
                             "/bin/bash",
@@ -88,7 +85,6 @@ class GMXCommands:
                         **outputargs,
                     )
                 logger.debug(f"{self.gmx_alias} {command} {kwd_str} -nobackup")
-                # logger.info(self.gmx_info)
                 out, err = output.stdout, output.stderr
                 error = self.search_gmx_error(err)
                 if error is None:
@@ -371,14 +367,8 @@ class GMXCommands:
             )
             err, out = output.stderr, output.stdout
             self.search_gmx_error(err)
-            # if err is None:
             logger.debug(f"{self.gmx_alias} genion completed successfully.")
-            # else:
-            #     logger.error(f'{self.gmx_alias} genion raised an error!\n{out}')
         return err, out
-        # err = re.search(r"error", out.stdout)
-        # assert err is None, f"gmx genion raised an error!"
-        # return out
 
     def run_gmx_genion_neutralise(
         self,
@@ -429,14 +419,8 @@ class GMXCommands:
             )
             err, out = output.stderr, output.stdout
             self.search_gmx_error(err)
-            # if err is None:
             logger.debug(f"{self.gmx_alias} genion completed successfully.")
-            # else:
-            #     logger.error(f'{self.gmx_alias} genion raised an error!\n{out}')
             return err, out  # -> gmx process stderr, gmx process stdout
-            # err = re.search(r"error", out.stdout)
-            # assert err is None, f"gmx genion raised an error!"
-            # return err, out
 
     def run_gmx_genion_add_n_ions(
         self,
@@ -489,14 +473,8 @@ class GMXCommands:
             )
             out, err = output.stdout, output.stderr
             self.search_gmx_error(err)
-            # if err is None:
             logger.debug(f"{self.gmx_alias} genion completed successfully.")
-            # else:
-            #     logger.error(f'{self.gmx_alias} genion raised an error!\n{out}')
             return err, out  # -> gmx process stderr, gmx process stdout
-        # err = re.search(r"error|invalid", out.stdout)
-        # assert err is None, f"gmx genion raised an error!"
-        # return out
 
     @run_gmx_command(
         commandargs_dict={"nsteps": -1},
@@ -528,4 +506,3 @@ class GMXCommands:
                 logger.error("GROMACS terminated due to LINCS warnings!")
             else:
                 raise RuntimeError(f"{out}\nGROMACS raised an error!")
-            # f'\t{err.group(1)}{err.group(2)}{err.group(3)}'

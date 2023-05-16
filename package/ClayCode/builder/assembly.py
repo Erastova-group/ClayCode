@@ -107,7 +107,7 @@ class Builder:
         uc_names = np.unique(self.clay.residues.resnames)
         em_filestr = set_mdp_freeze_clay(
             uc_names=uc_names,
-            em_template=em_inp,
+            file_or_str=em_inp,
             freeze_dims=["Y", "Y", "N"],
         )
         em_filestr = set_mdp_parameter("constraints", "h-bonds", em_filestr)
