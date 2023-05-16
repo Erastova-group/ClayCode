@@ -121,12 +121,14 @@ class Builder:
             dir=self.args.outpath,
         ) as mdp_file:
             mdp_file.write(em_filestr)
+            print(self.gmx_commands)
             result = run_em(
                 mdp=self.args.outpath / mdp_file.name,
                 crdin=self.stack,
                 topin=self.stack.top,
                 odir=self.args.outpath,
                 outname=self.stack.stem,
+                gmx_commands=self.gmx_commands,
             )
         outpath = Dir(self.args.outpath)
         crd_top_files = [

@@ -1079,12 +1079,13 @@ class MatchClayComposition:
             print_all_ucs = select_input_option(
                 "\nPrint remaining UC compositions? [y/n]\n",
                 result=None,
-                options=["y", "n"],
+                options=["y", "n", ""],
                 result_map={
                     "y": lambda: self.print_groups(
                         accepted_group, selected_ucs_df, fill="\t"
                     ),
                     "n": lambda: None,
+                    "": lambda: None,
                 },
             )
             print_all_ucs()
@@ -1104,12 +1105,13 @@ class MatchClayComposition:
             print_all_ucs = select_input_option(
                 "\nPrint remaining UC compositions? [y/n]\n",
                 result=None,
-                options=["y", "n"],
+                options=["y", "n", ""],
                 result_map={
                     "y": lambda: self.print_groups(
                         accepted_group, all_ucs_df, fill="\t"
                     ),
                     "n": lambda: None,
+                    "": lambda: None,
                 },
             )
             print_all_ucs()
