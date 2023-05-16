@@ -121,7 +121,6 @@ class Builder:
             dir=self.args.outpath,
         ) as mdp_file:
             mdp_file.write(em_filestr)
-            print(self.gmx_commands)
             result = run_em(
                 mdp=self.args.outpath / mdp_file.name,
                 crdin=self.stack,

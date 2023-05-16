@@ -84,6 +84,7 @@ class UCData(Dir):
         for n_group, group_ids in self.group_iter():
             group_id_str = f", {self.uc_stem}".join(group_ids)
             logger.info(f"\tGroup {n_group}: {self.uc_stem}{group_id_str}\n")
+            self.__base_ucs[n_group] = self.__get_base_ucs(group_ids)
 
     def get_uc_groups(self):
         box_dims = {}
@@ -94,7 +95,7 @@ class UCData(Dir):
         n_group = 0
         self.__dimensions = {}
         extract_id = lambda file: file.stem[-2:]
-        for uc in self.gro_filelist:
+        for uc in sorted(self.gro_filelist):
             uc_dimensions = uc.universe.dimensions
             dim_str = "_".join(uc_dimensions.round(3).astype(str))
             if dim_str not in box_dims.keys():
@@ -114,19 +115,14 @@ class UCData(Dir):
         self.__gro_groups = gro_groups
         self.__itp_groups = itp_groups
         self.__base_ucs = {}
-        for uc_group in uc_groups:
-            self.select_group(uc_group)
-            self.__base_ucs[uc_group] = self.__get_base_ucs()[0]
-            self.reset_selection()
-        # for dimensions, group_id in box_dims.items():
-        #     self.__dimensions[group_id] = dimensions
 
-    def __get_base_ucs(self):
-        base_sel = self.df.loc[
+    def __get_base_ucs(self, uc_ids: List[str]) -> Union[List[str], str]:
+        uc_df = self.__df.loc[:, uc_ids]
+        base_sel = uc_df.loc[
             :,
-            self.df[self.df != 0].count()
-            == min(self.df[self.df != 0].count()),
-        ].columns
+            uc_df[uc_df != 0].count() == min(uc_df[uc_df != 0].count()),
+        ]
+        base_sel = base_sel.columns[0]
         return base_sel
 
     @property
@@ -511,6 +507,7 @@ class TargetClayComposition:
         occ_tol,
         sel_priority,
         charge_priority,
+        zero_threshold=0.0,
     ):
         self.name: str = name
         self.match_file: File = File(csv_file, check=True)
@@ -544,6 +541,10 @@ class TargetClayComposition:
         # self.check_charged_occupancies()
         self.correct_occupancies()
         self.__df = self.__df.reindex(match_idx)
+        clay_df = self.clay_df.copy()
+        self.__df.loc[clay_df.index] = clay_df.where(
+            clay_df > zero_threshold, np.NaN
+        )
         # self.charge_df = None
         self.split_fe_occupancies
         self.__ion_df: pd.DataFrame = None
@@ -595,14 +596,19 @@ class TargetClayComposition:
             _, ox_state_not_fe = UCData._get_oxidation_numbers(
                 not_fe_occ, self.__df.xs("O", level="sheet")
             )
-            chg_fe = (
-                o_charge
-                + (self.uc_data.oxidation_numbers["O"] - ox_state_not_fe)
+            chg_fe = o_charge + (
+                (self.uc_data.oxidation_numbers["O"] - ox_state_not_fe)
                 * not_fe_occ
             )
-            self.__df.loc[:, "fe2"] = -(o_charge - chg_fe)
-            self.__df.loc[:, "feo"] = missing_o - self.__df.at[("O", "fe2")]
+            if np.isclose(chg_fe, 0):
+                self.__df.loc[:, "feo"] = missing_o
+            else:
+                self.__df.loc[:, "fe2"] = np.abs(chg_fe)
+                self.__df.loc[:, "feo"] = (
+                    missing_o - self.__df.at[("O", "fe2")]
+                )
             self.__df.drop(("O", "fe_tot"), inplace=True)
+            # self.__df.where(self.__df.loc['O'] != 0, np.NaN, inplace=True)
             # charge_delta = dict(map(lambda x: (x, self._uc_data.oxidation_numbers[x] - ox_states[x]), ox_states.keys()))
             assert (
                 self.occupancies["O"] == self.uc_data.occupancies["O"]
@@ -812,7 +818,6 @@ class TargetClayComposition:
         check_occ: pd.Series = input_uc_occ - correct_uc_occ
         check_occ.dropna(inplace=True)
         logger.info("\nGetting sheet occupancies:")
-        # correct_occ = lambda x, check_occ: x - check_occ.at[x].name / x.count()
         for sheet, occ in check_occ.iteritems():
             logger.info(
                 f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.4f}/{correct_uc_occ[sheet]:.4f} ({occ:+.4f})"
@@ -826,16 +831,13 @@ class TargetClayComposition:
                 .apply(lambda x: x - check_occ.at[x.name] / x.count())
             )
             accept = None
-            old_composition = self.__df.copy()
+            old_composition = self.df.copy()
             self.__df.update(sheet_df)
             while accept != "y":
                 self.__df.update(sheet_df)
                 new_occ = pd.Series(self.occupancies)
                 new_check_df: pd.Series = new_occ - correct_uc_occ
                 new_check_df.dropna(inplace=True)
-                # assert (
-                #     new_check_df == 0
-                # ).all(), "New occupancies are non-integer!"
                 if not (new_check_df == 0.0).all():
                     deviation = new_check_df[new_check_df != 0].to_dict()
                     deviation = self.__deviation_string(deviation=deviation)
@@ -891,10 +893,15 @@ class TargetClayComposition:
             )
 
     @staticmethod
-    def __set_new_value(old_composition, idx_sel, check_occ):
+    def __set_new_value(
+        old_composition: pd.Series,
+        idx_sel: pd.MultiIndex,
+        check_occ: Dict[str, int],
+        zero_threshold: Union[float, int],
+    ) -> pd.Series:
         sheet_df: pd.Series = old_composition.copy()
         sheet_df = sheet_df.loc[idx_sel, :]
-        sheet_df = sheet_df.loc[sheet_df != 0]
+        sheet_df = sheet_df.loc[sheet_df > zero_threshold]
         for k, v in check_occ.items():
             if v != 0:
                 for atom, occ in sheet_df.loc[k, :].iteritems():
@@ -944,7 +951,6 @@ class TargetClayComposition:
                 old_val = old_composition[idx]
                 logger.info(
                     f"{fill}\t{sheet!r:5} - {atom!r:^10}: {old_val:2.4f} -> {occ:2.4f} ({occ - old_val:+2.4f})"
-                    # sheet occupancies of {new_occ[sheet]:.4f}/{correct_uc_occ[sheet]:.4f} ({occ:+.4f})")
                 )
             except TypeError:
                 logger.info(f"{fill}\t{sheet!r:5} - {atom!r:^10}: {occ:2.4f}")
@@ -1173,22 +1179,26 @@ class MatchClayComposition:
                 for idx, values in uc_group_df.sort_index(
                     ascending=False, sort_remaining=True
                 ).iterrows():
-                    sheet, atype = idx
-                    composition_string = "  ".join(
-                        list(map(lambda v: f"{v:>3}", values.astype(int)))
-                    )
-                    logger.info(
-                        f"{fill}{sheet!r:<3} - {atype!r:^4}\t{composition_string}"
-                    )
+                    values = values.astype(int)
+                    if not (values == 0).all():
+                        sheet, atype = idx
+                        composition_string = "  ".join(
+                            list(map(lambda v: f"{v:>3}", values))
+                        )
+                        logger.info(
+                            f"{fill}{sheet!r:<3} - {atype!r:^4}\t{composition_string}"
+                        )
             except AttributeError:
                 for idx, values in uc_group_df.sort_index(
                     ascending=False, sort_remaining=True
                 ).items():
-                    sheet, atype = idx
-                    composition_string = f"{int(values):>3}"
-                    logger.info(
-                        f"{fill}{sheet!r:<3} - {atype!r:^4}\t{composition_string}"
-                    )
+                    values = int(values)
+                    if values != 0:
+                        sheet, atype = idx
+                        composition_string = f"{int(values):>3}"
+                        logger.info(
+                            f"{fill}{sheet!r:<3} - {atype!r:^4}\t{composition_string}"
+                        )
 
     @staticmethod
     def __get_nan_xor_zero_mask(df):
@@ -1222,7 +1232,7 @@ class MatchClayComposition:
                 "Getting matching unit cell combination for target composition"
             )
         )
-        for n_ucs in n_ucs_idx[:2]:
+        for n_ucs in n_ucs_idx:
             logger.info(
                 f"\nGetting combinations for {n_ucs} unique unit cells"
             )
@@ -1412,9 +1422,7 @@ class MatchClayComposition:
             yield [j - i for i, j in zip((-1,) + q, q + (N - 1,))]
 
     def get_uc_combinations(self, n_ucs):
-        return np.asarray(
-            list(itertools.combinations(self.unique_uc_array, n_ucs))
-        )
+        return itertools.combinations(self.unique_uc_array, n_ucs)
 
     def _write(
         self, outpath: Union[Dir, File, PosixPath], fmt: Optional[str] = None

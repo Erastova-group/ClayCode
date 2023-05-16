@@ -4,7 +4,7 @@ import sys
 
 from ClayCode.core.log import logger
 from ClayCode.core.parsing import ArgsFactory, BuildArgs, parser
-from ClayCode.core.utils import get_subheader
+from ClayCode.core.utils import get_subheader, select_input_option
 
 __all__ = ["run"]
 
@@ -43,13 +43,16 @@ def run():
             completed = clay_builder.run_em()
             if completed is None:
                 if clay_builder.extended_box is True:
-                    repeat = None
-                    while repeat not in ["y", "n"]:
-                        repeat = input("Repeat solvation setup? [y/n]\n")
-                    if repeat == "y":
-                        completed = False
-                        logger.info(get_subheader("Repeating solvation"))
-            elif completed is False:
+                    repeat = select_input_option(
+                        query="Repeat solvation setup? [y/n]\n",
+                        options=["y", "n"],
+                        result=None,
+                        result_map={"y": False, "n": None},
+                    )
+                    # if repeat == "y":
+                    #     completed = False
+                    #     logger.info(get_subheader("Repeating solvation"))
+            if completed is False:
                 logger.info("\nRepeating solvation setup.\n")
             else:
                 logger.info(completed)
