@@ -685,6 +685,15 @@ class Sheet:
         sheet_df["atom-id"] = np.arange(1, len(sheet_df) + 1)
         sheet_df = sheet_df.loc[:, ["at-type", "atom-id", "x", "y", "z"]]
         sheet_n_atoms: int = len(sheet_df)
+        sheet_df = sheet_df.astype(
+            {
+                "at-type": str,
+                "atom-id": int,
+                "x": float,
+                "y": float,
+                "z": float,
+            }
+        )
         with open(filename, "w") as grofile:
             grofile.write(
                 f"{self.fstem} sheet {self.n_sheet}\n{sheet_n_atoms}\n"

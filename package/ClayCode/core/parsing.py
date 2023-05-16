@@ -558,6 +558,7 @@ class BuildArgs(_Args):
             self._uc_data,
             self.occ_tol,
             self.sel_priority,
+            self.charge_priority,
         )
         self._target_comp.write_csv(self.outpath)
 

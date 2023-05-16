@@ -8,7 +8,7 @@ import warnings
 from functools import partial, singledispatch
 from itertools import chain
 from pathlib import Path
-from typing import List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import MDAnalysis as mda
 import numpy as np
@@ -255,6 +255,19 @@ def select_named_file(
         match = last_file
         logger.info(f"{how} file: {match.name!r}")
     return match
+
+
+def select_input_option(
+    query: str,
+    options: Union[List[str], Tuple[str], Set[str]],
+    result: Optional[str] = None,
+    result_map: Optional[Dict[str, Any]] = None,
+) -> str:
+    while result not in options:
+        result = input(query).lower()
+    if result_map is not None:
+        result = result_map[result]
+    return result
 
 
 def select_file(
