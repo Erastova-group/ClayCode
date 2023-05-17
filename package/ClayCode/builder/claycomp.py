@@ -623,9 +623,10 @@ class TargetClayComposition:
             sheet_df.loc[["T", "O"], :].dropna(), fill="\t"
         )
         accept = select_input_option(
-            query="\nAccept clay composition? [y/n]\n",
-            options=["y", "n"],
+            query="\nAccept clay composition? [y]es/[e]xit (Default y)\n",
+            options=["y", "e", ""],
             result=None,
+            result_map={"y": "y", "e": "n", "": "y"},
         )
         if accept == "n":
             self.__abort()
@@ -773,7 +774,7 @@ class TargetClayComposition:
             )
             if (charged_occ_check > self.occ_tol).any():
                 priority_sel = select_input_option(
-                    "\nAdjust charges [c] or occupancies [o]? (exit with e)\n",
+                    "\nAdjust [c]harges or [o]ccupancies? (exit with e)\n",
                     options=["c", "o", "e"],
                     result_map={"c": "charges", "o": "occupancies", "e": "e"},
                 )
@@ -851,7 +852,7 @@ class TargetClayComposition:
                         print("\nPlease enter enter valid occupancies!")
                         exit_dict = {"y": "n", "n": "e"}
                         accept = select_input_option(
-                            query="Continue? [y/n]\n",
+                            query="Continue? [y]es/[n]o\n",
                             options={"y", "n"},
                             result=None,
                             result_map=exit_dict,
@@ -877,9 +878,10 @@ class TargetClayComposition:
                     fill="\t",
                 )
                 accept = select_input_option(
-                    query="\nAccept new composition? [y/n] (exit with e)\n",
-                    options=["y", "n", "e"],
+                    query="\nAccept new composition? [y]es/[e]xit (default y)\n",
+                    options=["y", "e", ""],
                     result=accept,
+                    result_map={"y": "y", "e": "n", "": "y"},
                 )
                 if accept == "n":
                     accept = None
@@ -1030,9 +1032,10 @@ class MatchClayComposition:
             self.match_composition, self.target_df, fill="\t"
         )
         accept = select_input_option(
-            query="\nAccept matched clay composition? [y/n]\n",
-            options=["y", "n"],
+            query="\nAccept matched clay composition? [y]es/[e]xit (Default y)\n",
+            options=["y", "e"],
             result=accept,
+            result_map={"y": "y", "e": "n", "": "y"},
         )
         if accept == "n":
             self.__abort("comp")
@@ -1076,19 +1079,46 @@ class MatchClayComposition:
                 missing_group_at_types[group_id] = missing_uc_at_types
             # combined_mask = np.logical_and(unused_uc_atype_mask, unused_target_atype_mask)
         accept = None
-        if len(accepted_group) == 1:
-            selected_ucs_df = all_ucs_df.loc[
-                :, accepted_group[next(iter(accepted_group.keys()))]
-            ]
-            logger.info("Found one matching unit cell group:")
-            self.print_groups(accepted_base, all_ucs_df, fill="\t")
+        if len(accepted_group) > 1:
+            logger.info(f"Found {len(accepted_group)} unit cell groups.")
+            logger.info("Getting best group for target composition.")
+            base_dict = dict(
+                map(
+                    lambda i: (i[0], all_ucs_df.loc[:, i[1]]),
+                    accepted_base.items(),
+                )
+            )
+            base_df = pd.DataFrame({"target": target_df, **base_dict})
+            base_df = base_df.where(base_df != 0, np.NaN).dropna(how="all")
+            # base_df.append(base_df[[1,2]].apply()
+            diff_df = (
+                base_df[[0, 1]]
+                .apply(lambda x: np.abs(x - base_df["target"]))
+                .sum()
+            )
+            selected_group_id = diff_df[
+                diff_df == diff_df.min()
+            ].index.to_list()[0]
+            # selected_group = accepted_group[selected_group_id]
+            logger.info(f"Selected group {selected_group_id}:")
+            self.print_groups(
+                {selected_group_id: accepted_base.get(selected_group_id)},
+                all_ucs_df,
+                fill="\t",
+            )
             print_all_ucs = select_input_option(
-                "\nPrint remaining UC compositions? [y/n]\n",
+                "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default n)\n",
                 result=None,
                 options=["y", "n", ""],
                 result_map={
                     "y": lambda: self.print_groups(
-                        accepted_group, selected_ucs_df, fill="\t"
+                        {
+                            selected_group_id: accepted_group.get(
+                                selected_group_id
+                            )
+                        },
+                        all_ucs_df,
+                        fill="\t",
                     ),
                     "n": lambda: None,
                     "": lambda: None,
@@ -1096,9 +1126,77 @@ class MatchClayComposition:
             )
             print_all_ucs()
             accept = select_input_option(
-                query="\nAccept unit cell group? [y/n]\n",
+                "\nAccept selection [y] or choose manually [m]? (Default y)",
+                options=["y", "m", ""],
+                result=None,
+                result_map={
+                    "y": str(selected_group_id),
+                    "m": None,
+                    "": str(selected_group_id),
+                },
+            )
+            select_keys = list(
+                map(lambda key: f"{key}", accepted_group.keys())
+            )
+            if accept is None:
+                logger.info("\nAvailable UC group base compositions:")
+                self.print_groups(accepted_base, all_ucs_df, fill="\t")
+                print_all_ucs = select_input_option(
+                    "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default n)\n",
+                    result=None,
+                    options=["y", "n", ""],
+                    result_map={
+                        "y": lambda: self.print_groups(
+                            accepted_group, all_ucs_df, fill="\t"
+                        ),
+                        "n": lambda: None,
+                        "": lambda: None,
+                    },
+                )
+                print_all_ucs()
+            accept = select_input_option(
+                query=f"\nSelect unit cell group? [{'/'.join(select_keys)}] (exit with e)\n",
+                options=[*select_keys, "e"],
                 result=accept,
-                options=["y", "n"],
+                result_map={
+                    **dict(map(lambda x: (x, x), select_keys)),
+                    "e": "n",
+                },
+            )
+            if accept in select_keys:
+                accept = int(accept)
+                logger.info(f"\nSelected group {accept}")
+                accepted_group = {accept: accepted_group.get(accept)}
+                accepted_base = {accept: accepted_base.get(accept)}
+                # self.print_groups(accepted_group, all_ucs_df, fill="\t")
+                # self.print_groups(accepted_group, all_ucs_df)
+                accept = "y"
+        if len(accepted_group) == 1:
+            selected_ucs_df = all_ucs_df.loc[
+                :, accepted_group[next(iter(accepted_group.keys()))]
+            ]
+            logger.info("\nComposition of matching unit cell group:")
+            if accept is None:
+                self.print_groups(accepted_base, all_ucs_df, fill="\t")
+            print_all_ucs = select_input_option(
+                "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default y)\n",
+                result=accept,
+                options=["y", "n", "", next(iter(accepted_group.keys()))],
+                result_map={
+                    "y": lambda: self.print_groups(
+                        accepted_group, selected_ucs_df, fill="\t"
+                    ),
+                    "n": lambda: None,
+                    "": lambda: None,
+                    next(iter(accepted_group.keys())): None,
+                },
+            )
+            print_all_ucs()
+            accept = select_input_option(
+                query="\nAccept unit cell group? [y]es/[e]xit (Default y)\n",
+                result=accept,
+                options=["y", "e", ""],
+                result_map={"y": "y", "e": "n", "": "y"},
             )
         elif len(accepted_group) == 0:
             raise ValueError(
@@ -1106,39 +1204,7 @@ class MatchClayComposition:
             )
             print(missing_group_at_types)
         else:
-            logger.info("Found the following unit cell groups:")
-            self.print_groups(accepted_base, all_ucs_df, fill="\t")
-            print_all_ucs = select_input_option(
-                "\nPrint remaining UC compositions? [y/n]\n",
-                result=None,
-                options=["y", "n", ""],
-                result_map={
-                    "y": lambda: self.print_groups(
-                        accepted_group, all_ucs_df, fill="\t"
-                    ),
-                    "n": lambda: None,
-                    "": lambda: None,
-                },
-            )
-            print_all_ucs()
-            # self.print_groups(accepted_group, all_ucs_df, fill="\t")
-
-            select_keys = list(
-                map(lambda key: f"{key}", accepted_group.keys())
-            )
-            uc_id_str = "/".join(select_keys)
-            accept = select_input_option(
-                query=f"\nSelect unit cell group? [{uc_id_str}/n]\n",
-                options=[*select_keys, "n"],
-                result=accept,
-            )
-            if accept in select_keys:
-                accept = int(accept)
-                logger.info(f"Selected group {accept}")
-                accepted_group = {accept: accepted_group.get(accept)}
-                self.print_groups(accepted_group, all_ucs_df, fill="\t")
-                # self.print_groups(accepted_group, all_ucs_df)
-                accept = "y"
+            raise RuntimeError("Should not reach this point!")
         if accept == "n":
             self.__abort("uc")
         else:
