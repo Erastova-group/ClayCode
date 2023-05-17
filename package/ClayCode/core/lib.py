@@ -1503,7 +1503,8 @@ def run_em(
     """
     if not pl.Path(mdp).is_file():
         mdp = MDP / mdp
-        assert mdp.is_file()
+    assert mdp.is_file()
+    print(open(mdp, "r").read())
     logger.debug("# MINIMISING ENERGY")
     outname = (Path(odir) / outname).resolve()
     topout = outname.with_suffix(".top")
@@ -1552,7 +1553,7 @@ def run_em(
 
 def set_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ]*"):
     new_str = re.sub(
-        rf"(?<={parameter})(\s*)(=\s*)({searchex})(?=\n)",
+        rf"(?<={parameter})(\s*)(=\s*)({searchex}\s*;.*?)?(?=\n)",
         r"\1" + f"={value}",
         mdp_str,
     )
@@ -1561,7 +1562,7 @@ def set_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ]*"):
 
 def add_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ]*"):
     new_str = re.sub(
-        rf"(?<={parameter})(\s*)(=\s*)({searchex})(?=\n)",
+        rf"(?<={parameter})(\s*)(=\s*)({searchex}\s*;.*?)(?=\n)",
         r"\1=\3" + f"{value}",
         mdp_str,
     )

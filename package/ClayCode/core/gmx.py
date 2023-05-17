@@ -122,6 +122,15 @@ class GMXCommands:
         err, out = output.stderr, output.stdout
         return err, out
 
+    @property
+    def version(self):
+        version = re.search("20\d+", self.gmx_header).group(0)
+        if version is None:
+            raise RuntimeError(
+                f"{self.gmx_header} is not a supported version of GROMACS"
+            )
+        return version
+
     @cached_property
     def gmx_header(self):
         err, out = self.__run_without_args()

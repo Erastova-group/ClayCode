@@ -13,7 +13,7 @@ from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.topology import TopologyConstructor
 from ClayCode.core import gmx
 from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
-from ClayCode.core.consts import GRO_FMT
+from ClayCode.core.consts import GRO_FMT, MDP
 from ClayCode.core.gmx import GMXCommands, add_gmx_args, gmx_command_wrapper
 from ClayCode.core.lib import (
     add_ions_n_mols,
@@ -103,12 +103,12 @@ class Builder:
     def run_em(self):
         logger.info(get_subheader("Minimising energy"))
         # logger.info(f'{self.gmx_info()}')
-        em_inp = "em.mdp"
+        em_inp = MDP / f"{self.gmx_commands.version}/em.mdp"
         uc_names = np.unique(self.clay.residues.resnames)
         em_filestr = set_mdp_freeze_clay(
             uc_names=uc_names,
             file_or_str=em_inp,
-            freeze_dims=["Y", "Y", "N"],
+            freeze_dims=["Y", "Y", "Y"],
         )
         em_filestr = set_mdp_parameter("constraints", "h-bonds", em_filestr)
         em_filestr = set_mdp_parameter("emstep", "0.0001", em_filestr)

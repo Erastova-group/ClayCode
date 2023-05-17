@@ -1,4 +1,4 @@
-title = GMX 2018 EM
+title = GMX 2019 EM
 define = -DPOSRES  ; To apply position restraints
 ; Run control parameters
 integrator = steep  ; Steepest descent energy minimization
@@ -9,3 +9,42 @@ emstep = 0.01      ; Maximum allowed step size during energy minimization (nm)
 nstxout = 0        ; Do not write coordinates to output trajectory
 nstvout = 0        ; Do not write velocities to output trajectory
 nstenergy = 100    ; Write energy to log file every 100 steps
+
+; Neighborsearching parameters
+cutoff-scheme = verlet        ; Cut-off scheme (verlet, group)
+nstlist      = 10             ; Frequency to update neighbor list (steps)
+pbc          = xyz            ; Periodic boundary conditions (xyz, no)
+verlet-buffer-tolerance = 0.005  ; Verlet buffer tolerance (nm)
+rlist        = 1.2            ; Cut-off distance for short-range neighbor list (nm)
+rlist-long = 1.4         ; cut-off distance for long-range neighbor list (nm)
+
+; Electrostatics parameters
+coulombtype         = PME                      ; Method for electrostatics calculations (cut-off, PME, Ewald, PPPM)
+coulomb-modifier    = Potential-shift-Verlet    ; Method for modifying the Coulomb interaction
+rcoulomb            = 1.4                      ; Cut-off distance for Coulomb interaction (nm)
+
+; VDW parameters
+vdw-type            = Cut-off          ; Type of Van der Waals potential (cut-off, switch, shift, user)
+rvdw                = 1.4              ; Cut-off distance for Van der Waals interaction (nm)
+
+; PME parameters
+fourierspacing      = 0.12             ; Grid spacing for PME (nm)
+pme-order           = 4                ; Interpolation order for PME
+ewald-rtol          = 1e-05            ; Relative tolerance for Ewald summation
+ewald-rtol-lj       = 0.001            ; Relative tolerance for Lennard-Jones part of Ewald summation
+lj-pme-comb-rule    = Geometric        ; Combination rule for Lennard-Jones potential with PME
+ewald-geometry      = 3d               ; Geometry for Ewald summation
+
+; Constraints parameters
+constraints          = h-bonds    ; Type of constraints to apply (none, h-bonds, all-bonds, h-angles, all-angles)
+constraint-algorithm = Lincs      ; Algorithm to use for constraints (LINCS, SHAKE, SETTLE)
+continuation         = no         ; Whether to continue from a previous simulation (yes, no)
+Shake-SOR            = no         ; Use successive overrelaxation to solve for bond constraints (yes, no)
+shake-tol            = 0.0001     ; Tolerance for shaking bonds (nm)
+lincs-order          = 4          ; Order of the LINCS constraint solver
+lincs-iter           = 1          ; Number of iterations for the LINCS constraint solver per time step
+
+; Freeze parameters
+freezegrps              =               ; Groups to freeze during the simulation
+freezedim               =               ; Dimensions to freeze (x, y, z)
+
