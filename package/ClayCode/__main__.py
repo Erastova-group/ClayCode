@@ -44,7 +44,7 @@ def run():
             if completed is None:
                 if clay_builder.extended_box is True:
                     repeat = select_input_option(
-                        query="Repeat solvation setup? [y/n]\n",
+                        query="Repeat solvation setup? [y]es/[n]o\n",
                         options=["y", "n"],
                         result=None,
                         result_map={"y": False, "n": None},
@@ -55,7 +55,7 @@ def run():
             if completed is False:
                 logger.info("\nRepeating solvation setup.\n")
             else:
-                logger.info(completed)
+                logger.info("\nFinishing setup without energy minimisation.\n")
         clay_builder.conclude()
 
 
