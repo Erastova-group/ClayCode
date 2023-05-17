@@ -878,10 +878,10 @@ class TargetClayComposition:
                     fill="\t",
                 )
                 accept = select_input_option(
-                    query="\nAccept new composition? [y]es/[e]xit (default y)\n",
+                    query="\nAccept new composition? [y]es/[n]o/[e]xit (default y)\n",
                     options=["y", "e", ""],
                     result=accept,
-                    result_map={"y": "y", "e": "n", "": "y"},
+                    result_map={"y": "y", "e": "e", "n": "n", "": "y"},
                 )
                 if accept == "n":
                     accept = None
@@ -990,6 +990,7 @@ class TargetClayComposition:
             f"\nWriting new target clay composition to {outpath.name!r}\n"
         )
         shutil.copy(tmpfile.name, outpath)
+        assert outpath.is_file(), f"Error writing file {tmpfile.name!r}"
 
     write_csv = partialmethod(_write, fmt=".csv")
     write_pkl = partialmethod(_write, fmt=".csv")
@@ -1100,7 +1101,9 @@ class MatchClayComposition:
                 diff_df == diff_df.min()
             ].index.to_list()[0]
             # selected_group = accepted_group[selected_group_id]
-            logger.info(f"Selected group {selected_group_id}:")
+            logger.info(
+                f"Selected group {selected_group_id} with base composition:"
+            )
             self.print_groups(
                 {selected_group_id: accepted_base.get(selected_group_id)},
                 all_ucs_df,
@@ -1175,7 +1178,7 @@ class MatchClayComposition:
             selected_ucs_df = all_ucs_df.loc[
                 :, accepted_group[next(iter(accepted_group.keys()))]
             ]
-            logger.info("\nComposition of matching unit cell group:")
+            logger.info("\nComposition of matching unit cell group base:")
             if accept is None:
                 self.print_groups(accepted_base, all_ucs_df, fill="\t")
             print_all_ucs = select_input_option(
@@ -1518,6 +1521,7 @@ class MatchClayComposition:
             os.makedirs(outpath.parent)
         logger.info(f"Writing new match clay composition to {str(outpath)!r}")
         shutil.copy(tmpfile.name, outpath)
+        assert outpath.is_file()
 
     write_csv = partialmethod(_write, fmt=".csv")
     write_pkl = partialmethod(_write, fmt=".csv")
