@@ -1033,7 +1033,7 @@ class MatchClayComposition:
         )
         accept = select_input_option(
             query="\nAccept matched clay composition? [y]es/[e]xit (Default y)\n",
-            options=["y", "e"],
+            options=["y", "e", ""],
             result=accept,
             result_map={"y": "y", "e": "n", "": "y"},
         )
