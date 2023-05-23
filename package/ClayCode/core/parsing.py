@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserDict
 from functools import cached_property
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,7 @@ from ClayCode.builder.claycomp import (
     MatchClayComposition,
 )
 from ClayCode.core.classes import Dir, File, init_path
-from ClayCode.core.consts import FF, UCS
+from ClayCode.core.consts import FF, MDP_DEFAULTS, UCS
 from ClayCode.core.log import logger
 from ClayCode.core.utils import get_header, get_subheader
 
@@ -71,6 +72,24 @@ buildparser.add_argument(
     help="CSV file with clay composition",
     metavar="csv_file",
     dest="csv_file",
+    required=False,
+)
+buildparser.add_argument(
+    "-mdp",
+    type=File,
+    help="YAML file with mdp parameter options for energy minimisation run.",
+    metavar="yaml_file",
+    dest="mdp_prms",
+    required=False,
+)
+
+
+buildparser.add_argument(
+    "--manual_setup",
+    help="Ask for confirmation at each model setup stage.",
+    dest="manual_setup",
+    action="store_true",
+    default=False,
     required=False,
 )
 
@@ -381,8 +400,10 @@ class BuildArgs(_Args):
         "OUTPATH",
         "FF",
         "GMX",
-        "OCC_TOL" "SEL_PRIORITY",
+        "OCC_TOL",
+        "SEL_PRIORITY",
         "CHARGE_PRIORITY",
+        "MDP_PRMS",
     ]
 
     def __init__(self, data) -> None:
@@ -403,6 +424,7 @@ class BuildArgs(_Args):
         self._raw_comp: pd.DataFrame = None
         self._corr_comp: pd.DataFrame = None
         self._uc_comp: pd.DataFrame = None
+        self.mdp_parameters: Dict[str, Any] = None
         self.ff = None
         self.ucs = None
         self.il_solv = None
@@ -412,34 +434,48 @@ class BuildArgs(_Args):
 
     @read_yaml_decorator
     def read_yaml(self) -> None:
-        """Read clay model builder specifications from yaml file."""
-        try:
-            csv_file = File(self.data["csv_file"], check=True)
-        except TypeError:
-            self.data.pop("csv_file")
-        try:
-            yaml_csv_file = File(self.data["CLAY_COMP"], check=True)
-        except KeyError:
-            pass
-        if "csv_file" in self.data.keys() and "CLAY_COMP" in self.data.keys():
-            if csv_file.absolute() == yaml_csv_file.absolute():
-                logger.info(
-                    f"Clay composition {csv_file.absolute()} specified twice."
-                )
-                self.data["CLAY_COMP"] = csv_file
-                self.data.pop("csv_file")
-            else:
+        """Read clay model builder specifications
+        and mdp_parameter defaults from yaml file."""
+        files_dict = {"csv_file": "CLAY_COMP", "mdp_prms": "MDP_PRMS"}
+        description_dict = {
+            "csv_file": "clay composition",
+            "mdp_prms": "mdp options",
+        }
+        for cmdline_dest, yaml_kwd in files_dict.items():
+            try:
+                csv_file = File(self.data[cmdline_dest], check=True)
+            except TypeError:
+                self.data.pop(cmdline_dest)
+            try:
+                yaml_csv_file = File(self.data[yaml_kwd], check=True)
+            except KeyError:
+                pass
+            if (
+                cmdline_dest in self.data.keys()
+                and yaml_kwd in self.data.keys()
+            ):
+                if csv_file.absolute() == yaml_csv_file.absolute():
+                    logger.info(
+                        f"{description_dict.get(cmdline_dest)} {csv_file.absolute()} specified twice."
+                    )
+                    self.data[yaml_kwd] = csv_file
+                    self.data.pop(cmdline_dest)
+                else:
+                    raise ValueError(
+                        f"Two non-identical {description_dict.get(cmdline_dest)} files specified:"
+                        f"\n\t1) {csv_file}\n\t2) {yaml_csv_file}"
+                    )
+            elif cmdline_dest in self.data.keys():
+                self.data[yaml_kwd] = csv_file
+                self.data.pop(cmdline_dest)
+            elif yaml_kwd in self.data.keys():
+                self.data[yaml_kwd] = yaml_csv_file
+            elif cmdline_dest == "csv_file":
                 raise ValueError(
-                    "Two non-identical clay composition files specified:"
-                    f"\n\t1) {csv_file}\n\t2) {yaml_csv_file}"
+                    "No csv file with clay composition specified!"
                 )
-        elif "csv_file" in self.data.keys():
-            self.data["CLAY_COMP"] = csv_file
-            self.data.pop("csv_file")
-        elif "CLAY_COMP" in self.data.keys():
-            self.data["CLAY_COMP"] = yaml_csv_file
-        else:
-            raise ValueError("No csv file with clay composition specified!")
+            else:
+                logger.debug("No mdp parameters specified")
 
     def check(self) -> None:
         try:
@@ -491,6 +527,14 @@ class BuildArgs(_Args):
             except KeyError:
                 prm_value = self._build_defaults[prm]
             setattr(self, prm.lower(), prm_value)
+        setattr(self, "mdp_parameters", MDP_DEFAULTS)
+        try:
+            mdp_prm_file = self.data["MDP_PRMS"]
+            with open(mdp_prm_file, "r") as mdp_file:
+                mdp_prms = yaml.safe_load(mdp_file)
+                self.mdp_parameters["EM"].update(mdp_prms)
+        except KeyError:
+            pass
         try:
             outpath = self.data["OUTPATH"]
             self.outpath = Dir(outpath, check=False)
@@ -507,6 +551,7 @@ class BuildArgs(_Args):
         logger.info(get_header("Getting build parameters"))
         self.read_yaml()
         self.check()
+        self.manual_setup = self.data["manual_setup"]
         self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         self.outpath = self.outpath / self.name
         init_path(self.outpath)
@@ -553,12 +598,13 @@ class BuildArgs(_Args):
         clay_atoms.append(pd.MultiIndex.from_tuples([("O", "fe_tot")]))
 
         self._target_comp = TargetClayComposition(
-            self.name,
-            self.data["CLAY_COMP"],
-            self._uc_data,
-            self.occ_tol,
-            self.sel_priority,
-            self.charge_priority,
+            name=self.name,
+            csv_file=self.data["CLAY_COMP"],
+            uc_data=self._uc_data,
+            occ_tol=self.occ_tol,
+            sel_priority=self.sel_priority,
+            charge_priority=self.charge_priority,
+            manual_setup=self.manual_setup,
         )
         self._target_comp.write_csv(self.outpath)
 
@@ -617,7 +663,9 @@ class BuildArgs(_Args):
 
     def match_uc_combination(self):
         self.match_comp = MatchClayComposition(
-            self._target_comp, self.sheet_n_cells
+            target_composition=self._target_comp,
+            sheet_n_ucs=self.sheet_n_cells,
+            manual_setup=self.manual_setup,
         )
         self.match_comp.write_csv(self.outpath)
 

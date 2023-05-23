@@ -13,7 +13,7 @@ from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.topology import TopologyConstructor
 from ClayCode.core import gmx
 from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
-from ClayCode.core.consts import GRO_FMT, MDP
+from ClayCode.core.consts import GRO_FMT, MDP, MDP_DEFAULTS
 from ClayCode.core.gmx import GMXCommands, add_gmx_args, gmx_command_wrapper
 from ClayCode.core.lib import (
     add_ions_n_mols,
@@ -23,12 +23,15 @@ from ClayCode.core.lib import (
     check_insert_numbers,
     run_em,
     select_outside_clay_stack,
-    set_mdp_freeze_clay,
-    set_mdp_parameter,
     write_insert_dat,
 )
 from ClayCode.core.log import logger
-from ClayCode.core.utils import get_header, get_subheader
+from ClayCode.core.utils import (
+    get_header,
+    get_subheader,
+    set_mdp_freeze_clay,
+    set_mdp_parameter,
+)
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.units import constants
 from numpy._typing import NDArray
@@ -65,7 +68,12 @@ class Builder:
             f"({self.sheet.x_cells} unit cells X {self.sheet.y_cells} unit cells)\n"
             f"Box height: {self.args.box_height:.1f} A"
         )
-        self.gmx_commands = GMXCommands(gmx_alias=self.args.gmx_alias)
+        self.gmx_commands = GMXCommands(
+            gmx_alias=self.args.gmx_alias,
+        )
+        self.gmx_commands.mdp_template = (
+            MDP / f"{self.gmx_commands.version}/mdp_prms.mdp"
+        )
 
     @property
     def extended_box(self) -> bool:
@@ -103,37 +111,44 @@ class Builder:
     def run_em(self):
         logger.info(get_subheader("Minimising energy"))
         # logger.info(f'{self.gmx_info()}')
-        em_inp = MDP / f"{self.gmx_commands.version}/em.mdp"
+        # em_inp = MDP / f"{self.gmx_commands.version}/em.mdp"
+        em_inp = self.gmx_commands.mdp_template
         uc_names = np.unique(self.clay.residues.resnames)
         em_filestr = set_mdp_freeze_clay(
             uc_names=uc_names,
             file_or_str=em_inp,
             freeze_dims=["Y", "Y", "Y"],
         )
-        em_filestr = set_mdp_parameter("constraints", "h-bonds", em_filestr)
-        em_filestr = set_mdp_parameter("emstep", "0.0001", em_filestr)
-        em_filestr = set_mdp_parameter("emtol", "1000", em_filestr)
-        with tempfile.NamedTemporaryFile(
-            mode="w+",
-            prefix=Path(em_inp).stem,
-            suffix=".mdp",
-            delete=False,
-            dir=self.args.outpath,
-        ) as mdp_file:
-            mdp_file.write(em_filestr)
-            result = run_em(
-                mdp=self.args.outpath / mdp_file.name,
-                crdin=self.stack,
-                topin=self.stack.top,
-                odir=self.args.outpath,
-                outname=self.stack.stem,
-                gmx_commands=self.gmx_commands,
-            )
+        for em_prm, prm_value in self.args.mdp_parameters["EM"].items():
+            em_filestr = set_mdp_parameter(em_prm, prm_value, em_filestr)
+            # em_filestr = set_mdp_parameter("constraints", "all-bonds", em_filestr)
+            # em_filestr = set_mdp_parameter("emstep", "0.001", em_filestr)
+            # em_filestr = set_mdp_parameter("emtol", "1000", em_filestr)
+        mdp_file = Path(self.__tmp_outpath.name) / f"{Path(em_inp).stem}.mdp"
+        with open(mdp_file, "w") as file:
+            # tempfile.NamedTemporaryFile(
+            # mode="w+",
+            # prefix=Path(em_inp).stem,
+            # suffix=".mdp",
+            # delete=False,
+            # dir=self.__tmp_outpath,
+            # ) as mdp_file:
+            file.write(em_filestr)
+        result = run_em(
+            mdp=mdp_file,
+            crdin=self.stack,
+            topin=self.stack.top,
+            odir=self.args.outpath,
+            outname=self.stack.stem,
+            gmx_commands=self.gmx_commands,
+        )
         outpath = Dir(self.args.outpath)
         crd_top_files = [
             *outpath.itp_filelist,
             *outpath._get_filelist(ext=".top"),
             *outpath.gro_filelist,
+            *outpath._get_filelist(ext=".csv"),
+            *outpath._get_filelist(ext=".mdp"),
         ]
         for file in outpath.iterdir():
             if file not in crd_top_files:
@@ -141,13 +156,6 @@ class Builder:
         return result
 
     def conclude(self):
-        # run_em(
-        #     mdp=MDP / "no_run.mdp",
-        #     crdin=self.stack,
-        #     topin=self.stack.top,
-        #     odir=self.args.outpath,
-        #     outname=self.stack.stem,
-        # )
         logger.info(get_subheader("Finishing up"))
         self.stack: GROFile = self.args.outpath / self.stack.name
         self.__tmp_outpath.cleanup()

@@ -1,4 +1,5 @@
 import re
+import shutil
 import subprocess as sp
 import tempfile
 import warnings
@@ -6,10 +7,12 @@ from functools import cached_property, update_wrapper, wraps
 from pathlib import Path
 from typing import Tuple
 
+from ClayCode.analysis import MDP
 from ClayCode.core.log import logger
-from ClayCode.core.utils import execute_bash_command
+from ClayCode.core.utils import execute_bash_command, set_mdp_parameter
 
 DEFAULT_GMX = "gmx"
+DEFAULT_MDP_FILE = MDP / "mdp_prms"
 
 
 def add_gmx_args(f):
@@ -22,7 +25,7 @@ def add_gmx_args(f):
                 gmx_commands.__class__.__name__ == "GMXCommands"
             ), "Wrong type: Expected GMXCommands instance!"
         else:
-            gmx_commands = GMXCommands(gmx_alias=gmx_alias)
+            gmx_commands = GMXCommands(gmx_alias=gmx_alias, *args, **kwdargs)
         result = f(instance, *args, **kwargs)
         instance.gmx_commands = gmx_commands
         return result
@@ -38,7 +41,7 @@ def gmx_command_wrapper(f):
                 gmx_commands.__class__.__name__ == "GMXCommands"
             ), "Wrong type: Expected GMXCommands instance!"
         else:
-            gmx_commands = GMXCommands(gmx_alias=gmx_alias)
+            gmx_commands = GMXCommands(gmx_alias=gmx_alias, *args, **kwdargs)
         result = f(*args, gmx_commands=gmx_commands, **kwargs)
         return result
 
@@ -46,14 +49,80 @@ def gmx_command_wrapper(f):
 
 
 class GMXCommands:
-    def __init__(self, gmx_alias="gmx"):
+    def __init__(self, gmx_alias="gmx", mdp_template=None, mdp_defaults={}):
         self.gmx_alias = gmx_alias
         _ = self.gmx_header
+        try:
+            self._mdp_template = mdp_template
+        except TypeError:
+            pass
+        self._mdp_template = mdp_template
+        self.mdp_defaults = mdp_defaults
         logger.info(f"\n{self.gmx_info}")
+
+    @property
+    def mdp_string(self):
+        if self.mdp_template is not None:
+            with open(self.mdp_template) as mdp_file:
+                mdp_str = mdp_file.read()
+            return mdp_str
+
+    @property
+    def mdp_template(self):
+        if self._mdp_template is not None:
+            return self._mdp_template
+        # else:
+        #     raise ValueError('No MDP template set!')
+
+    @mdp_template.setter
+    def mdp_template(self, mdp_filename):
+        try:
+            self._mdp_template = Path(mdp_filename)
+            assert (
+                self._mdp_template.is_file()
+            ), f"MDP file {self._mdp_template.resolve()!r} does not exist"
+        except TypeError:
+            logger.debug(
+                f"Not setting MDP template, mdp_template = {mdp_filename!r}"
+            )
+
+    def get_mdp_parameter_file(self, commandargs_dict, mdp_prms=None):
+        mdp_temp_file = None
+        for prm, value in commandargs_dict.items():
+            try:
+                file = Path(value)
+                if file.suffix == ".mdp":
+                    if self.mdp_defaults and not mdp_prms:
+                        mdp_prms = self.mdp_defaults
+                    if mdp_prms:
+                        try:
+                            with open(file, "r") as mdp_file:
+                                mdp_str = mdp_file.read()
+                        except FileNotFoundError:
+                            mdp_str = self.mdp_string
+                            if mdp_temp_file is None:
+                                file = tempfile.TemporaryFile(
+                                    delete=False,
+                                    suffix=".mdp",
+                                    prefix=DEFAULT_MDP_FILE.stem,
+                                    dir=DEFAULT_MDP_FILE.parent,
+                                )
+                                file = mdp_temp_file = (
+                                    DEFAULT_MDP_FILE.parent / file.name
+                                )
+                        for parameter, value in mdp_prms.items():
+                            mdp_str = set_mdp_parameter(
+                                parameter, value, mdp_str
+                            )
+                        with open(file, "w") as mdp_file:
+                            mdp_file.write(mdp_str)
+            except TypeError:
+                pass
+            return mdp_temp_file
 
     def run_gmx_command(commandargs_dict, opt_args_list):
         def func_decorator(func):
-            def wrapper(self, **kwdargs):
+            def wrapper(self, mdp_prms=None, **kwdargs):
                 for arg in kwdargs.keys():
                     if arg in commandargs_dict.keys():
                         commandargs_dict[arg] = str(kwdargs[arg])
@@ -64,6 +133,10 @@ class GMXCommands:
                             rf'Invalid argument "-{arg}" passed to "gmx '
                             rf'{re.match(r"run_gmx_(.*)", func.__name__).group(1)}"'
                         )
+                if self.mdp_template or self.mdp_defaults != {} or mdp_prms:
+                    temp_file = self.get_mdp_parameter_file(
+                        commandargs_dict, mdp_prms
+                    )
                 command, outputargs = func(self)
                 kwd_str = " ".join(
                     list(
@@ -84,6 +157,10 @@ class GMXCommands:
                         ],
                         **outputargs,
                     )
+                    try:
+                        temp_file.unlink()
+                    except AttributeError:
+                        pass
                 logger.debug(f"{self.gmx_alias} {command} {kwd_str} -nobackup")
                 out, err = output.stdout, output.stderr
                 error = self.search_gmx_error(err)
@@ -199,7 +276,7 @@ class GMXCommands:
             "po": "mdout.mdp",
             "pp": "processed.top",
             "o": "topol.tpr",
-            "maxwarn": 1,
+            "maxwarn": 2,
         },
         opt_args_list=["ndx", "v", "nov", "renum", "norenum", "t"],
     )
@@ -513,5 +590,14 @@ class GMXCommands:
                 flags=re.MULTILINE | re.IGNORECASE,
             ):
                 logger.error("GROMACS terminated due to LINCS warnings!")
+            elif re.search(
+                r"The largest distance between excluded atoms is .*?"
+                r" forces and energies.",
+                out,
+                flags=re.MULTILINE | re.DOTALL,
+            ):
+                logger.error(
+                    "GROMACS terminated due to too large distance between atoms!"
+                )
             else:
                 raise RuntimeError(f"{out}\nGROMACS raised an error!")

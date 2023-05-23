@@ -29,8 +29,7 @@ import MDAnalysis.coordinates
 import numpy as np
 import pandas as pd
 from ClayCode.analysis.analysisbase import analysis_class
-from ClayCode.core import gmx
-from ClayCode.core.classes import GROFile, MDPFile
+from ClayCode.core.classes import GROFile
 from ClayCode.core.consts import AA, DATA, FF, IONS, MDP, SOL, SOL_DENSITY, UCS
 from ClayCode.core.gmx import gmx_command_wrapper
 from ClayCode.core.log import logger
@@ -1482,6 +1481,7 @@ def run_em(
     odir: Path,
     gmx_commands,
     outname: str = "em",
+    mdp_prms: Optional[Dict[str, str]] = None,
 ) -> Union[str, None]:
     """
     Run an energy minimisation using gmx and
@@ -1504,7 +1504,6 @@ def run_em(
     if not pl.Path(mdp).is_file():
         mdp = MDP / mdp
     assert mdp.is_file()
-    print(open(mdp, "r").read())
     logger.debug("# MINIMISING ENERGY")
     outname = (Path(odir) / outname).resolve()
     topout = outname.with_suffix(".top")
@@ -1526,6 +1525,7 @@ def run_em(
         pp=topout,
         v="",
         po=tpr.with_suffix(".mdp"),
+        mdp_prms=mdp_prms,
     )
     error, em, out = gmx_commands.run_gmx_mdrun(s=tpr, deffnm=outname)
     if error is None:
@@ -1549,68 +1549,6 @@ def run_em(
     else:
         conv = False
     return conv
-
-
-def set_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ]*"):
-    new_str = re.sub(
-        rf"(?<={parameter})(\s*)(=\s*)({searchex}\s*;.*?)?(?=\n)",
-        r"\1" + f"={value}",
-        mdp_str,
-    )
-    return new_str
-
-
-def add_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ]*"):
-    new_str = re.sub(
-        rf"(?<={parameter})(\s*)(=\s*)({searchex}\s*;.*?)(?=\n)",
-        r"\1=\3" + f"{value}",
-        mdp_str,
-    )
-    return new_str
-
-
-def file_or_str(f):
-    @wraps(f)
-    def wrapper(file_or_str, *args, **kwargs):
-        try:
-            with open(file_or_str, "r") as file:
-                file_str = file.read()
-        except FileNotFoundError:
-            file_str = file_or_str
-        return f(*args, input_string=file_str, **kwargs)
-
-    return wrapper
-
-
-@file_or_str
-def set_mdp_freeze_clay(uc_names, input_string, freeze_dims=["Y", "Y", "Y"]):
-    # try:
-    #     with open(MDP / input_string, "r") as emfile:
-    #         input_string = emfile.read()
-    # except FileNotFoundError:
-    #     input_string = input_string
-    freezegrpstr = " ".join(uc_names)
-    freezearray = np.tile(freeze_dims, (len(uc_names)))
-    freezedimstr = " ".join(freezearray)
-    # with open(MDP / input_string, "r") as emfile:
-    #     input_string = emfile.read()
-    input_string = set_mdp_parameter("freezegrps", freezegrpstr, input_string)
-    input_string = set_mdp_parameter("freezedim", freezedimstr, input_string)
-    return input_string
-
-
-@file_or_str
-def mdp_to_yaml(input_string: str) -> str:
-    mdp_options = re.findall(
-        r"^[a-z0-9\-]+\s*=.*?(?=[\n;^])",
-        input_string,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    mdp_yaml = "\n".join(mdp_options)
-    mdp_yaml = re.sub("=", ":", mdp_yaml, flags=re.MULTILINE)
-    mdp_yaml = re.sub(r"[\t ]+", " ", mdp_yaml, flags=re.MULTILINE)
-    # mdp_yaml = re.sub(r'\n\n+', '\n', mdp_yaml, flags=re.MULTILINE)
-    print(mdp_yaml)
 
 
 # mdp_to_yaml(MDP / 'em_fix.mdp')

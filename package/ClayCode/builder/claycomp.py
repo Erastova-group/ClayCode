@@ -19,14 +19,15 @@ from functools import (
     wraps,
 )
 from pathlib import PosixPath
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
+from ClayCode.builder.utils import select_input_option
 from ClayCode.core.classes import Dir, File, ITPFile, PathFactory
 from ClayCode.core.lib import get_ion_charges
 from ClayCode.core.log import logger
-from ClayCode.core.utils import get_subheader, select_input_option
+from ClayCode.core.utils import get_subheader
 from numpy._typing import NDArray
 from tqdm import tqdm
 
@@ -170,6 +171,8 @@ class UCData(Dir):
                     sep="\s+",
                     names=gro_df.columns,
                     nrows=n_atoms,
+                    comment=";",
+                    skip_blank_lines=True,
                 )
             )
         # gro_df.reset_index(level='uc-id', inplace=True)
@@ -508,8 +511,10 @@ class TargetClayComposition:
         sel_priority,
         charge_priority,
         zero_threshold=0.0,
+        manual_setup=True,
     ):
         self.name: str = name
+        self.manual_setup = manual_setup
         self.match_file: File = File(csv_file, check=True)
         self.uc_data: UCData = uc_data
         self.uc_df: pd.DataFrame = self.uc_data.df
@@ -610,8 +615,8 @@ class TargetClayComposition:
             self.__df.drop(("O", "fe_tot"), inplace=True)
             # self.__df.where(self.__df.loc['O'] != 0, np.NaN, inplace=True)
             # charge_delta = dict(map(lambda x: (x, self._uc_data.oxidation_numbers[x] - ox_states[x]), ox_states.keys()))
-            assert (
-                self.occupancies["O"] == self.uc_data.occupancies["O"]
+            assert np.isclose(
+                self.occupancies["O"], self.uc_data.occupancies["O"]
             ), f'Found incorrect occupancies of {self.occupancies["O"]}, expected {self.uc_data.occupancies["O"]}'
         except KeyError:
             pass
@@ -623,6 +628,7 @@ class TargetClayComposition:
             sheet_df.loc[["T", "O"], :].dropna(), fill="\t"
         )
         accept = select_input_option(
+            self,
             query="\nAccept clay composition? [y]es/[e]xit (Default y)\n",
             options=["y", "e", ""],
             result=None,
@@ -674,17 +680,17 @@ class TargetClayComposition:
                 charge_dict.update(sheet_charges.to_dict())
         else:
             charge_diff = sheet_charges.sum() - tot_charge
-            if charge_diff == 0.0:
+            if np.isclose(charge_diff, 0.0000):
                 pass
             else:
-                logger.warning(
+                logger.debug(
                     f"Sheet charges ({sheet_charges.sum()}) "
                     f"do not sum to specified total charge ({tot_charge})\n"
                 )
-                if np.abs(charge_diff) <= self.occ_tol:
-                    logger.info(
-                        f"Adjusting {re.sub('_', ' ', self.charge_priority)}."
-                    )
+                # if np.greater_equal(self.occ_tol, np.abs(charge_diff)):
+                #     logger.info(
+                #         f"Adjusting {re.sub('_', ' ', self.charge_priority)}."
+                #     )
             # assert (
             #         sheet_charges.sum() == tot_charge
             # ), "Sheet charges are different from specified total charge"
@@ -760,9 +766,14 @@ class TargetClayComposition:
         charged_occ_check = charged_occ_sum.groupby("sheet").apply(
             lambda x: self._get_charges(x.name) - x
         )
-        if (charged_occ_check > 0.0).any():
+        non_zero_charge_occ = np.greater(charged_occ_check, 0.0)
+        if (non_zero_charge_occ).any():
+            logger.info(
+                f"Sheet charges ({self.get_t_charge + self.get_o_charge:2.4f}) "
+                f"do not sum to specified total charge ({self.get_charges('tot'):2.4f})\n"
+            )
             target_charge = {}
-            subst_charges = charged_occ_sum[charged_occ_check > 0]
+            subst_charges = charged_occ_sum[non_zero_charge_occ]
             deviation = subst_charges.to_dict()
             for dev_occ in deviation.keys():
                 target_charge[dev_occ] = self._get_charges(key=dev_occ)
@@ -774,6 +785,7 @@ class TargetClayComposition:
             )
             if (charged_occ_check > self.occ_tol).any():
                 priority_sel = select_input_option(
+                    self,
                     "\nAdjust [c]harges or [o]ccupancies? (exit with e)\n",
                     options=["c", "o", "e"],
                     result_map={"c": "charges", "o": "occupancies", "e": "e"},
@@ -839,8 +851,9 @@ class TargetClayComposition:
                 new_occ = pd.Series(self.occupancies)
                 new_check_df: pd.Series = new_occ - correct_uc_occ
                 new_check_df.dropna(inplace=True)
-                if not (new_check_df == 0.0).all():
-                    deviation = new_check_df[new_check_df != 0].to_dict()
+                new_zeros = np.isclose(new_check_df, 0.0)
+                if not (new_zeros).all():
+                    deviation = new_check_df[~new_zeros].to_dict()
                     deviation = self.__deviation_string(deviation=deviation)
                     logger.warning(
                         "\nNew occupancies do not match expected values!"
@@ -852,6 +865,7 @@ class TargetClayComposition:
                         print("\nPlease enter enter valid occupancies!")
                         exit_dict = {"y": "n", "n": "e"}
                         accept = select_input_option(
+                            self,
                             query="Continue? [y]es/[n]o\n",
                             options={"y", "n"},
                             result=None,
@@ -878,6 +892,7 @@ class TargetClayComposition:
                     fill="\t",
                 )
                 accept = select_input_option(
+                    self,
                     query="\nAccept new composition? [y]es/[n]o/[e]xit (default y)\n",
                     options=["y", "e", ""],
                     result=accept,
@@ -935,7 +950,7 @@ class TargetClayComposition:
     @staticmethod
     def __deviation_string(deviation: dict, join_str=", ", sep=": ") -> str:
         return f"{join_str}".join(
-            [f"{k!r}{sep}{v:2.2f}" for k, v in deviation.items()]
+            [f"{k!r}{sep}{v:2.3f}" for k, v in deviation.items()]
         )
 
     @staticmethod
@@ -1019,8 +1034,11 @@ class TargetClayComposition:
 
 
 class MatchClayComposition:
-    def __init__(self, target_composition, sheet_n_ucs: int):
+    def __init__(
+        self, target_composition, sheet_n_ucs: int, manual_setup=True
+    ):
         logger.info(get_subheader("Selecting unit cells"))
+        self.manual_setup = manual_setup
         self.__target_df: pd.DataFrame = target_composition.clay_df
         self.__uc_data: UCData = target_composition.uc_data
         self.name = target_composition.name
@@ -1033,6 +1051,7 @@ class MatchClayComposition:
             self.match_composition, self.target_df, fill="\t"
         )
         accept = select_input_option(
+            self,
             query="\nAccept matched clay composition? [y]es/[e]xit (Default y)\n",
             options=["y", "e", ""],
             result=accept,
@@ -1110,6 +1129,7 @@ class MatchClayComposition:
                 fill="\t",
             )
             print_all_ucs = select_input_option(
+                self,
                 "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default n)\n",
                 result=None,
                 options=["y", "n", ""],
@@ -1129,6 +1149,7 @@ class MatchClayComposition:
             )
             print_all_ucs()
             accept = select_input_option(
+                self,
                 "\nAccept selection [y] or choose manually [m]? (Default y)",
                 options=["y", "m", ""],
                 result=None,
@@ -1145,6 +1166,7 @@ class MatchClayComposition:
                 logger.info("\nAvailable UC group base compositions:")
                 self.print_groups(accepted_base, all_ucs_df, fill="\t")
                 print_all_ucs = select_input_option(
+                    self,
                     "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default n)\n",
                     result=None,
                     options=["y", "n", ""],
@@ -1158,6 +1180,7 @@ class MatchClayComposition:
                 )
                 print_all_ucs()
             accept = select_input_option(
+                self,
                 query=f"\nSelect unit cell group? [{'/'.join(select_keys)}] (exit with e)\n",
                 options=[*select_keys, "e"],
                 result=accept,
@@ -1182,6 +1205,7 @@ class MatchClayComposition:
             if accept is None:
                 self.print_groups(accepted_base, all_ucs_df, fill="\t")
             print_all_ucs = select_input_option(
+                self,
                 "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default y)\n",
                 result=accept,
                 options=["y", "n", "", next(iter(accepted_group.keys()))],
@@ -1196,6 +1220,7 @@ class MatchClayComposition:
             )
             print_all_ucs()
             accept = select_input_option(
+                self,
                 query="\nAccept unit cell group? [y]es/[e]xit (Default y)\n",
                 result=accept,
                 options=["y", "e", ""],
@@ -1301,7 +1326,7 @@ class MatchClayComposition:
                 "Getting matching unit cell combination for target composition"
             )
         )
-        for n_ucs in n_ucs_idx:
+        for n_ucs in n_ucs_idx[:1]:
             logger.info(
                 f"\nGetting combinations for {n_ucs} unique unit cells"
             )

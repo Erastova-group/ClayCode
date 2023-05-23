@@ -5,10 +5,10 @@ import re
 import shutil
 import subprocess as sp
 import warnings
-from functools import partial, singledispatch
+from functools import partial, singledispatch, wraps
 from itertools import chain
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import List, Literal, Optional, Union
 
 import MDAnalysis as mda
 import numpy as np
@@ -257,19 +257,6 @@ def select_named_file(
     return match
 
 
-def select_input_option(
-    query: str,
-    options: Union[List[str], Tuple[str], Set[str]],
-    result: Optional[str] = None,
-    result_map: Optional[Dict[str, Any]] = None,
-) -> str:
-    while result not in options:
-        result = input(query).lower()
-    if result_map is not None:
-        result = result_map[result]
-    return result
-
-
 def select_file(
     path: Union[Path, str],
     searchstr: Optional[str] = None,
@@ -368,3 +355,69 @@ def open_outfile(outpath: Union[Path, str], suffix: str, default: str):
 
 if __name__ == "__main__":
     print(mda.__version__, "\n", np.__version__)
+
+
+def set_mdp_parameter(
+    parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,\-]*?"
+):
+    new_str = re.sub(
+        rf"(?<={parameter})(\s*)(=\s*)\s?({searchex})\s*?((\s?;[a-z0-9 ._,\-])?)(\n)",
+        r"\1" + f"= {value} " + r"\4\n",
+        mdp_str,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    return new_str
+
+
+def add_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"):
+    new_str = re.sub(
+        rf"(?<={parameter})(\s*)(=\s*)\s?({searchex})\s?\(s*;?.*?)(?=\n)",
+        r"\1=\3" + f" {value} " + r"\4",
+        mdp_str,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    return new_str
+
+
+def file_or_str(f):
+    @wraps(f)
+    def wrapper(file_or_str, *args, **kwargs):
+        try:
+            with open(file_or_str, "r") as file:
+                file_str = file.read()
+        except FileNotFoundError:
+            file_str = file_or_str
+        return f(*args, input_string=file_str, **kwargs)
+
+    return wrapper
+
+
+@file_or_str
+def set_mdp_freeze_clay(uc_names, input_string, freeze_dims=["Y", "Y", "Y"]):
+    # try:
+    #     with open(MDP / input_string, "r") as emfile:
+    #         input_string = emfile.read()
+    # except FileNotFoundError:
+    #     input_string = input_string
+    freezegrpstr = " ".join(uc_names)
+    freezearray = np.tile(freeze_dims, (len(uc_names)))
+    freezedimstr = " ".join(freezearray)
+    # with open(MDP / input_string, "r") as emfile:
+    #     input_string = emfile.read()
+    input_string = set_mdp_parameter("freezegrps", freezegrpstr, input_string)
+    input_string = set_mdp_parameter("freezedim", freezedimstr, input_string)
+    return input_string
+
+
+@file_or_str
+def mdp_to_yaml(input_string: str) -> str:
+    mdp_options = re.findall(
+        r"^[a-z0-9\-]+\s*=.*?(?=[\n;^])",
+        input_string,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    mdp_yaml = "\n".join(mdp_options)
+    mdp_yaml = re.sub("=", ":", mdp_yaml, flags=re.MULTILINE)
+    mdp_yaml = re.sub(r"[\t ]+", " ", mdp_yaml, flags=re.MULTILINE)
+    # mdp_yaml = re.sub(r'\n\n+', '\n', mdp_yaml, flags=re.MULTILINE)
+    # print(mdp_yaml)

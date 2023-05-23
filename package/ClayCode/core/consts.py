@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict
 
+import yaml
 from importlib_resources import files
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "USER_FF",
     "USER_UCS",
     "USER_CLAYS",
+    "MDP_DEFAULTS",
 ]
 
 DATA = files("ClayCode.data")
@@ -164,3 +166,6 @@ def set_globals() -> Dict[str, Dict[str, str]]:
 
 
 KWD_DICT = set_globals()
+
+with open(MDP / "defaults.yaml", "r") as yaml_file:
+    MDP_DEFAULTS = yaml.safe_load(yaml_file)

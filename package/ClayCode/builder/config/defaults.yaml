@@ -117,3 +117,9 @@ SEL_PRIORITY: charges # occupancies
 # 2. 'sheet_charges': Will adjust total charge to sheet charges
 #          i.e. total charge (-1.00 e) -> (1.10 e)
 CHARGE_PRIORITY: total_charge
+
+# -----------------------------------------------------------------------------
+# Parameters for EM run
+# -----------------------------------------------------------------------------
+
+#MDP_PRMS: 'mdp_parameters.yaml'
