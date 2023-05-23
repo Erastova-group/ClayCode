@@ -2,9 +2,10 @@
 import logging
 import sys
 
+from ClayCode.builder.utils import select_input_option
 from ClayCode.core.log import logger
 from ClayCode.core.parsing import ArgsFactory, BuildArgs, parser
-from ClayCode.core.utils import get_subheader, select_input_option
+from ClayCode.core.utils import get_subheader
 
 __all__ = ["run"]
 
@@ -43,7 +44,8 @@ def run():
             completed = clay_builder.run_em()
             if completed is None:
                 if clay_builder.extended_box is True:
-                    repeat = select_input_option(
+                    completed = select_input_option(
+                        instance_or_manual_setup=True,
                         query="Repeat solvation setup? [y]es/[n]o\n",
                         options=["y", "n"],
                         result=None,
@@ -52,10 +54,14 @@ def run():
                     # if repeat == "y":
                     #     completed = False
                     #     logger.info(get_subheader("Repeating solvation"))
-            if completed is False:
-                logger.info("\nRepeating solvation setup.\n")
+                if completed is False:
+                    logger.info("\nRepeating solvation setup.\n")
+                else:
+                    logger.info(
+                        "\nFinishing setup without energy minimisation.\n"
+                    )
             else:
-                logger.info("\nFinishing setup without energy minimisation.\n")
+                logger.debug("\nFinished setup!\n")
         clay_builder.conclude()
 
 
