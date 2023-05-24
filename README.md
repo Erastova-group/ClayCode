@@ -44,11 +44,11 @@ Builds clay models based on average target occupancies for a specified unit cell
 Arguments for `builder` are:
   - `-f`: [System specifications YAML file](#1-system-specifications-yaml-file)
   - `-comp`: [Clay composition in CSV format](#2-clay-composition-in-csv-format) (can also be given in system specifications YAML)
-
+  - `--manual_setup` (run builder in interactive mode)
 #### Example:
 
 ```shell
-ClayCode builder -f path/to/input.yaml
+ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
 
 ### Required input files:
