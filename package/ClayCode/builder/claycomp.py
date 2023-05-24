@@ -1584,7 +1584,7 @@ class InterlayerIons:
             * self.__df["probs"]
         )
         ion_charge = (self.__df["numbers"] * self.__df["charges"]).sum()
-        if ion_charge != self.clay_charge:
+        if np.isclose(ion_charge, self.clay_charge):
             self.__df.loc[monovalent, "numbers"] = np.abs(
                 ion_charge + self.clay_charge
             )
@@ -1597,7 +1597,7 @@ class InterlayerIons:
 
     @property
     def numbers(self):
-        return self.df["numbers"].to_dict()
+        return self.df["numbers"].dropna().apply(np.rint).astype(int).to_dict()
 
 
 class BulkIons:
