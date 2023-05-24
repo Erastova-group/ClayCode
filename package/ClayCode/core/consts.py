@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict
 
 import yaml
@@ -25,6 +26,7 @@ __all__ = [
     "USER_UCS",
     "USER_CLAYS",
     "MDP_DEFAULTS",
+    "LOGFILENAME",
 ]
 
 DATA = files("ClayCode.data")
@@ -169,3 +171,5 @@ KWD_DICT = set_globals()
 
 with open(MDP / "defaults.yaml", "r") as yaml_file:
     MDP_DEFAULTS = yaml.safe_load(yaml_file)
+
+LOGFILENAME = Path(".logfile").resolve()

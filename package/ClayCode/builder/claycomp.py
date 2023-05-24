@@ -769,8 +769,8 @@ class TargetClayComposition:
         non_zero_charge_occ = np.greater(charged_occ_check, 0.0)
         if (non_zero_charge_occ).any():
             logger.info(
-                f"Sheet charges ({self.get_t_charge + self.get_o_charge:2.4f}) "
-                f"do not sum to specified total charge ({self.get_charges('tot'):2.4f})\n"
+                f"Sheet charges ({self.get_t_charge() + self.get_o_charge():2.4f}) "
+                f"do not sum to specified total charge ({self.get_total_charge():2.4f})\n"
             )
             target_charge = {}
             subst_charges = charged_occ_sum[non_zero_charge_occ]
@@ -1018,17 +1018,21 @@ class TargetClayComposition:
         ion_df["charges"] = ion_df.index.to_series().apply(
             lambda x: ion_charge_dict[x]
         )
-        assert (
-            ion_probs.sum() == 1.00
+        ion_sum = ion_probs.sum()
+        if not np.isclose(ion_sum, 1.00):
+            ion_probs = ion_probs / ion_sum
+        assert np.isclose(
+            ion_probs.sum(), 1.00
         ), "Ion species probabilities need to sum to 1"
-
         ion_df.dropna(inplace=True, subset="probs")
         ion_df.where(
             np.sign(ion_df) != np.sign(self.get_total_charge()),
             level="charge",
             inplace=True,
         )
-        ion_df.where(ion_df != 0, level="probs", inplace=True)
+        ion_df.where(
+            ~np.isclose(ion_df.values, 0.0), level="probs", inplace=True
+        )
         # charge_avg = ion_df['charges'].mean()
         self.__ion_df = ion_df.sort_index(kind="mergesort")  # .copy()
 
@@ -1562,13 +1566,21 @@ class InterlayerIons:
     ):
         self.clay_charge = tot_charge * n_ucs
         self.__df = ion_ratios.copy()
-        assert self.__df["probs"].sum() == 1.00
+        assert np.isclose(
+            self.__df["probs"].sum(), 1.00
+        ), "Interlayer ion probabilities do not sum to 1.00"
         self.__df["numbers"] = 0
         self.get_ion_numbers(monovalent=monovalent)
 
     def get_ion_numbers(self, monovalent):
         self.__df["numbers"] = (
-            np.abs(self.clay_charge // self.__df["charges"])
+            np.abs(
+                np.floor_divide(
+                    self.clay_charge,
+                    self.__df["charges"],
+                    where=~np.isclose(self.__df["charges"], 0.00),
+                )
+            )
             * self.__df["probs"]
         )
         ion_charge = (self.__df["numbers"] * self.__df["charges"]).sum()
@@ -1581,11 +1593,11 @@ class InterlayerIons:
 
     @property
     def df(self):
-        return self.__df[["charges", "numbers"]].astype(np.int32)
+        return self.__df[["charges", "numbers"]]
 
     @property
     def numbers(self):
-        return self.df["numbers"].astype(np.int32).to_dict()
+        return self.df["numbers"].to_dict()
 
 
 class BulkIons:

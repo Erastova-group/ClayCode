@@ -16,8 +16,8 @@ from ClayCode.builder.claycomp import (
     InterlayerIons,
     MatchClayComposition,
 )
-from ClayCode.core.classes import Dir, File, init_path
-from ClayCode.core.consts import FF, MDP_DEFAULTS, UCS
+from ClayCode.core.classes import BasicPath, Dir, File, init_path
+from ClayCode.core.consts import FF, LOGFILENAME, MDP_DEFAULTS, UCS
 from ClayCode.core.log import logger
 from ClayCode.core.utils import get_header, get_subheader
 
@@ -554,6 +554,10 @@ class BuildArgs(_Args):
         self.manual_setup = self.data["manual_setup"]
         self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         self.outpath = self.outpath / self.name
+        # logger.rename_log_file(
+        #     new_filepath=self.outpath,
+        #     new_filename=BasicPath(self.outpath.name),
+        # )
         init_path(self.outpath)
         logger.info(f"Setting output directory: {self.outpath}")
         self.get_ff_data()
@@ -593,7 +597,6 @@ class BuildArgs(_Args):
     def get_exp_data(self):
         from ClayCode.builder.claycomp import TargetClayComposition
 
-        # csv_fname = self.data["CLAY_COMP"]
         clay_atoms = self._uc_data.df.index
         clay_atoms.append(pd.MultiIndex.from_tuples([("O", "fe_tot")]))
 
@@ -687,12 +690,14 @@ class BuildArgs(_Args):
 
     def get_il_ions(self):
         tot_charge = self.match_charge["tot"]
-        if tot_charge != 0:
+        if np.isclose(tot_charge, 0.0):
             self.il_ions = InterlayerIons(
                 tot_charge=tot_charge,
                 ion_ratios=self.ion_df,
                 n_ucs=self.sheet_n_cells,
             )
+        else:
+            self.il_ions = None
 
     def get_bulk_ions(self):
         self._bulk_ions = BulkIons(

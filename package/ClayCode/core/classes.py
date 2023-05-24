@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import logging
 import os
 import re
@@ -39,13 +38,14 @@ import numpy as np
 import pandas as pd
 from ClayCode.core.consts import FF
 from ClayCode.core.consts import KWD_DICT as _KWD_DICT
+from ClayCode.core.log import logger
 from ClayCode.core.utils import select_named_file
 from MDAnalysis import AtomGroup, ResidueGroup, Universe
 from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
 
-logger = logging.getLogger(_Path(__file__).stem)
-logger.setLevel(logging.INFO)
+# logger = logging.getLogger(_Path(__file__).stem)
+# logger.setLevel(logging.INFO)
 
 
 # -----------------------------------------------------------------------------
@@ -56,7 +56,7 @@ logger.setLevel(logging.INFO)
 def add_method(cls):
     """Add new method to existing class"""
 
-    @update_wrapper(cls)
+    # @update_wrapper(cls)
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
