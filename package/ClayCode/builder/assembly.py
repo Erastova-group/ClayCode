@@ -695,7 +695,7 @@ class Sheet:
         gro_df: pd.DataFrame = self.uc_data.gro_df
         sheet_df = pd.concat(
             [
-                gro_df.filter(regex=f"[A-Z0-9]+{uc_id}", axis=0)
+                gro_df.filter(regex=f"[A-Z][0-9]{uc_id}", axis=0)
                 for uc_id in self.uc_array
             ]
         )
