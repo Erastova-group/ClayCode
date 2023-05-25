@@ -1227,6 +1227,7 @@ class GROFile(File):
         super(GROFile, self).__init__(*args, **kwargs)
         self.__topology = None
         self.__universe = None
+        self.description = None
 
     @property
     def string(self):
@@ -1286,6 +1287,18 @@ class GROFile(File):
     def write(self, topology=None):
         try:
             self.universe.atoms.write(str(self.resolve()))
+            if self.description is None:
+                self.description = self.stem
+            with open(self, "r") as grofile:
+                gro_str = grofile.read()
+            gro_str = re.sub(
+                "Written by MDAnalysis",
+                f"{self.description}",
+                gro_str,
+                flags=re.MULTILINE | re.IGNORECASE,
+            )
+            with open(self, "w") as grofile:
+                grofile.write(gro_str)
         except IndexError:
             logger.debug("Not writing empty Universe")
         if topology is not None:

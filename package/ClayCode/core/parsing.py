@@ -393,6 +393,7 @@ class BuildArgs(_Args):
         "UC_RATIOS_LIST",
         "ION_WATERS",
         "UC_WATERS",
+        "DEFAULT_D_SPACE",
         "BOX_HEIGHT",
         "BULK_SOLV",
         "BULK_IONS",
@@ -503,7 +504,7 @@ class BuildArgs(_Args):
                 raise ValueError(
                     f"Invalid interlayer solvation ({selected_solv}) for selected clay type {self._uc_name}!"
                 )
-            self.il_solv = il_solv
+            self.il_solv = selected_solv
         except KeyError:
             self.il_solv = il_solv
         for prm in [
@@ -512,6 +513,7 @@ class BuildArgs(_Args):
             "Y_CELLS",
             "N_SHEETS",
             "UC_WATERS",
+            "DEFAULT_D_SPACE",
             "BOX_HEIGHT",
             "BULK_IONS",
             "BULK_SOLV",
@@ -612,8 +614,8 @@ class BuildArgs(_Args):
         self._target_comp.write_csv(self.outpath)
 
     def get_il_solvation_data(self):
+        n_ions = np.sum([*self.n_il_ions.values()])
         if self.il_solv == True:
-            n_ions = np.sum([*self.n_il_ions.values()])
             if hasattr(self, "ion_waters") and not (
                 hasattr(self, "uc_waters") or hasattr(self, "spacing_waters")
             ):
@@ -643,6 +645,14 @@ class BuildArgs(_Args):
                     'specified through either "ION_WATERS", '
                     '"UC_WATERS" or "SPACING_WATERS".'
                 )
+        else:
+            self.n_waters = None
+            if hasattr(self, "spacing_waters"):
+                self.il_solv_height = self.spacing_waters
+            else:
+                self.il_solv_height = (
+                    n_ions * self.default_d_space
+                ) / self.sheet_n_cells
 
     @property
     def uc_df(self):
@@ -697,7 +707,11 @@ class BuildArgs(_Args):
                 n_ucs=self.sheet_n_cells,
             )
         else:
-            self.il_ions = None
+            self.il_ions = InterlayerIons(
+                tot_charge=tot_charge,
+                ion_ratios=self.ion_df,
+                n_ucs=self.sheet_n_cells,
+            )
 
     def get_bulk_ions(self):
         self._bulk_ions = BulkIons(

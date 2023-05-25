@@ -29,6 +29,7 @@ def run():
         if args.match_charge["tot"] != 0:
             clay_builder.add_il_ions()
             if args.il_solv is False:
+                # clay_builder.rename_il_solv()
                 clay_builder.remove_il_solv()
             else:
                 clay_builder.rename_il_solv()

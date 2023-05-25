@@ -103,10 +103,11 @@ class Builder:
         )
         il_u.residues.resnames: NDArray = il_resnames
         self.il_solv.universe: Universe = il_u
-        self.il_solv.write()
-        self.top.reset_molecules()
-        self.top.add_molecules(il_u)
-        self.top.write(self.il_solv.top)
+        self.il_solv.write(topology=self.top)
+        self.il_solv = self.il_solv
+        # self.top.reset_molecules()
+        # self.top.add_molecules(il_u)
+        # self.top.write(self.il_solv.top)
 
     def run_em(self):
         logger.info(get_subheader("Minimising energy"))
@@ -170,6 +171,7 @@ class Builder:
         il_atoms: AtomGroup = il_u.select_atoms("not resname SOL iSL")
         self.il_solv.universe = il_atoms
         self.il_solv.write(topology=self.top)
+        self.il_solv = self.il_solv
 
     def extend_box(self) -> None:
         if type(self.args.box_height) in [int, float]:
@@ -427,7 +429,7 @@ class Builder:
         if path is not None:
             return path
         else:
-            logger.debug("No sheet stack filename defined.")
+            logger.debug(f"No {property_name} filename defined.")
 
     @property
     def stack(self) -> GROFile:
@@ -528,10 +530,14 @@ class Builder:
                         f"Copied {path.top.name} to {self.args.outpath.name}"
                     )
                 )
+        file = FileFactory(Path(file).with_suffix(".gro"))
+        file.description = f"{file.stem.split('_')[0]} " + " ".join(
+            property_name.split("_")
+        )
         setattr(
             self,
             f"__{property_name}",
-            FileFactory(Path(file).with_suffix(".gro")),
+            file,
         )
 
     def add_il_ions(self) -> None:
@@ -678,6 +684,9 @@ class Sheet:
 
     def write_gro(self) -> None:
         filename: GROFile = self.filename
+        filename.description = (
+            f'{self.filename.stem.split("_")[0]} sheet {self.n_sheet}'
+        )
         if filename.is_file():
             logger.debug(
                 f"\n{filename.parent}/{filename.name} already exists, creating backup."

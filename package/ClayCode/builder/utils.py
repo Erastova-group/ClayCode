@@ -31,8 +31,8 @@ def get_manual_setup_option(instance_or_setup_option) -> str:
     return instance_or_setup_option.manual_setup
 
 
-@get_manual_setup_option.register(str)
-def _(instance_or_setup_option) -> str:
+@get_manual_setup_option.register(bool)
+def _(instance_or_setup_option) -> bool:
     return instance_or_setup_option
 
 
