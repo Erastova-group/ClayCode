@@ -1,4 +1,4 @@
-title = GMX 2023 EM
+title = GMX 2022 EM
 define = -DPOSRES  ; To apply position restraints
 ; Run control parameters
 integrator = steep  ; Steepest descent energy minimization
@@ -41,8 +41,8 @@ constraint-algorithm = Lincs      ; Algorithm to use for constraints (LINCS, SHA
 continuation         = no         ; Whether to continue from a previous simulation (yes, no)
 Shake-SOR            = no         ; Use successive overrelaxation to solve for bond constraints (yes, no)
 shake-tol            = 0.0001     ; Tolerance for shaking bonds (nm)
-lincs-order          = 4          ; Order of the LINCS constraint solver
-lincs-iter           = 1          ; Number of iterations for the LINCS constraint solver per time step
+lincs-order          = 8          ; Order of the LINCS constraint solver
+lincs-iter           = 8          ; Number of iterations for the LINCS constraint solver per time step
 
 ; Freeze parameters
 freezegrps              =               ; Groups to freeze during the simulation
