@@ -36,8 +36,10 @@ N_SHEETS: 3
 # Interlayer Ion Specification Options (comment the other options!)
 # -----------------------------------------------------------------------------
 
-# 3. OR per unit cell (BOX_WATERS)
+# 3. Waters per unit cell (BOX_WATERS)
 UC_WATERS: 20
+
+DEFAULT_D_SPACE: 2
 
 # -----------------------------------------------------------------------------
 # Simulation Box Specifications
@@ -123,3 +125,4 @@ CHARGE_PRIORITY: total_charge
 # -----------------------------------------------------------------------------
 
 #MDP_PRMS: 'mdp_parameters.yaml'
+
