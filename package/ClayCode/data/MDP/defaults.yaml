@@ -145,6 +145,7 @@ D-SPACE:
 EM:
   integrator: steep
   emtol: 500
-  emstep: 0.001
+  emstep: 0.0001
+  nsteps: 500
   lincs-order: 8
   lincs-iter: 8
