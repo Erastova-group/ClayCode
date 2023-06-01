@@ -150,6 +150,7 @@ class Builder:
             *outpath.gro_filelist,
             *outpath._get_filelist(ext=".csv"),
             *outpath._get_filelist(ext=".mdp"),
+            *outpath._get_filelist(ext=".log"),
         ]
         for file in outpath.iterdir():
             if file not in crd_top_files:
@@ -875,7 +876,7 @@ class Solvent:
             maxsol=self.n_mols,
             o=spc_gro,
             p=spc_top,
-            scale=0.00010,
+            scale=0.090,
             v="",
             box=f"{self.x_dim / 10} {self.y_dim / 10} {self.z_dim / 10}",
         )
