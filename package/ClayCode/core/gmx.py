@@ -41,7 +41,7 @@ def gmx_command_wrapper(f):
                 gmx_commands.__class__.__name__ == "GMXCommands"
             ), "Wrong type: Expected GMXCommands instance!"
         else:
-            gmx_commands = GMXCommands(gmx_alias=gmx_alias, *args, **kwdargs)
+            gmx_commands = GMXCommands(gmx_alias=gmx_alias, *args, **kwargs)
         result = f(*args, gmx_commands=gmx_commands, **kwargs)
         return result
 
@@ -155,6 +155,8 @@ class GMXCommands:
                             "-c",
                             f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup",
                         ],
+                        check=True,
+                        text=True,
                         **outputargs,
                     )
                     try:
@@ -193,6 +195,7 @@ class GMXCommands:
                 "-c",
                 f"{self.gmx_alias}",
             ],
+            check=True,
             text=True,
             capture_output=True,
         )
@@ -231,6 +234,7 @@ class GMXCommands:
                 "-c",
                 f"{self.gmx_alias}",
             ],
+            check=True,
             text=True,
             capture_output=True,
         )
