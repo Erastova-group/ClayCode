@@ -182,7 +182,8 @@ GMX: gmx_mpi
      - `T`, `O` and total (`tot`) average unit cell charge (`C`)
 
    - Second column with `element`:
-     - ClayFF/ion atom types and charge categories
+     - (ClayFF) atom types and charge categories
+       - The oxidation state of clay atoms can be specified by addig the charge after the element name (e.g. Fe2)
    
    - Target occupancies, header is `SYSNAME`
 
@@ -203,20 +204,20 @@ Only ion species of the opposite sign to the layer charge will be considered.
 
 | **sheet** | **element** | **NAu\-1\-fe** | **NAu\-2\-fe** |
 |:----------|:------------|---------------:|---------------:|
-| **T**     | **st**      | 6\.98          |          7\.55 |
-|           | **at**      | 0\.95          |          0\.16 |
-|           | **fet**     | 0\.07          |          0\.29 |
-| **O**     | **fe\_tot** | 3\.61          |          3\.54 |
-|           | **ao**      | 0\.36          |          0\.34 |
-|           | **mgo**     | 0\.04          |          0\.04 |
+| **T**     | **Si**      | 6\.98          |          7\.55 |
+| **T**     | **Al**      | 0\.95          |          0\.16 |
+| **T**     | **Fe3**     | 0\.07          |          0\.29 |
+| **O**     | **Fe**      | 3\.61          |          3\.54 |
+| **O**     | **Al**      | 0\.36          |          0\.34 |
+| **O**     | **Mg**      | 0\.04          |          0\.04 |
 | **I**     | **Ca**      | 1              |           0\.5 |
-|           | **Na**      | 0              |           0\.5 |
-|           | **Mg**      | 0              |              0 |
-|           | **K**       | 0              |              0 |
-|           | **Cl**      | 0              |              0 |
+| **I**     | **Na**      | 0              |           0\.5 |
+| **I**     | **Mg**      | 0              |              0 |
+| **I**     | **K**       | 0              |              0 |
+| **I**     | **Cl**      | 0              |              0 |
 | **C**     | **T**       | \-1\.02        |        \-0\.45 |
-|           | **O**       | \-0\.03        |        \-0\.27 |
-|           | **tot**     | \-1\.05        |        \-0\.72 |
+| **C**     | **O**       | \-0\.03        |        \-0\.27 |
+| **C**     | **tot**     | \-1\.05        |        \-0\.72 |
 
 
 ### Output files (inside `<OUTPATH>` directory)
