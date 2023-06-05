@@ -559,6 +559,9 @@ class BuildArgs(_Args):
         self.manual_setup = self.data["manual_setup"]
         self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         self.outpath = self.outpath / self.name
+        logger.set_file_name(
+            new_filepath=self.outpath, new_filename=self.filestem
+        )
         # logger.rename_log_file(
         #     new_filepath=self.outpath,
         #     new_filename=BasicPath(self.outpath.name),
