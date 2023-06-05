@@ -211,8 +211,8 @@ class Builder:
                 p=self.stack.top,
                 pp=solv_box_crd.top,
                 cp=self.stack,
-                radius=0.2,
-                scale=0.57,
+                # radius=0.2,
+                # scale=0.57,
                 o=solv_box_crd,
                 maxsol=0,
                 box="{} {} {}".format(
@@ -876,7 +876,7 @@ class Solvent:
             maxsol=self.n_mols,
             o=spc_gro,
             p=spc_top,
-            scale=0.55,
+            scale=0.56,
             v="",
             box=f"{self.x_dim / 10} {self.y_dim / 10} {self.z_dim / 10}",
         )

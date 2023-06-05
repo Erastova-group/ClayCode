@@ -542,14 +542,14 @@ class TargetClayComposition:
         )
         self._df = match_df.reindex(match_idx)
         self._df = self._df.loc[:, self.name]
-        self.check_charged_occupancies(priority=self.sel_priority)
-        self.correct_occupancies()
+        self.correct_charged_occupancies(priority=self.sel_priority)
+        self.correct_uncharged_occupancies()
         self._df = self._df.reindex(match_idx)
         clay_df = self.clay_df.copy()
         self._df.loc[clay_df.index] = clay_df.where(
             clay_df > zero_threshold, np.NaN
         )
-        self.split_fe_occupancies
+        self.split_fe_occupancies()
         self.__ion_df: pd.DataFrame = None
         self.get_ion_numbers()
 
@@ -714,7 +714,6 @@ class TargetClayComposition:
     def ion_df(self) -> pd.DataFrame:
         return self.__ion_df.sort_index()
 
-    @property
     def split_fe_occupancies(self):
         o_charge = self.get_o_charge()
         try:
@@ -807,16 +806,8 @@ class TargetClayComposition:
             else:
                 logger.debug(
                     f"Sheet charges ({sheet_charges.sum()}) "
-                    f"do not sum to specified total charge ({tot_charge})\n"
+                    f"do not sum to specified total charge ({tot_charge})"
                 )
-                # if np.greater_equal(self.occ_tol, np.abs(charge_diff)):
-                #     logger.info(
-                #         f"Adjusting {re.sub('_', ' ', self.charge_priority)}."
-                #     )
-            # assert (
-            #         sheet_charges.sum() == tot_charge
-            # ), "Sheet charges are different from specified total charge"
-            #     if
         return charge_dict
 
     @property
@@ -879,7 +870,7 @@ class TargetClayComposition:
         return sheet_df[sheet_df["charge"] != 0].dropna()
 
     @sheet_df_decorator
-    def check_charged_occupancies(
+    def correct_charged_occupancies(
         self,
         sheet_df,
         # idx_sel=["T", "O"],
@@ -938,7 +929,18 @@ class TargetClayComposition:
                         charged_dict["charged"].loc[
                             at_type_duplicate, "at-type"
                         ] = 0.0
-
+                else:
+                    charged_dict["charged"].loc[
+                        at_type_duplicate, "at-type"
+                    ] = 0.0
+        charged_non_zero = (
+            charged_dict["charged"]
+            .where(charged_dict["charged"]["at-type"] != 0.0, np.NaN)
+            .dropna()
+        )
+        if len(charged_non_zero) > 1:
+            charged_dict["charged"] = charged_non_zero
+            # charged_size = len(charged_non_zero)
         charged_occ_sum = (
             charged_dict["charged"].product(axis=1).groupby("sheet").sum()
         )
@@ -948,7 +950,7 @@ class TargetClayComposition:
         non_zero_charge_occ = np.greater(charged_occ_check, 0.0)
         if (non_zero_charge_occ).any():
             logger.info(
-                f"Sheet charges ({self.get_t_charge() + self.get_o_charge():2.4f}) "
+                f"Sheet charges ({charged_occ_sum.sum():2.4f}) "
                 f"do not sum to specified total charge ({self.get_total_charge():2.4f})\n"
             )
             target_charge = {}
@@ -959,8 +961,8 @@ class TargetClayComposition:
             deviation = self.__deviation_string(deviation=deviation)
             target_charge = self.__deviation_string(target_charge)
             logger.error(
-                f"\nCharge from specified substitution occupancy ({deviation})\n"
-                f"\texceeds specified charge values ({target_charge})!\n"
+                f"Charge from specified substitution occupancy ({deviation})\n"
+                f"exceeds specified charge values ({target_charge})!\n"
             )
             if (charged_occ_check > self.occ_tol).any():
                 priority_sel = select_input_option(
@@ -987,20 +989,26 @@ class TargetClayComposition:
                 new_charged_occs = (
                     charged_dict["charged"]["at-type"]
                     .groupby("sheet")
-                    .apply(lambda x: x - charged_occ_check[x.name] / x.count())
+                    .apply(lambda x: x - (charged_occ_check[x.name] / x.size))
                 )
-                new_uncharged_occs = (
-                    charged_dict["non-charged"]["at-type"]
-                    .groupby("sheet")
-                    .apply(lambda x: x + charged_occ_check[x.name] / x.count())
+                self.print_df_composition(
+                    old_composition=sheet_df.loc[new_charged_occs.index],
+                    sheet_df=new_charged_occs,
                 )
                 sheet_df.update(new_charged_occs)
-                sheet_df.update(new_uncharged_occs)
-                self.print_df_composition(
-                    old_composition=self.df.loc[self.idx_sel],
-                    sheet_df=sheet_df,
-                )
-                self._df.loc[self.idx_sel].update(sheet_df)
+                self._df.loc[sheet_df.index] = sheet_df.loc[sheet_df.index]
+                # if self.occupancies != self.uc_data.occupancies:
+                #     new_uncharged_occs = (
+                #         charged_dict["non-charged"]["at-type"]
+                #         .groupby("sheet")
+                #         .apply(lambda x: x + charged_occ_check[x.name] / x.size)
+                #     )
+                # sheet_df.update(new_uncharged_occs)
+                # self.print_df_composition(
+                #     old_composition=self.df.loc[self.idx_sel],
+                #     sheet_df=sheet_df,
+                # )
+                # self._df.loc[sheet_df.index] = sheet_df.loc[sheet_df.index]
             else:
                 self.__abort()
 
@@ -1013,7 +1021,7 @@ class TargetClayComposition:
         return occ_correction_df
 
     @sheet_df_decorator
-    def correct_occupancies(
+    def correct_uncharged_occupancies(
         self, sheet_df: pd.DataFrame
     ):  # , idx_sel=["T", "O"]):
         correct_uc_occ: pd.Series = pd.Series(self.uc_data.occupancies)
@@ -1021,20 +1029,23 @@ class TargetClayComposition:
         check_occ: pd.Series = input_uc_occ - correct_uc_occ
         check_occ.dropna(inplace=True)
         logger.info("\nGetting sheet occupancies:")
-        for sheet, occ in check_occ.iteritems():
-            logger.info(
-                f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.4f}/{correct_uc_occ[sheet]:.4f} ({occ:+.4f})"
-            )
-        if check_occ.values.any() != 0:
-            logger.info("\nAdjusting values to match expected occupancies:")
-            sheet_df.update(
-                self.occ_correction_df
-                # self.non_charged_sheet_df(idx_sel=idx_sel)
-                # .dropna()["at-type"]
-                .groupby("sheet").apply(
-                    lambda x: x - check_occ.at[x.name] / x.count()
+        if not np.isclose(check_occ.values, 0.0).all():
+            for sheet, occ in check_occ.iteritems():
+                logger.info(
+                    f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.4f}/{correct_uc_occ[sheet]:.4f} ({occ:+.4f})"
                 )
-            )
+            logger.info("\nAdjusting values to match expected occupancies:")
+            corrected_occupancies = self.occ_correction_df.groupby(
+                "sheet"
+            ).apply(lambda x: x - check_occ.at[x.name] / x.count())
+            sheet_df.update(corrected_occupancies)
+            # self.occ_correction_df
+            # self.non_charged_sheet_df(idx_sel=idx_sel)
+            # .dropna()["at-type"]
+            # .groupby("sheet").apply(
+            #     lambda x: x - check_occ.at[x.name] / x.count()
+            # )
+            # )
             accept = None
             old_composition = self.df.copy()
             self._df.update(sheet_df)
@@ -1068,16 +1079,19 @@ class TargetClayComposition:
                             f"Deviation ({deviation}) is within acceptance limit of {self.occ_tol:.2f}.\n\n"
                             "Correcting selected composition."
                         )
-                        sheet_df.update(
+                        corrected_occupancies = sheet_df.update(
                             self.occ_correction_df.apply(
                                 lambda x: x
                                 - new_check_df.at[x.name] / x.count()
                             )
                         )
+                        sheet_df.update(corrected_occupancies)
                     continue
                 self.print_df_composition(
-                    sheet_df=sheet_df,
-                    old_composition=old_composition,
+                    sheet_df=sheet_df.loc[corrected_occupancies.index],
+                    old_composition=old_composition.loc[
+                        corrected_occupancies.index
+                    ],
                     fill="\t",
                 )
                 accept = select_input_option(
@@ -1094,10 +1108,16 @@ class TargetClayComposition:
                     )
                 if accept == "e":
                     self.__abort()
-            self.check_charged_occupancies(
+            self.correct_charged_occupancies(
                 # idx_sel=idx_sel,
                 priority=self.sel_priority
             )
+        else:
+            logger.info(
+                "\tFound correct occupancies:\n" "\t\tsheet: occupancy"
+            )
+            for sheet, occ in check_occ.iteritems():
+                logger.info(f"\t\t{sheet!r:^5}: {input_uc_occ[sheet]:>9.0f}")
 
     @staticmethod
     def __set_new_value(
@@ -1146,7 +1166,7 @@ class TargetClayComposition:
     @staticmethod
     def print_df_composition(sheet_df, old_composition=None, fill=""):
         if old_composition is None:
-            logger.info(f"{fill}Will use the following composition:")
+            logger.info(f"{fill}Will use the following target composition:")
         else:
             logger.info(
                 f"{fill}old occupancies -> new occupancies per unit cell:"
@@ -1156,14 +1176,19 @@ class TargetClayComposition:
             sheet, atom = idx
             try:
                 old_val = old_composition[idx]
-                logger.info(
-                    f"{fill}\t{sheet!r:5} - {atom!r:^10}: {old_val:2.4f} -> {occ:2.4f} ({occ - old_val:+2.4f})"
-                )
+                if not np.isclose(occ, old_val):
+                    logger.info(
+                        f"{fill}\t{sheet!r:5} - {atom!r:^10}: {old_val:2.4f} -> {occ:2.4f} ({occ - old_val:+2.4f})"
+                    )
             except TypeError:
                 logger.info(f"{fill}\t{sheet!r:5} - {atom!r:^10}: {occ:2.4f}")
 
-    correct_t_occupancies = partialmethod(correct_occupancies, idx_sel=["T"])
-    correct_o_occupancies = partialmethod(correct_occupancies, idx_sel=["O"])
+    correct_t_occupancies = partialmethod(
+        correct_uncharged_occupancies, idx_sel=["T"]
+    )
+    correct_o_occupancies = partialmethod(
+        correct_uncharged_occupancies, idx_sel=["O"]
+    )
 
     def _write(
         self, outpath: Union[Dir, File, PosixPath], fmt: Optional[str] = None
@@ -1477,7 +1502,7 @@ class MatchClayComposition:
                         )
                     else:
                         logger.info("Correcting new occupancies.")
-                        self.target_comp.correct_occupancies()
+                        self.target_comp.correct_uncharged_occupancies()
                         self.__target_df.update(self.target_comp.df)
                         self.__target_df.where(
                             self.target_df != 0, np.NaN, inplace=True
