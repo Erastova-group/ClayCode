@@ -529,34 +529,19 @@ class TargetClayComposition:
         self.occ_corr_threshold = float(occ_correction_threshold)
         self.idx_sel = self.uc_data.idx_sel
         logger.info(get_subheader("Processing target clay composition"))
-        match_df = self.__read_match_df(csv_file)
+        match_df, match_idx = self.__get_match_df(csv_file)
         ion_idx = tuple(
             ("I", ion_name) for ion_name in get_ion_charges().keys()
         )
         ion_idx = pd.MultiIndex.from_tuples(
             ion_idx, names=self.uc_df.index.names
         )
-        match_idx = self.__get_match_idx(match_df)
-        if (
-            not match_df.loc[self.idx_sel]
-            .index.to_flat_index()
-            .difference(match_idx)
-            .tolist()
-        ):
-            match_df, match_idx, nan_at_types = self.__remove_nan_at_types(
-                match_df
-            )
-        else:
-            nan_at_types = None
         match_idx = (match_idx).union(ion_idx)
         match_idx = pd.MultiIndex.from_tuples(
             match_idx, names=self.uc_df.index.names
         )
-
         self._df = match_df.reindex(match_idx)
         self._df = self._df.loc[:, self.name]
-
-        # self.idx_sel = self.clay_df.index.get_level_values('sheet').unique().to_list()
         self.check_charged_occupancies(priority=self.sel_priority)
         self.correct_occupancies()
         self._df = self._df.reindex(match_idx)
@@ -564,36 +549,38 @@ class TargetClayComposition:
         self._df.loc[clay_df.index] = clay_df.where(
             clay_df > zero_threshold, np.NaN
         )
-        # self.charge_df = None
         self.split_fe_occupancies
         self.__ion_df: pd.DataFrame = None
         self.get_ion_numbers()
 
-    def __remove_nan_at_types(self, match_df):
+    def __get_match_df(self, csv_file):
+        match_df = self.__read_match_df(csv_file)
+        match_df = pd.DataFrame(
+            match_df[self.name].dropna(), columns=[self.name]
+        )
         with open(UCS / "clay_at_types.yaml", "r") as file:
             clayff_at_types: dict = yaml.safe_load(file)
         match_df["new-at-type"] = match_df.index.get_level_values(
             "at-type"
         ).values
-        # match_at_index_df = match_df.index.to_frame(name=match_df.index.names, index=True)
         match_df.loc[self.idx_sel, "new-at-type"] = (
             match_df.loc[self.idx_sel, "new-at-type"]
             .groupby("sheet", group_keys=True)
             .apply(lambda x: clayff_at_types[x.name])
         )
         nan_at_types = match_df["new-at-type"][match_df["new-at-type"].isna()]
-        nan_at_type_str = ", ".join(
-            list(
-                map(
-                    lambda idx: f"\t{idx[0]:^5} - {idx[1]:^7}: {match_df.loc[idx, self.name]:>9.2f}",
-                    nan_at_types.index.tolist(),
+        if nan_at_types.tolist():
+            nan_at_type_str = ", ".join(
+                list(
+                    map(
+                        lambda idx: f"\t{idx[0]:^5} - {idx[1]:^7}: {match_df.loc[idx, self.name]:>9.2f}",
+                        nan_at_types.index.tolist(),
+                    )
                 )
             )
-        )
-        logger.info(
-            f"Removing invalid atom types:\n\n\tsheet - at-type: occupancy\n{nan_at_type_str}\n"
-        )
-        if nan_at_types is not None:
+            logger.info(
+                f"Removing invalid atom types:\n\n\tsheet - at-type: occupancy\n{nan_at_type_str}\n"
+            )
             ion_charges = get_ion_charges()
             for group, series in nan_at_types.groupby("sheet"):
                 at_charges = (
@@ -635,14 +622,6 @@ class TargetClayComposition:
                     new_charge = get_checked_input(
                         query="Enter new charge value:", result_type=float
                     )
-                    # new_charge = None
-                    # while not isinstance(new_charge, float):
-                    #     try:
-                    #         new_charge = float(
-                    #             input("Enter new charge value:")
-                    #         )
-                    #     except ValueError:
-                    #         pass
                     match_df = self.set_charge(
                         df=match_df, key=group, new_charge=new_charge
                     )
@@ -693,14 +672,13 @@ class TargetClayComposition:
                             )
                         except ValueError:
                             pass
-
         match_df.dropna(inplace=True, subset="new-at-type")
         match_df = match_df.set_index("new-at-type", append=True).reset_index(
             "at-type", drop=True
         )
         match_df.index = match_df.index.rename(self.uc_df.index.names)
         match_idx = self.__get_match_idx(match_df)
-        return match_df, match_idx, nan_at_types
+        return match_df, match_idx
 
     @property
     def df(self):
@@ -736,32 +714,13 @@ class TargetClayComposition:
     def ion_df(self) -> pd.DataFrame:
         return self.__ion_df.sort_index()
 
-        # self.get_match_charges()
-        ...
-        # uc_df.sort_index(inplace=True, sort_remaining=True)
-        # uc_df['match'] = np.NaN
-        # uc_df['match']
-
-    # def get_match_charges(self):
-    # ox_numbers = self.oxidation_states
-    # tot_charge = self.match_df.loc[['C', 'tot_chg']]
-    # uc_charges = UCData._get_oxidation_numbers(self.match_df, self.occupancies)
-    # charge_df = self.match_df.loc[['T', 'O'], :]
-    # atomic_charges = self._uc_data.atomic_charges
-    # atomic_charges['match_charge'] = atomic_charges.apply(lambda x: x * charge_df)
-    # charge_df['charge'] = charge_df.groupby('sheet').apply(lambda x: x * self._uc_data.).groupby('sheet').sum().aggregate('unique',
-    # ...                                                                                                         axis='columns')
-    # ...
     @property
     def split_fe_occupancies(self):
-        # charges = self.get_charges(self.match_df.xs('C'))
         o_charge = self.get_o_charge()
         try:
             missing_o = self._df.xs(
                 ("O", "fe_tot"), level=("sheet", "at-type")
-            ).values[
-                0
-            ]  # .drop(('O', 'fe_tot')))['O']
+            ).values[0]
             not_fe_occ = self.occupancies["O"] - missing_o
             _, ox_state_not_fe = UCData._get_oxidation_numbers(
                 not_fe_occ, self._df.xs("O", level="sheet")
@@ -1269,7 +1228,7 @@ class TargetClayComposition:
 
     def __get_match_idx(self, match_df):
         match_idx = (self.uc_df.index.to_flat_index()).union(
-            match_df.index.to_flat_index()
+            match_df.dropna().index.to_flat_index()
         )
         return match_idx
 
