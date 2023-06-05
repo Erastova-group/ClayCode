@@ -100,6 +100,10 @@ GMX: gmx
 # automatically adjusted to match the expected value
 OCC_TOL: 0.1
 
+# Occupancy threshold below which the matched composition will be set to 0
+# if the element is not found in the force field or in the unit cell database
+ZERO_THRESHOLD: 0.05
+
 # Priority when correcting charges and substitution occupancies.
 # e.g. with a specified octahedral charge of -0.3 and a 'mgo' occupancy of
 # 0.4 is not possible and one of the two needs to be adjusted.
