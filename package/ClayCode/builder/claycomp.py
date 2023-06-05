@@ -23,8 +23,10 @@ from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from ClayCode.builder.utils import select_input_option
+import yaml
+from ClayCode.builder.utils import get_checked_input, select_input_option
 from ClayCode.core.classes import Dir, File, ITPFile, PathFactory
+from ClayCode.core.consts import UCS
 from ClayCode.core.lib import get_ion_charges
 from ClayCode.core.log import logger
 from ClayCode.core.utils import get_subheader
@@ -81,7 +83,13 @@ class UCData(Dir):
         self.__dimensions = None
         self.__uc_groups = None
         self.get_uc_groups()
+        self.get_uc_group_base_compositions()
         logger.info(f"Found {self.n_groups} {self.name!r} unit cell groups:")
+        self.idx_sel = (
+            self.df.index.get_level_values("sheet").unique().to_list()
+        )
+
+    def get_uc_group_base_compositions(self):
         for n_group, group_ids in self.group_iter():
             group_id_str = f", {self.uc_stem}".join(group_ids)
             logger.info(f"\tGroup {n_group}: {self.uc_stem}{group_id_str}\n")
@@ -360,21 +368,20 @@ class UCData(Dir):
                 df.sort_index(level="sheet", sort_remaining=True)
                 .groupby("sheet")
                 .sum()
-                .aggregate("unique", axis="columns")
+                .aggregate("drop_duplicates", axis="columns")
             )
         except ValueError:
             occ = (
                 df.sort_index(level="sheet", sort_remaining=True)
                 .groupby("sheet")
                 .sum()
-                .aggregate("unique")
             )
         idx = (
             df.sort_index(level="sheet", sort_remaining=True)
             .index.get_level_values("sheet")
-            .unique()
+            .drop_duplicates()
         )
-        occ_dict = dict(zip(idx, occ))
+        occ_dict = dict(zip(idx.values, np.ravel(occ.values)))
         return occ_dict
 
     @property
@@ -490,9 +497,6 @@ class UCData(Dir):
     @staticmethod
     @cache
     def _get_ox_dict():
-        import yaml
-        from ClayCode.core.consts import UCS
-
         logger.info(UCS.resolve())
         with open(UCS / "clay_charges.yaml", "r") as file:
             ox_dict: dict = yaml.safe_load(file)
@@ -510,7 +514,8 @@ class TargetClayComposition:
         occ_tol,
         sel_priority,
         charge_priority,
-        zero_threshold=0.0,
+        occ_correction_threshold=0.0,
+        zero_threshold=0.001,
         manual_setup=True,
     ):
         self.name: str = name
@@ -521,33 +526,42 @@ class TargetClayComposition:
         self.occ_tol = occ_tol
         self.sel_priority = sel_priority
         self.charge_priority = charge_priority
+        self.occ_corr_threshold = float(occ_correction_threshold)
+        self.idx_sel = self.uc_data.idx_sel
         logger.info(get_subheader("Processing target clay composition"))
-        match_df: pd.DataFrame = pd.read_csv(csv_file)
-        match_df["sheet"].ffill(inplace=True)
-        match_cols = match_df.columns.values
-        match_cols[:2] = self.uc_df.index.names
-        match_df.columns = match_cols
-        match_df.set_index(self.uc_df.index.names, inplace=True)
+        match_df = self.__read_match_df(csv_file)
         ion_idx = tuple(
             ("I", ion_name) for ion_name in get_ion_charges().keys()
         )
         ion_idx = pd.MultiIndex.from_tuples(
             ion_idx, names=self.uc_df.index.names
         )
-        match_idx = (self.uc_df.index.to_flat_index()).union(
-            match_df.index.to_flat_index()
-        )
+        match_idx = self.__get_match_idx(match_df)
+        if (
+            not match_df.loc[self.idx_sel]
+            .index.to_flat_index()
+            .difference(match_idx)
+            .tolist()
+        ):
+            match_df, match_idx, nan_at_types = self.__remove_nan_at_types(
+                match_df
+            )
+        else:
+            nan_at_types = None
         match_idx = (match_idx).union(ion_idx)
         match_idx = pd.MultiIndex.from_tuples(
             match_idx, names=self.uc_df.index.names
         )
-        self.__df = match_df.reindex(match_idx)
-        self.__df = self.__df.loc[:, self.name]
-        # self.check_charged_occupancies()
+
+        self._df = match_df.reindex(match_idx)
+        self._df = self._df.loc[:, self.name]
+
+        # self.idx_sel = self.clay_df.index.get_level_values('sheet').unique().to_list()
+        self.check_charged_occupancies(priority=self.sel_priority)
         self.correct_occupancies()
-        self.__df = self.__df.reindex(match_idx)
+        self._df = self._df.reindex(match_idx)
         clay_df = self.clay_df.copy()
-        self.__df.loc[clay_df.index] = clay_df.where(
+        self._df.loc[clay_df.index] = clay_df.where(
             clay_df > zero_threshold, np.NaN
         )
         # self.charge_df = None
@@ -555,15 +569,166 @@ class TargetClayComposition:
         self.__ion_df: pd.DataFrame = None
         self.get_ion_numbers()
 
+    def __remove_nan_at_types(self, match_df):
+        with open(UCS / "clay_at_types.yaml", "r") as file:
+            clayff_at_types: dict = yaml.safe_load(file)
+        match_df["new-at-type"] = match_df.index.get_level_values(
+            "at-type"
+        ).values
+        # match_at_index_df = match_df.index.to_frame(name=match_df.index.names, index=True)
+        match_df.loc[self.idx_sel, "new-at-type"] = (
+            match_df.loc[self.idx_sel, "new-at-type"]
+            .groupby("sheet", group_keys=True)
+            .apply(lambda x: clayff_at_types[x.name])
+        )
+        nan_at_types = match_df["new-at-type"][match_df["new-at-type"].isna()]
+        nan_at_type_str = ", ".join(
+            list(
+                map(
+                    lambda idx: f"\t{idx[0]:^5} - {idx[1]:^7}: {match_df.loc[idx, self.name]:>9.2f}",
+                    nan_at_types.index.tolist(),
+                )
+            )
+        )
+        logger.info(
+            f"Removing invalid atom types:\n\n\tsheet - at-type: occupancy\n{nan_at_type_str}\n"
+        )
+        if nan_at_types is not None:
+            ion_charges = get_ion_charges()
+            for group, series in nan_at_types.groupby("sheet"):
+                at_charges = (
+                    self.uc_data.atomic_charges.loc[
+                        (
+                            group,
+                            match_df.loc[group, "new-at-type"].dropna().values,
+                        ),
+                        "at-type",
+                    ]
+                    - self.uc_data.oxidation_numbers[group]
+                )
+                match_occs = (
+                    match_df.xs(group, level="sheet", drop_level=False)
+                    .dropna(subset="new-at-type")
+                    .set_index("new-at-type", append=True)
+                    .reset_index("at-type", drop=True)
+                    .rename_axis(index={"new-at-type": "at-type"})[self.name]
+                )
+                new_charge: pd.Series = at_charges.multiply(
+                    match_occs
+                )  # - ((self.uc_data.occupancies[group] - match_df.loc[series.index, self.name].sum())
+                if not new_charge.hasnans:
+                    target_charge = match_df.loc[("C", group), self.name]
+                    if np.isclose(new_charge.sum(), target_charge):
+                        charge_adjust = "n"
+                    else:
+                        charge_adjust = "m"
+                else:
+                    charge_adjust = None
+                charge_adjust = select_input_option(
+                    self,
+                    query=f"Adjust {group} charge? [y/n] (current value: {match_df.loc[('C', group), self.name]:.2f})\n",
+                    options=["y", "n", ""],
+                    result=charge_adjust,
+                    result_map={"y": "y", "n": "n", "": "m"},
+                )
+                if charge_adjust == "y":
+                    new_charge = get_checked_input(
+                        query="Enter new charge value:", result_type=float
+                    )
+                    # new_charge = None
+                    # while not isinstance(new_charge, float):
+                    #     try:
+                    #         new_charge = float(
+                    #             input("Enter new charge value:")
+                    #         )
+                    #     except ValueError:
+                    #         pass
+                    match_df = self.set_charge(
+                        df=match_df, key=group, new_charge=new_charge
+                    )
+                    try:
+                        match_df = self.reduce_charge(
+                            df=match_df, key="tot", remove_charge=new_charge
+                        )
+                    except ValueError:
+                        pass
+                    logger.info(
+                        f"\nSetting new {group} charge to {new_charge:.2f}\n"
+                    )
+                elif charge_adjust == "m":
+                    for idx, value in match_df.loc[
+                        series.index, self.name
+                    ].items():
+                        sheet, at_type = idx
+                        try:
+                            at_charge = ion_charges[at_type]
+                        except KeyError:
+                            try:
+                                at_charge = re.search(
+                                    r"[A-Z][a-z]*?([0-9]+?)", at_type
+                                ).group(1)
+                            except AttributeError:
+                                at_charge = get_checked_input(
+                                    query=(
+                                        f"Could not guess {at_type} charge.\n"
+                                        f"Enter {at_type} charge value: "
+                                    ),
+                                    check_value=r"[0-9]+?",
+                                    result_type=int,
+                                )
+                                logger.info(
+                                    f"Assuming {at_type} charge of {at_charge}."
+                                )
+                        remove_charge = (
+                            at_charge - self.uc_data.oxidation_numbers[group]
+                        ) * value
+                        match_df = self.reduce_charge(
+                            df=match_df, key=group, remove_charge=remove_charge
+                        )
+                        try:
+                            match_df = self.reduce_charge(
+                                df=match_df,
+                                key="tot",
+                                remove_charge=remove_charge,
+                            )
+                        except ValueError:
+                            pass
+
+        match_df.dropna(inplace=True, subset="new-at-type")
+        match_df = match_df.set_index("new-at-type", append=True).reset_index(
+            "at-type", drop=True
+        )
+        match_df.index = match_df.index.rename(self.uc_df.index.names)
+        match_idx = self.__get_match_idx(match_df)
+        return match_df, match_idx, nan_at_types
+
     @property
     def df(self):
-        return self.__df.dropna().sort_index(
+        return self._df.dropna().sort_index(
             ascending=False, level="sheet", sort_remaining=True
         )
 
+    def reduce_charge(
+        self,
+        df: pd.DataFrame,
+        key: Union[Literal["T"], Literal["O"], Literal["tot"]],
+        remove_charge: float,
+    ):
+        df.loc[("C", key), self.name] -= remove_charge
+        return df
+
+    def set_charge(
+        self,
+        df: pd.DataFrame,
+        key: Union[Literal["T"], Literal["O"], Literal["tot"]],
+        new_charge: float,
+    ):
+        df.loc[("C", key), self.name] = new_charge
+        return df
+
     @property
     def clay_df(self):
-        return self.__df.loc[["T", "O"]].sort_index(
+        return self._df.loc[["T", "O"]].sort_index(
             ascending=False, level="sheet", sort_remaining=True
         )
 
@@ -592,35 +757,33 @@ class TargetClayComposition:
         # charges = self.get_charges(self.match_df.xs('C'))
         o_charge = self.get_o_charge()
         try:
-            missing_o = self.__df.xs(
+            missing_o = self._df.xs(
                 ("O", "fe_tot"), level=("sheet", "at-type")
             ).values[
                 0
             ]  # .drop(('O', 'fe_tot')))['O']
             not_fe_occ = self.occupancies["O"] - missing_o
             _, ox_state_not_fe = UCData._get_oxidation_numbers(
-                not_fe_occ, self.__df.xs("O", level="sheet")
+                not_fe_occ, self._df.xs("O", level="sheet")
             )
             chg_fe = o_charge + (
                 (self.uc_data.oxidation_numbers["O"] - ox_state_not_fe)
                 * not_fe_occ
             )
             if np.isclose(chg_fe, 0):
-                self.__df.loc[:, "feo"] = missing_o
+                self._df.loc[:, "feo"] = missing_o
             else:
-                self.__df.loc[:, "fe2"] = np.abs(chg_fe)
-                self.__df.loc[:, "feo"] = (
-                    missing_o - self.__df.at[("O", "fe2")]
-                )
-            self.__df.drop(("O", "fe_tot"), inplace=True)
-            # self.__df.where(self.__df.loc['O'] != 0, np.NaN, inplace=True)
+                self._df.loc[:, "fe2"] = np.abs(chg_fe)
+                self._df.loc[:, "feo"] = missing_o - self._df.at[("O", "fe2")]
+            self._df.drop(("O", "fe_tot"), inplace=True)
+            # self._df.where(self._df.loc['O'] != 0, np.NaN, inplace=True)
             # charge_delta = dict(map(lambda x: (x, self._uc_data.oxidation_numbers[x] - ox_states[x]), ox_states.keys()))
             assert np.isclose(
                 self.occupancies["O"], self.uc_data.occupancies["O"]
             ), f'Found incorrect occupancies of {self.occupancies["O"]}, expected {self.uc_data.occupancies["O"]}'
         except KeyError:
             pass
-        sheet_df = self.__df.copy()
+        sheet_df = self._df.copy()
         logger.info(
             f"\nSplitting total iron content ({missing_o:.4f}) to match charge.\n"
         )
@@ -646,7 +809,7 @@ class TargetClayComposition:
     def _get_charges(
         self, key: Literal[Union[Literal["tot"], Literal["T"], Literal["O"]]]
     ) -> float:
-        return self.get_charges(self.__df.xs("C"))[key]
+        return self.get_charges(self._df.xs("C"))[key]
 
     get_total_charge = partialmethod(_get_charges, key="tot")
     get_t_charge = partialmethod(_get_charges, key="T")
@@ -700,30 +863,30 @@ class TargetClayComposition:
     @property
     def oxidation_states(self):
         return UCData._get_oxidation_numbers(
-            self.occupancies, self.__df.loc[["T", "O"]], sum_dict=False
+            self.occupancies, self._df.loc[["T", "O"]], sum_dict=False
         )[1]
 
     @property
     def atom_types(self):
         return UCData._get_oxidation_numbers(
-            self.occupancies, self.__df.loc[["T", "O"]], sum_dict=False
+            self.occupancies, self._df.loc[["T", "O"]], sum_dict=False
         )[0]
 
     @property
     def occupancies(self):
-        return UCData._get_occupancies(self.__df.loc[["T", "O"]].dropna())
+        return UCData._get_occupancies(self._df.loc[["T", "O"]].dropna())
 
     def sheet_df_decorator(f):
         @wraps(f)
-        def wrapper(self, idx_sel=["T", "O"], **kwargs):
-            sheet_df: pd.Series = self.__df.loc[idx_sel, :].copy()
+        def wrapper(self, **kwargs):  # , idx_sel=["T", "O"], **kwargs):
+            sheet_df: pd.Series = self._df.loc[self.idx_sel, :].copy()
             sheet_df = sheet_df.loc[sheet_df != 0].dropna()
-            return f(self, sheet_df, idx_sel, **kwargs)
+            return f(self, sheet_df, **kwargs)  # , idx_sel, **kwargs)
 
         return wrapper
 
     @sheet_df_decorator
-    def __get_sheet_df(self, sheet_df, idx_sel=["T", "O"]):
+    def __get_sheet_df(self, sheet_df):  # , idx_sel=["T", "O"]):
         charge_substitutions = self.atom_types
         charge_substitutions["charge"] = charge_substitutions.groupby(
             "sheet"
@@ -731,27 +894,36 @@ class TargetClayComposition:
         charge_substitutions["at-type"] = np.NAN
         charge_substitutions["at-type"].update(sheet_df)
         if "fe_tot" in self.df.index.get_level_values("at-type"):
-            fe_row = pd.DataFrame(
+            fe_row_no_charge = pd.DataFrame(
                 [[self.df.loc["O", "fe_tot"], 0]],
                 index=pd.MultiIndex.from_tuples([("O", "fe_tot")]),
                 columns=charge_substitutions.columns,
             )
-            charge_substitutions = pd.concat([charge_substitutions, fe_row])
+            fe_row_charged = pd.DataFrame(
+                [[self.df.loc["O", "fe_tot"], -1]],
+                index=pd.MultiIndex.from_tuples([("O", "fe_tot")]),
+                columns=charge_substitutions.columns,
+            )
+            charge_substitutions = pd.concat(
+                [charge_substitutions, fe_row_no_charge, fe_row_charged]
+            )
         return charge_substitutions
 
-    def non_charged_sheet_df(self, idx_sel=["T", "O"]):
-        sheet_df = self.__get_sheet_df(idx_sel=idx_sel)
+    @property
+    def non_charged_sheet_df(self):  # , idx_sel=["T", "O"]):
+        sheet_df = self.__get_sheet_df()  # (self.idx_sel)#=idx_sel)
         return sheet_df[sheet_df["charge"] == 0].dropna()
 
-    def charged_sheet_df(self, idx_sel=["T", "O"]):
-        sheet_df = self.__get_sheet_df(idx_sel=idx_sel)
+    @property
+    def charged_sheet_df(self):  # , idx_sel=["T", "O"]):
+        sheet_df = self.__get_sheet_df()  # (self.idx_sel)#=idx_sel)
         return sheet_df[sheet_df["charge"] != 0].dropna()
 
     @sheet_df_decorator
     def check_charged_occupancies(
         self,
         sheet_df,
-        idx_sel=["T", "O"],
+        # idx_sel=["T", "O"],
         priority: Optional[
             Union[Literal["charges"], Literal["occupancies"]]
         ] = None,
@@ -760,9 +932,57 @@ class TargetClayComposition:
         priorities.remove(priority)
         non_priority_sel = next(iter(priorities))
         priority_sel = priority
-        charged_occ = self.charged_sheet_df(idx_sel=idx_sel)
-        non_charged_occ = self.non_charged_sheet_df(idx_sel=idx_sel)
-        charged_occ_sum = charged_occ.product(axis=1).groupby("sheet").sum()
+        charged_occ = self.charged_sheet_df  # (self.idx_sel)#=idx_sel)
+
+        non_charged_occ = self.non_charged_sheet_df  # (self.idx_sel)#=idx_sel)
+
+        occ_intersection = charged_occ.index.intersection(
+            non_charged_occ.index
+        )
+        charged_dict = {
+            "charged": charged_occ,
+            "non-charged": non_charged_occ,
+        }
+        if occ_intersection.tolist():
+            for at_type_duplicate in occ_intersection:
+                charged_size = (
+                    charged_dict["charged"].loc[at_type_duplicate[0]].size
+                )
+                non_charged_size = (
+                    charged_dict["non-charged"].loc[at_type_duplicate[0]].size
+                )
+                # size_dict = {
+                #     "charged": charged_size,
+                #     "non-charged": non_charged_size,
+                # }
+                if charged_size in [1, 2]:
+                    if self.sel_priority == "charge":
+                        charge_diff = charged_dict["charged"].loc[
+                            at_type_duplicate
+                        ]
+                        target_charge = self._get_charges(at_type_duplicate[0])
+                        if charged_size == 1:
+                            charged_dict["charged"].loc[at_type_duplicate] = (
+                                charge_diff * target_charge
+                            )
+                        elif charged_size == 2:
+                            missing_charge = (
+                                target_charge
+                                - charged_dict["charged"]
+                                .drop(at_type_duplicate)
+                                .product()
+                            )
+                            charged_size["charged"].loc[at_type_duplicate] = (
+                                missing_charge / charge_diff["charge"]
+                            )
+                    else:
+                        charged_dict["charged"].loc[
+                            at_type_duplicate, "at-type"
+                        ] = 0.0
+
+        charged_occ_sum = (
+            charged_dict["charged"].product(axis=1).groupby("sheet").sum()
+        )
         charged_occ_check = charged_occ_sum.groupby("sheet").apply(
             lambda x: self._get_charges(x.name) - x
         )
@@ -796,36 +1016,47 @@ class TargetClayComposition:
                     f"{priority_sel}."
                 )
             if priority_sel == "occupancies":
-                new_charges = self.__df.loc["C"].copy()
+                new_charges = self._df.loc["C"].copy()
                 new_charges.update(subst_charges)
-                new_charges["tot"] = new_charges.loc[idx_sel].sum()
-                self.__df.loc["C"].update(new_charges)
+                new_charges["tot"] = new_charges.loc[self.idx_sel].sum()
+                self._df.loc["C"].update(new_charges)
                 new_charge_str = self.__deviation_string(
                     new_charges, join_str="\n\t"
                 )
                 logger.info(f"New charges: \n\t{new_charge_str}")
             elif priority_sel == "charges":
                 new_charged_occs = (
-                    charged_occ["at-type"]
+                    charged_dict["charged"]["at-type"]
                     .groupby("sheet")
                     .apply(lambda x: x - charged_occ_check[x.name] / x.count())
                 )
                 new_uncharged_occs = (
-                    non_charged_occ["at-type"]
+                    charged_dict["non-charged"]["at-type"]
                     .groupby("sheet")
                     .apply(lambda x: x + charged_occ_check[x.name] / x.count())
                 )
                 sheet_df.update(new_charged_occs)
                 sheet_df.update(new_uncharged_occs)
                 self.print_df_composition(
-                    old_composition=self.df.loc[idx_sel], sheet_df=sheet_df
+                    old_composition=self.df.loc[self.idx_sel],
+                    sheet_df=sheet_df,
                 )
-                self.__df.loc[idx_sel].update(sheet_df)
+                self._df.loc[self.idx_sel].update(sheet_df)
             else:
                 self.__abort()
 
+    @property
+    def occ_correction_df(self):
+        occ_correction_df = self.non_charged_sheet_df["at-type"]
+        occ_correction_df = occ_correction_df.where(
+            occ_correction_df > self.occ_corr_threshold, np.NaN
+        ).dropna()
+        return occ_correction_df
+
     @sheet_df_decorator
-    def correct_occupancies(self, sheet_df: pd.DataFrame, idx_sel=["T", "O"]):
+    def correct_occupancies(
+        self, sheet_df: pd.DataFrame
+    ):  # , idx_sel=["T", "O"]):
         correct_uc_occ: pd.Series = pd.Series(self.uc_data.occupancies)
         input_uc_occ: pd.Series = pd.Series(self.occupancies)
         check_occ: pd.Series = input_uc_occ - correct_uc_occ
@@ -838,16 +1069,18 @@ class TargetClayComposition:
         if check_occ.values.any() != 0:
             logger.info("\nAdjusting values to match expected occupancies:")
             sheet_df.update(
-                self.non_charged_sheet_df(idx_sel=idx_sel)
-                .dropna()["at-type"]
-                .groupby("sheet")
-                .apply(lambda x: x - check_occ.at[x.name] / x.count())
+                self.occ_correction_df
+                # self.non_charged_sheet_df(idx_sel=idx_sel)
+                # .dropna()["at-type"]
+                .groupby("sheet").apply(
+                    lambda x: x - check_occ.at[x.name] / x.count()
+                )
             )
             accept = None
             old_composition = self.df.copy()
-            self.__df.update(sheet_df)
+            self._df.update(sheet_df)
             while accept != "y":
-                self.__df.update(sheet_df)
+                self._df.update(sheet_df)
                 new_occ = pd.Series(self.occupancies)
                 new_check_df: pd.Series = new_occ - correct_uc_occ
                 new_check_df.dropna(inplace=True)
@@ -877,10 +1110,7 @@ class TargetClayComposition:
                             "Correcting selected composition."
                         )
                         sheet_df.update(
-                            self.non_charged_sheet_df(idx_sel=idx_sel)
-                            .dropna()["at-type"]
-                            .groupby("sheet")
-                            .apply(
+                            self.occ_correction_df.apply(
                                 lambda x: x
                                 - new_check_df.at[x.name] / x.count()
                             )
@@ -901,12 +1131,13 @@ class TargetClayComposition:
                 if accept == "n":
                     accept = None
                     sheet_df = self.__set_new_value(
-                        old_composition, idx_sel, check_occ
+                        old_composition, self.idx_sel, check_occ
                     )
                 if accept == "e":
                     self.__abort()
             self.check_charged_occupancies(
-                idx_sel=idx_sel, priority=self.sel_priority
+                # idx_sel=idx_sel,
+                priority=self.sel_priority
             )
 
     @staticmethod
@@ -1012,7 +1243,7 @@ class TargetClayComposition:
 
     def get_ion_numbers(self):
         """Read ion types and ratios into pd DataFrame."""
-        ion_probs: pd.Series = self.__df.loc["I"].copy()
+        ion_probs: pd.Series = self._df.loc["I"].copy()
         ion_df = ion_probs.to_frame(name="probs")
         ion_charge_dict = get_ion_charges()
         ion_df["charges"] = ion_df.index.to_series().apply(
@@ -1036,13 +1267,35 @@ class TargetClayComposition:
         # charge_avg = ion_df['charges'].mean()
         self.__ion_df = ion_df.sort_index(kind="mergesort")  # .copy()
 
+    def __get_match_idx(self, match_df):
+        match_idx = (self.uc_df.index.to_flat_index()).union(
+            match_df.index.to_flat_index()
+        )
+        return match_idx
+
+    def __read_match_df(self, csv_file):
+        match_df: pd.DataFrame = pd.read_csv(csv_file)
+        match_df["sheet"].ffill(inplace=True)
+        match_cols = match_df.columns.values
+        match_cols[:2] = self.uc_df.index.names
+        match_df.columns = match_cols
+        match_df.set_index(self.uc_df.index.names, inplace=True)
+        match_df.sort_index(level="sheet", sort_remaining=True, inplace=True)
+        return match_df
+
 
 class MatchClayComposition:
     def __init__(
-        self, target_composition, sheet_n_ucs: int, manual_setup=True
+        self,
+        target_composition: TargetClayComposition,
+        sheet_n_ucs: int,
+        ignore_threshold: float = 0.0,
+        manual_setup: bool = True,
     ):
         logger.info(get_subheader("Selecting unit cells"))
         self.manual_setup = manual_setup
+        self.ignore_threshold = ignore_threshold
+        self.target_comp: TargetClayComposition = target_composition
         self.__target_df: pd.DataFrame = target_composition.clay_df
         self.__uc_data: UCData = target_composition.uc_data
         self.name = target_composition.name
@@ -1077,98 +1330,64 @@ class MatchClayComposition:
             combined_idx, names=target_df.index.names
         )
         all_ucs_df = all_ucs_df.reindex(combined_idx)
-        target_df = target_df.reindex(combined_idx)
-        unused_target_atype_mask = self.__get_nan_xor_zero_mask(target_df)
-        accepted_group = {}
-        accepted_base = {}
-        missing_group_at_types = {}
-        base_ucs = self.__uc_data.base_ucs
-        for group_id, group_uc_ids in self.__uc_data.group_iter():
-            uc_group_df = all_ucs_df[group_uc_ids]
-            # discard all unit cells with non-zero values where target composition has zeros
-            uc_group_df = uc_group_df.loc[
-                :, (uc_group_df[unused_target_atype_mask] == 0).any(axis=0)
-            ]
-            # check that the group has non-zero values for all atom types in the target composition
-            unused_uc_atype_mask = (
-                self.__get_nan_xor_zero_mask(uc_group_df)
-            ).all(axis=1)
-            missing_uc_at_types = (
-                uc_group_df[unused_uc_atype_mask]
-            ).index.difference(target_df[unused_target_atype_mask].index)
-            if len(missing_uc_at_types) == 0:
-                accepted_group[group_id] = list(uc_group_df.columns)
-                accepted_base[group_id] = base_ucs[group_id]
-            else:
-                missing_group_at_types[group_id] = missing_uc_at_types
-            # combined_mask = np.logical_and(unused_uc_atype_mask, unused_target_atype_mask)
-        accept = None
-        if len(accepted_group) > 1:
-            logger.info(f"Found {len(accepted_group)} unit cell groups.")
-            logger.info("Getting best group for target composition.")
-            base_dict = dict(
-                map(
-                    lambda i: (i[0], all_ucs_df.loc[:, i[1]]),
-                    accepted_base.items(),
+        match_group_found = False
+        while not match_group_found:
+            target_df = target_df.reindex(combined_idx)
+            unused_target_atype_mask = self.__get_nan_xor_zero_mask(target_df)
+            accepted_group = {}
+            accepted_base = {}
+            missing_group_at_types = {}
+            base_ucs = self.__uc_data.base_ucs
+
+            for group_id, group_uc_ids in self.__uc_data.group_iter():
+                uc_group_df = all_ucs_df[group_uc_ids]
+                # discard all unit cells with non-zero values where target composition has zeros
+                uc_group_df = uc_group_df.loc[
+                    :, (uc_group_df[unused_target_atype_mask] == 0).any(axis=0)
+                ]
+                # check that the group has non-zero values for all atom types in the target composition
+                unused_uc_atype_mask = (
+                    self.__get_nan_xor_zero_mask(uc_group_df)
+                ).all(axis=1)
+                missing_uc_at_types = (
+                    uc_group_df[unused_uc_atype_mask]
+                ).index.difference(target_df[unused_target_atype_mask].index)
+                if len(missing_uc_at_types) == 0:
+                    accepted_group[group_id] = list(uc_group_df.columns)
+                    accepted_base[group_id] = base_ucs[group_id]
+                else:
+                    missing_group_at_types[group_id] = missing_uc_at_types
+                # combined_mask = np.logical_and(unused_uc_atype_mask, unused_target_atype_mask)
+            accept = None
+            if len(accepted_group) > 1:
+                logger.info(f"Found {len(accepted_group)} unit cell groups.")
+                logger.info("Getting best group for target composition.")
+                base_dict = dict(
+                    map(
+                        lambda i: (i[0], all_ucs_df.loc[:, i[1]]),
+                        accepted_base.items(),
+                    )
                 )
-            )
-            base_df = pd.DataFrame({"target": target_df, **base_dict})
-            base_df = base_df.where(base_df != 0, np.NaN).dropna(how="all")
-            # base_df.append(base_df[[1,2]].apply()
-            diff_df = (
-                base_df[[0, 1]]
-                .apply(lambda x: np.abs(x - base_df["target"]))
-                .sum()
-            )
-            selected_group_id = diff_df[
-                diff_df == diff_df.min()
-            ].index.to_list()[0]
-            # selected_group = accepted_group[selected_group_id]
-            logger.info(
-                f"Selected group {selected_group_id} with base composition:"
-            )
-            self.print_groups(
-                {selected_group_id: accepted_base.get(selected_group_id)},
-                all_ucs_df,
-                fill="\t",
-            )
-            print_all_ucs = select_input_option(
-                self,
-                "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default n)\n",
-                result=None,
-                options=["y", "n", ""],
-                result_map={
-                    "y": lambda: self.print_groups(
-                        {
-                            selected_group_id: accepted_group.get(
-                                selected_group_id
-                            )
-                        },
-                        all_ucs_df,
-                        fill="\t",
-                    ),
-                    "n": lambda: None,
-                    "": lambda: None,
-                },
-            )
-            print_all_ucs()
-            accept = select_input_option(
-                self,
-                "\nAccept selection [y] or choose manually [m]? (Default y)",
-                options=["y", "m", ""],
-                result=None,
-                result_map={
-                    "y": str(selected_group_id),
-                    "m": None,
-                    "": str(selected_group_id),
-                },
-            )
-            select_keys = list(
-                map(lambda key: f"{key}", accepted_group.keys())
-            )
-            if accept is None:
-                logger.info("\nAvailable UC group base compositions:")
-                self.print_groups(accepted_base, all_ucs_df, fill="\t")
+                base_df = pd.DataFrame({"target": target_df, **base_dict})
+                base_df = base_df.where(base_df != 0, np.NaN).dropna(how="all")
+                # base_df.append(base_df[[1,2]].apply()
+                diff_df = (
+                    base_df[[0, 1]]
+                    .apply(lambda x: np.abs(x - base_df["target"]))
+                    .sum()
+                )
+                selected_group_id = diff_df[
+                    diff_df == diff_df.min()
+                ].index.to_list()[0]
+                # selected_group = accepted_group[selected_group_id]
+                logger.info(
+                    f"Selected group {selected_group_id} with base composition:"
+                )
+                self.print_groups(
+                    {selected_group_id: accepted_base.get(selected_group_id)},
+                    all_ucs_df,
+                    fill="\t",
+                )
                 print_all_ucs = select_input_option(
                     self,
                     "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default n)\n",
@@ -1176,67 +1395,140 @@ class MatchClayComposition:
                     options=["y", "n", ""],
                     result_map={
                         "y": lambda: self.print_groups(
-                            accepted_group, all_ucs_df, fill="\t"
+                            {
+                                selected_group_id: accepted_group.get(
+                                    selected_group_id
+                                )
+                            },
+                            all_ucs_df,
+                            fill="\t",
                         ),
                         "n": lambda: None,
                         "": lambda: None,
                     },
                 )
                 print_all_ucs()
-            accept = select_input_option(
-                self,
-                query=f"\nSelect unit cell group? [{'/'.join(select_keys)}] (exit with e)\n",
-                options=[*select_keys, "e"],
-                result=accept,
-                result_map={
-                    **dict(map(lambda x: (x, x), select_keys)),
-                    "e": "n",
-                },
-            )
-            if accept in select_keys:
-                accept = int(accept)
-                logger.info(f"\nSelected group {accept}")
-                accepted_group = {accept: accepted_group.get(accept)}
-                accepted_base = {accept: accepted_base.get(accept)}
-                # self.print_groups(accepted_group, all_ucs_df, fill="\t")
-                # self.print_groups(accepted_group, all_ucs_df)
-                accept = "y"
-        if len(accepted_group) == 1:
-            selected_ucs_df = all_ucs_df.loc[
-                :, accepted_group[next(iter(accepted_group.keys()))]
-            ]
-            logger.info("\nComposition of matching unit cell group base:")
-            if accept is None:
-                self.print_groups(accepted_base, all_ucs_df, fill="\t")
-            print_all_ucs = select_input_option(
-                self,
-                "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default y)\n",
-                result=accept,
-                options=["y", "n", "", next(iter(accepted_group.keys()))],
-                result_map={
-                    "y": lambda: self.print_groups(
-                        accepted_group, selected_ucs_df, fill="\t"
-                    ),
-                    "n": lambda: None,
-                    "": lambda: None,
-                    next(iter(accepted_group.keys())): None,
-                },
-            )
-            print_all_ucs()
-            accept = select_input_option(
-                self,
-                query="\nAccept unit cell group? [y]es/[e]xit (Default y)\n",
-                result=accept,
-                options=["y", "e", ""],
-                result_map={"y": "y", "e": "n", "": "y"},
-            )
-        elif len(accepted_group) == 0:
-            raise ValueError(
-                "Not all target composition atom types were found in the unit cells!"
-            )
-            print(missing_group_at_types)
-        else:
-            raise RuntimeError("Should not reach this point!")
+                accept = select_input_option(
+                    self,
+                    "\nAccept selection [y] or choose manually [m]? (Default y)",
+                    options=["y", "m", ""],
+                    result=None,
+                    result_map={
+                        "y": str(selected_group_id),
+                        "m": None,
+                        "": str(selected_group_id),
+                    },
+                )
+                select_keys = list(
+                    map(lambda key: f"{key}", accepted_group.keys())
+                )
+                if accept is None:
+                    logger.info("\nAvailable UC group base compositions:")
+                    self.print_groups(accepted_base, all_ucs_df, fill="\t")
+                    print_all_ucs = select_input_option(
+                        self,
+                        "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default n)\n",
+                        result=None,
+                        options=["y", "n", ""],
+                        result_map={
+                            "y": lambda: self.print_groups(
+                                accepted_group, all_ucs_df, fill="\t"
+                            ),
+                            "n": lambda: None,
+                            "": lambda: None,
+                        },
+                    )
+                    print_all_ucs()
+                accept = select_input_option(
+                    self,
+                    query=f"\nSelect unit cell group? [{'/'.join(select_keys)}] (exit with e)\n",
+                    options=[*select_keys, "e"],
+                    result=accept,
+                    result_map={
+                        **dict(map(lambda x: (x, x), select_keys)),
+                        "e": "n",
+                    },
+                )
+                if accept in select_keys:
+                    accept = int(accept)
+                    logger.info(f"\nSelected group {accept}")
+                    accepted_group = {accept: accepted_group.get(accept)}
+                    accepted_base = {accept: accepted_base.get(accept)}
+                    # self.print_groups(accepted_group, all_ucs_df, fill="\t")
+                    # self.print_groups(accepted_group, all_ucs_df)
+                    accept = "y"
+                match_group_found = True
+            if len(accepted_group) == 1:
+                selected_ucs_df = all_ucs_df.loc[
+                    :, accepted_group[next(iter(accepted_group.keys()))]
+                ]
+                logger.info("\nComposition of matching unit cell group base:")
+                if accept is None:
+                    self.print_groups(accepted_base, all_ucs_df, fill="\t")
+                print_all_ucs = select_input_option(
+                    self,
+                    "\n\nPrint remaining group UC compositions? [y]es/[n]o (Default y)\n",
+                    result=accept,
+                    options=["y", "n", "", next(iter(accepted_group.keys()))],
+                    result_map={
+                        "y": lambda: self.print_groups(
+                            accepted_group, selected_ucs_df, fill="\t"
+                        ),
+                        "n": lambda: None,
+                        "": lambda: None,
+                        next(iter(accepted_group.keys())): None,
+                    },
+                )
+                print_all_ucs()
+                accept = select_input_option(
+                    self,
+                    query="\nAccept unit cell group? [y]es/[e]xit (Default y)\n",
+                    result=accept,
+                    options=["y", "e", ""],
+                    result_map={"y": "y", "e": "n", "": "y"},
+                )
+                match_group_found = True
+            elif len(accepted_group) == 0:
+                missing_at_types = np.ravel(
+                    [
+                        missing.get_level_values("at-type").to_list()
+                        for missing in missing_group_at_types.values()
+                    ]
+                )
+                ignore = True
+                missing_at_types: list = missing_at_types.tolist()
+                for missing_at_type in missing_at_types.copy():
+                    if (
+                        self.target_df.xs(missing_at_type, level="at-type")
+                        < self.ignore_threshold
+                    ).all():
+                        logger.info(
+                            f'{missing_at_type!r} not found in unit cells, resetting occupancy of {self.target_df.xs(missing_at_type, level="at-type").values[0]} to 0.00 (ignore threshold = {self.ignore_threshold:.2f})\n'
+                        )
+                        self.target_comp._df.loc[
+                            pd.IndexSlice[:, missing_at_type]
+                        ] = 0.0
+                        missing_at_types.remove(missing_at_type)
+                    else:
+                        ignore = False
+                    if not ignore:
+                        missing_str = ", ".join(missing_at_types)
+                        raise ValueError(
+                            f"Some of the required atom types ({missing_str}) of the target composition are missing in the unit cells!\n"
+                        )
+                    else:
+                        logger.info("Correcting new occupancies.")
+                        self.target_comp.correct_occupancies()
+                        self.__target_df.update(self.target_comp.df)
+                        self.__target_df.where(
+                            self.target_df != 0, np.NaN, inplace=True
+                        )
+                        target_df = self.__target_df.dropna().copy()
+                        # self.__target_df.dropna(inplace=True)
+                        # print(self.target_df)
+
+            else:
+                raise RuntimeError("Should not reach this point!")
         if accept == "n":
             self.__abort("uc")
         else:
@@ -1566,6 +1858,10 @@ class InterlayerIons:
     ):
         self.clay_charge = tot_charge * n_ucs
         self.__df = ion_ratios.copy()
+        if not np.isclose(self.__df["probs"].sum(), 1.00):
+            self.__df["probs"] = self.__df["probs"].divide(
+                np.sum(self.__df["probs"])
+            )
         assert np.isclose(
             self.__df["probs"].sum(), 1.00
         ), "Interlayer ion probabilities do not sum to 1.00"

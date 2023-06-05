@@ -951,6 +951,7 @@ def add_resnum(crdin: Union[Path, str], crdout: Union[Path, str]) -> Universe:
     res_n_atoms = get_system_n_atoms(crds=u, write=False)
     atoms: MDAnalysis.AtomGroup = u.atoms
     for i in np.unique(atoms.residues.resnames):
+        # print(i)
         logger.debug(f"Found residues: {i} - {res_n_atoms[i]} atoms")
     res_idx = 1
     first_idx = 0
@@ -1179,9 +1180,11 @@ def get_all_prms(prm_str, force_update=True, write=True, name=None):
                     prm_str=prm_str, aa_name=aa, force_update=force_update
                 )
             )
-        clay_types = ["D21"]
+        # UCS: Path
+        clay_types = UCS.glob(r"[A-Z]*[0-9]*")
         clay_dict = {}
         for uc in clay_types:
+            uc = uc.stem
             clay_dict.update(
                 get_clay_prms(
                     prm_str=prm_str, uc_name=uc, force_update=force_update
@@ -1527,7 +1530,7 @@ def run_em(
         po=tpr.with_suffix(".mdp"),
         mdp_prms=mdp_prms,
     )
-    error, em, out = gmx_commands.run_gmx_mdrun(s=tpr, deffnm=outname)
+    error, em, out = gmx_commands.run_gmx_mdrun(s=tpr, deffnm=outname, v="")
     if error is None:
         conv = re.search(
             r"converged to Fmax < (\d+) in (\d+) steps",
@@ -1536,6 +1539,9 @@ def run_em(
         )
         if conv is None:
             logger.error("Energy minimisation run not converged!\n")
+            logger.info(error)
+            logger.info(em)
+            logger.info(out)
         else:
             fmax, n_steps = conv.groups()
             logger.info(f"Fmax: {fmax}, reached in {n_steps} steps")

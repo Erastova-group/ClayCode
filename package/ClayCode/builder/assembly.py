@@ -876,7 +876,7 @@ class Solvent:
             maxsol=self.n_mols,
             o=spc_gro,
             p=spc_top,
-            scale=0.090,
+            scale=0.55,
             v="",
             box=f"{self.x_dim / 10} {self.y_dim / 10} {self.z_dim / 10}",
         )

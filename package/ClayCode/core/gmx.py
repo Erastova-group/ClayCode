@@ -157,7 +157,8 @@ class GMXCommands:
                         ],
                         check=True,
                         text=True,
-                        **outputargs,
+                        capture_output=True
+                        # **outputargs,
                     )
                     try:
                         temp_file.unlink()

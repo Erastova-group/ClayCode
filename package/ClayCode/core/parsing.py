@@ -405,6 +405,7 @@ class BuildArgs(_Args):
         "SEL_PRIORITY",
         "CHARGE_PRIORITY",
         "MDP_PRMS",
+        "ZERO_THRESHOLD",
     ]
 
     def __init__(self, data) -> None:
@@ -422,6 +423,7 @@ class BuildArgs(_Args):
         self.uc_stem: str = None
         self.name: str = None
         self.outpath: Dir = None
+        self.zero_threshold: float = None
         self._raw_comp: pd.DataFrame = None
         self._corr_comp: pd.DataFrame = None
         self._uc_comp: pd.DataFrame = None
@@ -523,6 +525,7 @@ class BuildArgs(_Args):
             "OCC_TOL",
             "SEL_PRIORITY",
             "CHARGE_PRIORITY",
+            "ZERO_THRESHOLD",
         ]:
             try:
                 prm_value = self.data[prm]
@@ -610,6 +613,7 @@ class BuildArgs(_Args):
             sel_priority=self.sel_priority,
             charge_priority=self.charge_priority,
             manual_setup=self.manual_setup,
+            occ_correction_threshold=self.zero_threshold,
         )
         self._target_comp.write_csv(self.outpath)
 
@@ -679,6 +683,7 @@ class BuildArgs(_Args):
             target_composition=self._target_comp,
             sheet_n_ucs=self.sheet_n_cells,
             manual_setup=self.manual_setup,
+            ignore_threshold=self.zero_threshold,
         )
         self.match_comp.write_csv(self.outpath)
 
