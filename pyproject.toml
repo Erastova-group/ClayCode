@@ -37,6 +37,7 @@ include-package-data = true
     'UCS/*/*.itp', 'CLAYS/*/*/*/*.gro', 'CLAYS/*/*/*/*.top',
     'UCS/*.csv', 'UCS/*.yaml']
 "ClayCode.builder.config" = ['defaults.yaml']
+"ClayCode.builder.tests" = ['data/*.yaml', 'data/*.csv']
 "ClayCode.data.user" = ['FF/*.ff/*.itp',
     'FF/*.itp', 'MDP/*.mdp', 'UCS/*/*.itp', 'UCS/*/*.itp',
     'UCS/*/*.itp', 'CLAYS/*/*/*/*.gro', 'CLAYS/*/*/*/*.top',
