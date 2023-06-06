@@ -32,7 +32,6 @@ from ClayCode.analysis.analysisbase import analysis_class
 from ClayCode.core.classes import GROFile
 from ClayCode.core.consts import AA, DATA, FF, IONS, MDP, SOL, SOL_DENSITY, UCS
 from ClayCode.core.gmx import gmx_command_wrapper
-from ClayCode.core.log import logger
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
@@ -41,6 +40,8 @@ from numpy.typing import NDArray
 tpr_logger = logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
     level=logging.WARNING
 )
+
+logger = logging.getLogger(__name__)
 
 MaskedArray = TypeVar("MaskedArray")
 AtomGroup = TypeVar("AtomGroup")

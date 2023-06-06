@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 import sys
 from functools import singledispatch, wraps
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
-from ClayCode.core.log import logger
+logger = logging.getLogger(__name__)
 
 
 def make_manual_setup_choice(select_function: str):

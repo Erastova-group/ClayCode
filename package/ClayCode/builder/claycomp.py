@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import logging
 import math
 import os
 import pickle as pkl
@@ -28,7 +29,6 @@ from ClayCode.builder.utils import get_checked_input, select_input_option
 from ClayCode.core.classes import Dir, File, ITPFile, PathFactory
 from ClayCode.core.consts import UCS
 from ClayCode.core.lib import get_ion_charges
-from ClayCode.core.log import logger
 from ClayCode.core.utils import get_subheader
 from numpy._typing import NDArray
 from tqdm import tqdm
@@ -36,6 +36,8 @@ from tqdm import tqdm
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 __all__ = ["TargetClayComposition"]
+
+logger = logging.getLogger(__name__)
 
 
 class UnitCell(ITPFile):
@@ -553,11 +555,19 @@ class TargetClayComposition:
         self.__ion_df: pd.DataFrame = None
         self.get_ion_numbers()
 
+    def update_charges(
+        self, df: Union[pd.DataFrame, pd.Series]
+    ) -> Union[pd.DataFrame, pd.Series]:
+        charges = pd.Series(self.get_charges(df), name=self.name)
+        charges = charges.reindex_like(df.xs("C"))
+        df.loc["C"].update(charges)
+        return df
+
     def __get_match_df(self, csv_file):
         match_df = self.__read_match_df(csv_file)
-        match_df = pd.DataFrame(
-            match_df[self.name].dropna(), columns=[self.name]
-        )
+        match_df = pd.DataFrame(match_df[self.name], columns=[self.name])
+        match_df = self.update_charges(match_df)
+        match_df.dropna(inplace=True, how="all")
         with open(UCS / "clay_at_types.yaml", "r") as file:
             clayff_at_types: dict = yaml.safe_load(file)
         match_df["new-at-type"] = match_df.index.get_level_values(
@@ -774,6 +784,12 @@ class TargetClayComposition:
     get_o_charge = partialmethod(_get_charges, key="O")
 
     def get_charges(self, charge_df: pd.Series):
+        if isinstance(charge_df, pd.DataFrame):
+            charge_df = charge_df[self.name]
+        try:
+            charge_df = charge_df.xs("C")
+        except KeyError:
+            pass
         sheet_charges = charge_df.copy()
         charge_dict = sheet_charges.to_dict()
         # for sheet, charge in charge_df.items():
@@ -783,17 +799,17 @@ class TargetClayComposition:
             tot_charge = sheet_charges.pop("tot")
         except KeyError:
             tot_charge = np.NAN
-        if charge_df.hasnans:
+        if charge_df.hasnans or np.isnan(tot_charge):
             # missing charge specifications
-            if tot_charge == np.NAN and len(sheet_charges) != len(
+            if np.isnan(tot_charge) and len(sheet_charges) != len(
                 sheet_charges.dropna()
             ):
                 assert not charge_df.drop(
                     "tot"
                 ).hasnans, "No charges specified"
             # only T/O charges given
-            elif tot_charge == np.NAN:
-                charge_dict[tot_charge] = sheet_charges.sum()
+            elif np.isnan(tot_charge):
+                charge_dict["tot"] = sheet_charges.sum()
             elif len(sheet_charges) != len(sheet_charges.dropna()):
                 sheet_charges[sheet_charges.isna] = (
                     tot_charge - sheet_charges.dropna()

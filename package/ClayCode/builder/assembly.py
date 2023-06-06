@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import logging
 import re
 import shutil
 import tempfile
@@ -11,7 +12,6 @@ import numpy as np
 import pandas as pd
 from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.topology import TopologyConstructor
-from ClayCode.core import gmx
 from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
 from ClayCode.core.consts import GRO_FMT, MDP, MDP_DEFAULTS
 from ClayCode.core.gmx import GMXCommands, add_gmx_args, gmx_command_wrapper
@@ -25,7 +25,6 @@ from ClayCode.core.lib import (
     select_outside_clay_stack,
     write_insert_dat,
 )
-from ClayCode.core.log import logger
 from ClayCode.core.utils import (
     get_header,
     get_subheader,
@@ -37,6 +36,8 @@ from MDAnalysis.units import constants
 from numpy._typing import NDArray
 
 __all__ = ["Builder", "Sheet"]
+
+logger = logging.getLogger(__name__)
 
 
 class Builder:
@@ -165,6 +166,7 @@ class Builder:
             f"Wrote final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
         )
         logger.info(get_header(f"{self.args.name} model setup complete"))
+        logger.set_file_name(final=True)
 
     def remove_il_solv(self) -> None:
         logger.info("Removing interlayer solvent")

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import os
 import re
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
@@ -17,8 +18,7 @@ from ClayCode.builder.claycomp import (
     MatchClayComposition,
 )
 from ClayCode.core.classes import BasicPath, Dir, File, init_path
-from ClayCode.core.consts import FF, LOGFILENAME, MDP_DEFAULTS, UCS
-from ClayCode.core.log import logger
+from ClayCode.core.consts import FF, MDP_DEFAULTS, UCS
 from ClayCode.core.utils import get_header, get_subheader
 
 __all__ = {
@@ -32,6 +32,7 @@ __all__ = {
     "AnalysisArgs",
 }
 
+logger = logging.getLogger(__name__)
 
 parser: ArgumentParser = ArgumentParser(
     "ClayCode",
@@ -559,6 +560,7 @@ class BuildArgs(_Args):
         self.manual_setup = self.data["manual_setup"]
         self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         self.outpath = self.outpath / self.name
+        os.makedirs(self.outpath, exist_ok=True)
         logger.set_file_name(
             new_filepath=self.outpath, new_filename=self.filestem
         )

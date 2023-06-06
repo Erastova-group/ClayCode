@@ -1,5 +1,5 @@
+import logging
 import re
-import shutil
 import subprocess as sp
 import tempfile
 import warnings
@@ -8,11 +8,12 @@ from pathlib import Path
 from typing import Tuple
 
 from ClayCode.analysis import MDP
-from ClayCode.core.log import logger
 from ClayCode.core.utils import execute_bash_command, set_mdp_parameter
 
 DEFAULT_GMX = "gmx"
 DEFAULT_MDP_FILE = MDP / "mdp_prms"
+
+logger = logging.getLogger(__name__)
 
 
 def add_gmx_args(f):

@@ -6,7 +6,7 @@ import MDAnalysis
 from ClayCode.core.classes import ITPList
 from MDAnalysis import ResidueGroup
 
-logger = logging.getLogger(Path(__file__).name)
+logger = logging.getLogger(__name__)
 
 
 class TopologyConstructor:

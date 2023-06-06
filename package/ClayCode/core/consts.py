@@ -26,7 +26,6 @@ __all__ = [
     "USER_UCS",
     "USER_CLAYS",
     "MDP_DEFAULTS",
-    "LOGFILENAME",
 ]
 
 DATA = files("ClayCode.data")
@@ -50,8 +49,10 @@ GRO_FMT = "{:>5s}{:<5s}{:5s}{:5d}{:8.3f}{:8.3f}{:8.3f}\n"
 shandler = logging.StreamHandler()
 shandler.setLevel(logging.INFO)
 
-exec_time = datetime.now(timezone.utc).strftime("%y%m%d-%H%M")
-exec_date = datetime.now(timezone.utc).strftime("%y%m%d")
+exec_datetime = datetime.now(timezone.utc).strftime("%y%m%d%H%M")
+exec_date = datetime.now(timezone.utc).strftime("%y/%m/%d")
+exec_time = datetime.now(timezone.utc).strftime("%H:%M")
+
 
 FILE_SEARCHSTR_LIST = [""]
 
@@ -171,5 +172,3 @@ KWD_DICT = set_globals()
 
 with open(MDP / "defaults.yaml", "r") as yaml_file:
     MDP_DEFAULTS = yaml.safe_load(yaml_file)
-
-LOGFILENAME = Path(".logfile").resolve()

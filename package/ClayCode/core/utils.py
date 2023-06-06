@@ -16,7 +16,6 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 from ClayCode.core.consts import exec_date, exec_time
-from ClayCode.core.log import logger
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -44,6 +43,8 @@ __all__ = [
     "get_pd_idx_iter",
     "get_u_files",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 def remove_files(path, searchstr):
@@ -86,6 +87,11 @@ def get_sequence_element(f):
             logger.debug(2, seq)
             seq = [seq]
         logger.debug(3, seq)
+        # if type(seq) == str:
+        #     try:
+        #         seq = int(seq)
+        #     except ValueError:
+        #         raise TypeError(f"Expected numeric values, found {seq}")
         if type(seq) not in [list, tuple, np.array]:
             raise TypeError(f"Expected sequence, found {type(seq)}")
         if not isinstance(id, int):
@@ -373,8 +379,8 @@ def set_mdp_parameter(
 
 def add_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"):
     new_str = re.sub(
-        rf"(?<={parameter})(\s*)(=\s*)\s?({searchex})\s?\(s*;?.*?)(?=\n)",
-        r"\1=\3" + f" {value} " + r"\4",
+        rf"(?<={parameter})(\s*)(=\s*)\s?({searchex})\s*?((\s?;[a-z0-9 ._,\-])?)(\n)",
+        r"\1= \3" + f" {value} " + r"\4\n",
         mdp_str,
         flags=re.MULTILINE | re.IGNORECASE,
     )
@@ -389,6 +395,10 @@ def file_or_str(f):
                 file_str = file.read()
         except FileNotFoundError:
             file_str = file_or_str
+        except OSError:
+            file_str = file_or_str
+        except TypeError:
+            file_str = file_or_str
         return f(*args, input_string=file_str, **kwargs)
 
     return wrapper
@@ -396,16 +406,16 @@ def file_or_str(f):
 
 @file_or_str
 def set_mdp_freeze_clay(uc_names, input_string, freeze_dims=["Y", "Y", "Y"]):
-    # try:
-    #     with open(MDP / input_string, "r") as emfile:
-    #         input_string = emfile.read()
-    # except FileNotFoundError:
-    #     input_string = input_string
     freezegrpstr = " ".join(uc_names)
+    if len(freeze_dims) != 3:
+        raise ValueError("Freeze dimensions must have 3 elements")
     freezearray = np.tile(freeze_dims, (len(uc_names)))
     freezedimstr = " ".join(freezearray)
-    # with open(MDP / input_string, "r") as emfile:
-    #     input_string = emfile.read()
+    if not np.isin(freezearray, ["Y", "N"]).all():
+        raise ValueError(
+            f"Unexpected freeze dimensions value: {freezedimstr!r}"
+            "\nAccepted options are: Y and N"
+        )
     input_string = set_mdp_parameter("freezegrps", freezegrpstr, input_string)
     input_string = set_mdp_parameter("freezedim", freezedimstr, input_string)
     return input_string

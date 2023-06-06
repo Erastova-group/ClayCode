@@ -3,11 +3,11 @@ import logging
 import sys
 
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.log import logger
 from ClayCode.core.parsing import ArgsFactory, BuildArgs, parser
-from ClayCode.core.utils import get_subheader
 
 __all__ = ["run"]
+
+logger = logging.getLogger(__name__)
 
 
 def run():
