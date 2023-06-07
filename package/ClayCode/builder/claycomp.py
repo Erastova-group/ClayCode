@@ -20,7 +20,7 @@ from functools import (
     wraps,
 )
 from pathlib import PosixPath
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -1607,22 +1607,22 @@ class MatchClayComposition:
         ).dropna()
 
     @cached_property
-    def __unique_uc_match_df(self):
+    def __unique_uc_match_dict(self) -> dict:
         uc_df = self.uc_df.copy()
         uc_df.columns = uc_df.columns.astype(int)
-        n_ucs_idx = pd.Index(
-            [x for x in range(2, len(self.unique_uc_array) + 1)], name="n_ucs"
+        match_dict = dict(
+            map(
+                lambda k: (k, np.NaN),
+                ["n_ucs", "uc_ids", "uc_weights", "composition", "dist"],
+            )
         )
-        match_df = pd.DataFrame(
-            columns=["uc_ids", "uc_weights", "composition", "dist"],
-            index=n_ucs_idx,
-        )
+        min_dist = np.inf
         logger.info(
             get_subheader(
                 "Getting matching unit cell combination for target composition"
             )
         )
-        for n_ucs in n_ucs_idx:
+        for n_ucs in range(2, len(self.unique_uc_array) + 1):
             logger.info(
                 f"\nGetting combinations for {n_ucs} unique unit cells"
             )
@@ -1646,29 +1646,36 @@ class MatchClayComposition:
                 diff_array = np.subtract(
                     atype_weights.T, np.squeeze(self.target_df.values)
                 )
-                diff_array = np.linalg.norm(diff_array, axis=1)
-                dist = np.amin(diff_array)
-                match = diff_array == np.amin(diff_array)
-                match_df.loc[n_ucs] = (
-                    uc_ids,
-                    np.squeeze(occ_combinations[match]),
-                    np.squeeze(np.round(atype_weights.T[match], 4)),
-                    np.round(dist, 4),
+                diff_array = np.linalg.norm(
+                    diff_array.astype(np.float128), axis=1
                 )
-
-        best_match = match_df[match_df["dist"] == match_df["dist"].min()].head(
-            1
-        )
+                dist = np.amin(diff_array)
+                match_idx = np.argwhere(np.equal(diff_array, dist))
+                if min_dist > dist:
+                    match_dict.update(
+                        {
+                            "n_ucs": n_ucs,
+                            "uc_ids": uc_ids,
+                            "uc_weights": np.squeeze(
+                                occ_combinations[match_idx]
+                            ),
+                            "composition": np.squeeze(
+                                np.round(atype_weights.T[match_idx], 4)
+                            ),
+                            "dist": np.round(dist, 4),
+                        }
+                    )
+                    min_dist = dist
         logger.info(
-            f"\nBest match found with {best_match.index[0]} unique unit cells "
-            f'(total occupancy deviation {best_match["dist"].values[0]:+.4f})\n'
+            f"\nBest match found with {match_dict['n_ucs']} unique unit cells "
+            f'(total occupancy deviation {match_dict["dist"]:+.4f})\n'
         )
-        return best_match
+        return match_dict
 
     @property
     def match_composition(self):
         match_values = pd.Series(
-            *self.__unique_uc_match_df["composition"].values,
+            self.__unique_uc_match_dict["composition"],
             index=self.target_df.index,
             name="match_composition",
         )
@@ -1694,24 +1701,22 @@ class MatchClayComposition:
         match_uc_index = pd.Index(
             [
                 f"{uc_id:02d}"
-                for uc_id in np.ravel(
-                    *self.__uc_match_df["uc_ids"].values
-                ).astype(int)
+                for uc_id in self.__uc_match_dict["uc_ids"].astype(int)
             ]
         )
         return pd.Series(
-            np.ravel(*self.__uc_match_df["uc_weights"].values).astype(int),
+            self.__uc_match_dict["uc_weights"].astype(int),
             index=match_uc_index,
             name="uc_weights",
         )
 
     @cached_property
     def uc_ids(self) -> NDArray[str]:
-        return self.__uc_match_df["uc_ids"].values
+        return self.__uc_match_dict["uc_ids"].values
 
     @property
-    def match_diff(self) -> pd.Series:
-        return self.__unique_uc_match_df["dist"]
+    def match_diff(self) -> float:
+        return self.__unique_uc_match_dict["dist"]
 
     @cached_property
     def duplicate_ucs(self) -> NDArray:
@@ -1738,12 +1743,10 @@ class MatchClayComposition:
         return list(id_sel[0] + i for i in range(1, len(duplicate_ids)))
 
     @cached_property
-    def __uc_match_df(self) -> pd.DataFrame:
-        uc_match_df = self.__unique_uc_match_df.reset_index().copy()
-        unique_uc_match_ids = np.squeeze(*uc_match_df["uc_ids"].values).astype(
-            int
-        )
-        unique_uc_occs = np.squeeze(*uc_match_df["uc_weights"].values)
+    def __uc_match_dict(self) -> dict:
+        uc_match_dict = self.__unique_uc_match_dict.copy()
+        unique_uc_match_ids = np.array(uc_match_dict["uc_ids"]).astype(int)
+        unique_uc_occs = uc_match_dict["uc_weights"]
         for unique_id, duplicate_ids in self.duplicate_ucs.items():
             if np.in1d(unique_id, unique_uc_match_ids).any():
                 _, _, sel_ids = np.intersect1d(
@@ -1752,7 +1755,7 @@ class MatchClayComposition:
                     return_indices=True,
                     assume_unique=True,
                 )
-                uc_match_df["n_ucs"] += 1
+                uc_match_dict["n_ucs"] += 1
                 new_occs = np.full(len(duplicate_ids), unique_uc_occs[sel_ids])
                 if unique_id == unique_uc_match_ids[-1]:
                     unique_uc_match_ids = np.append(
@@ -1780,9 +1783,9 @@ class MatchClayComposition:
                     sel_ids[0] : sel_ids[0] + len(duplicate_ids)
                 ] //= len(duplicate_ids)
                 unique_uc_occs[sel_ids] += uc_occ_splitting_remainder
-        uc_match_df["uc_weights"] = [unique_uc_occs]
-        uc_match_df["uc_ids"] = [unique_uc_match_ids]
-        return uc_match_df
+        uc_match_dict["uc_weights"] = unique_uc_occs
+        uc_match_dict["uc_ids"] = unique_uc_match_ids
+        return uc_match_dict
 
     @cached_property
     def unique_uc_array(self) -> NDArray[int]:

@@ -166,7 +166,6 @@ class Builder:
             f"Wrote final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
         )
         logger.info(get_header(f"{self.args.name} model setup complete"))
-        logger.set_file_name(final=True)
 
     def remove_il_solv(self) -> None:
         logger.info("Removing interlayer solvent")
@@ -878,7 +877,7 @@ class Solvent:
             maxsol=self.n_mols,
             o=spc_gro,
             p=spc_top,
-            scale=0.56,
+            scale=0.55,
             v="",
             box=f"{self.x_dim / 10} {self.y_dim / 10} {self.z_dim / 10}",
         )
