@@ -23,7 +23,6 @@ from typing import (
     overload,
 )
 
-import MDAnalysis
 import MDAnalysis as mda
 import MDAnalysis.coordinates
 import numpy as np
@@ -489,10 +488,7 @@ def select_cyzone(
     np.copyto(distances.mask, mask_array.mask[:, :, np.newaxis])
 
 
-def exclude_xyz_cutoff(
-    distances: NDArray[np.int64],
-    cutoff: float,
-) -> None:
+def exclude_xyz_cutoff(distances: NDArray[np.int64], cutoff: float) -> None:
     """
     Select all distances corresponding to atoms within a box
     with length 2* cutoff
@@ -507,10 +503,7 @@ def exclude_xyz_cutoff(
     np.copyto(distances.mask, mask[:, :, np.newaxis])
 
 
-def exclude_z_cutoff(
-    distances: NDArray[np.int64],
-    cutoff: float,
-) -> None:
+def exclude_z_cutoff(distances: NDArray[np.int64], cutoff: float) -> None:
     """
     Select all distances corresponding to atoms within a box
     with length 2* cutoff
@@ -548,8 +541,7 @@ def get_dist(
 
 
 def get_self_dist(
-    ag_pos: NDArray[np.float64],
-    distances: NDArray[np.float64],
+    ag_pos: NDArray[np.float64], distances: NDArray[np.float64]
 ) -> NoReturn:
     """Calculate minimum elementwise x, x2, z distances
     of selection atom positions to reference atom positions in box.
@@ -625,9 +617,11 @@ def get_n_mols(
 
 
 def write_insert_dat(
-    n_mols: Union[int, float], save: Union[str, Literal[False]]
+    n_mols: Union[int, float], save: Union[str, Literal[False]], posz=0
 ):
     pos = np.zeros((int(n_mols), 3), dtype=np.float16)
+    if posz != 0:
+        pos[:, 2] = float(posz)
     if save:
         save = pl.Path(save)
         if save.suffix != ".dat":
@@ -1315,10 +1309,7 @@ def remove_replaced_SOL(
 
         else:
             topstr = re.sub(
-                pattern,
-                rf"\1 {n_sol}",
-                topstr,
-                flags=re.MULTILINE | re.DOTALL,
+                pattern, rf"\1 {n_sol}", topstr, flags=re.MULTILINE | re.DOTALL
             )
 
             with open(topout, "w") as topfile:
