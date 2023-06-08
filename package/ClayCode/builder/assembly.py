@@ -13,7 +13,7 @@ import pandas as pd
 from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.topology import TopologyConstructor
 from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
-from ClayCode.core.consts import GRO_FMT, MDP, MDP_DEFAULTS
+from ClayCode.core.consts import FF, GRO_FMT, MDP, MDP_DEFAULTS
 from ClayCode.core.gmx import GMXCommands, add_gmx_args, gmx_command_wrapper
 from ClayCode.core.lib import (
     add_ions_n_mols,
@@ -69,9 +69,7 @@ class Builder:
             f"({self.sheet.x_cells} unit cells X {self.sheet.y_cells} unit cells)\n"
             f"Box height: {self.args.box_height:.1f} A"
         )
-        self.gmx_commands = GMXCommands(
-            gmx_alias=self.args.gmx_alias,
-        )
+        self.gmx_commands = GMXCommands(gmx_alias=self.args.gmx_alias)
         self.gmx_commands.mdp_template = (
             MDP / f"{self.gmx_commands.version}/mdp_prms.mdp"
         )
@@ -117,9 +115,7 @@ class Builder:
         em_inp = self.gmx_commands.mdp_template
         uc_names = np.unique(self.clay.residues.resnames)
         em_filestr = set_mdp_freeze_clay(
-            uc_names=uc_names,
-            file_or_str=em_inp,
-            freeze_dims=["Y", "Y", "Y"],
+            uc_names=uc_names, file_or_str=em_inp, freeze_dims=["Y", "Y", "Y"]
         )
         for em_prm, prm_value in self.args.mdp_parameters["EM"].items():
             em_filestr = set_mdp_parameter(em_prm, prm_value, em_filestr)
@@ -536,11 +532,7 @@ class Builder:
         file.description = f"{file.stem.split('_')[0]} " + " ".join(
             property_name.split("_")
         )
-        setattr(
-            self,
-            f"__{property_name}",
-            file,
-        )
+        setattr(self, f"__{property_name}", file)
 
     def add_il_ions(self) -> None:
         if self.il_solv is None:
@@ -857,9 +849,7 @@ class Solvent:
         return f"SOL\t{self.n_mols}\n"
 
     def write(
-        self,
-        spc_name: GROFile,
-        topology: Optional[TopologyConstructor] = None,
+        self, spc_name: GROFile, topology: Optional[TopologyConstructor] = None
     ) -> None:
         if spc_name.__class__.__name__ != "GROFile":
             spc_gro: GROFile = GROFile(spc_name)  # .with_suffix('.gro')
@@ -868,10 +858,29 @@ class Solvent:
         spc_top: TOPFile = spc_gro.top
         spc_gro.universe = Universe.empty(n_atoms=0)
         spc_gro.write(topology=topology)
+
         # if topology.__class__.__name__ == 'TopologyConstructor':
         #     topology.write(spc_topname)
         # elif topology.__class__.__name__ == 'TOPFile':
         #     spc_topname = str(topology.resolve())
+        # dr = [self.x_dim / 10, self.y_dim / 10, self.z_dim / 20]
+        # with tempfile.NamedTemporaryFile(
+        #         suffix=".dat"
+        # ) as posfile:
+        #     write_insert_dat(
+        #         n_mols=self.n_mols, save=posfile.name, posz=self.z_dim / 20
+        #     )
+        #     assert Path(posfile.name).is_file()
+
+        # solv, out  = self.gmx_commands.run_gmx_insert_mols(
+        #     f=spc_gro,
+        #     ci= FF / 'spc216.gro',
+        #     ip=posfile.name,
+        #     nmol = self.n_mols,
+        #     o=spc_gro,
+        #     dr="{} {} {}".format(*dr),
+        #     box=f"{self.x_dim / 10} {self.y_dim / 10} {self.z_dim / 10}"
+        # )
         solv, out = self.gmx_commands.run_gmx_solvate(
             cs="spc216",
             maxsol=self.n_mols,

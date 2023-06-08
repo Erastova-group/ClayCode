@@ -130,8 +130,7 @@ class UCData(Dir):
     def __get_base_ucs(self, uc_ids: List[str]) -> Union[List[str], str]:
         uc_df = self.__df.loc[:, uc_ids]
         base_sel = uc_df.loc[
-            :,
-            uc_df[uc_df != 0].count() == min(uc_df[uc_df != 0].count()),
+            :, uc_df[uc_df != 0].count() == min(uc_df[uc_df != 0].count())
         ]
         base_sel = base_sel.columns[0]
         return base_sel
@@ -905,10 +904,7 @@ class TargetClayComposition:
         occ_intersection = charged_occ.index.intersection(
             non_charged_occ.index
         )
-        charged_dict = {
-            "charged": charged_occ,
-            "non-charged": non_charged_occ,
-        }
+        charged_dict = {"charged": charged_occ, "non-charged": non_charged_occ}
         if occ_intersection.tolist():
             for at_type_duplicate in occ_intersection:
                 charged_size = (

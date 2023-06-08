@@ -314,9 +314,7 @@ siminpparser.add_argument(
     type=valid_run_type,
 )
 
-siminpparser.add_argument(
-    "-run_config",
-)
+siminpparser.add_argument("-run_config")
 
 # TODO: add plotting?
 #
@@ -871,5 +869,5 @@ class ArgsFactory:
             _cls = cls._options[option]
         except KeyError:
             raise KeyError(f"{option!r} is not known!")
-        print(_cls)
+        # print(_cls)
         return _cls(data)

@@ -26,7 +26,7 @@ def add_gmx_args(f):
                 gmx_commands.__class__.__name__ == "GMXCommands"
             ), "Wrong type: Expected GMXCommands instance!"
         else:
-            gmx_commands = GMXCommands(gmx_alias=gmx_alias, *args, **kwdargs)
+            gmx_commands = GMXCommands(gmx_alias=gmx_alias, *args, **kwargs)
         result = f(instance, *args, **kwargs)
         instance.gmx_commands = gmx_commands
         return result
@@ -191,12 +191,7 @@ class GMXCommands:
 
     def __run_without_args(self) -> Tuple[str, str]:
         output = sp.run(
-            [
-                "/bin/bash",
-                "-i",
-                "-c",
-                f"{self.gmx_alias}",
-            ],
+            ["/bin/bash", "-i", "-c", f"{self.gmx_alias}"],
             check=True,
             text=True,
             capture_output=True,
@@ -230,12 +225,7 @@ class GMXCommands:
     @cached_property
     def gmx_info(self) -> str:
         output = sp.run(
-            [
-                "/bin/bash",
-                "-i",
-                "-c",
-                f"{self.gmx_alias}",
-            ],
+            ["/bin/bash", "-i", "-c", f"{self.gmx_alias}"],
             check=True,
             text=True,
             capture_output=True,

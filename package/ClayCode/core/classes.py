@@ -43,6 +43,8 @@ from MDAnalysis import AtomGroup, ResidueGroup, Universe
 from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
 
+logging.getLogger("numexpr").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 # class decorators
