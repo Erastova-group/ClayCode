@@ -10,7 +10,7 @@
 OUTPATH: '/storage/clay_models'
 
 # name of system
-SYSNAME: SWa-1
+SYSNAME: IMt-1
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
@@ -41,13 +41,13 @@ CLAY_TYPE: D21
 # =============================================================================
 
 # number of unit cells in x direction (Default 7)
-X_CELLS: 7
+X_CELLS: 6 #7
 
 # number of unit cells in y direction (Default 5)
-Y_CELLS: 5
+Y_CELLS: 4 # 5
 
 # number of unit cells in z direction (Default 3)
-N_SHEETS: 3
+N_SHEETS: 2 # 3
 
 # ----------------------------------------------------------------------------
 # Optional: Unit Cell Composition and Ratios input
@@ -65,7 +65,7 @@ N_SHEETS: 3
 # -----------------------------------------------------------------------------
 
 # interlayer solvent present or not (Default True)
-IL_SOLV: True
+IL_SOLV: False
 
 # -----------------------------------------------------------------------------
 # Optional: Interlayer Ion Specification Options (comment the other options!)
@@ -92,7 +92,7 @@ UC_WATERS: 20
 # =============================================================================
 
 # full simulation box height in A (Default 150.0)
-BOX_HEIGHT: 150.0
+BOX_HEIGHT: 50 # 150.0
 
 # =============================================================================
 # Optional: Solvation and Bulk Ions Specifications
@@ -106,8 +106,10 @@ BULK_SOLV: True
 #  Na: 0.1)
 
 BULK_IONS:
-  Na: 0.1
-  Cl: 0.05
+  Na: 0
+  Cl: 0
+#  Na: 0.1
+#  Cl: 0.05
 
 # =============================================================================
 # Optional: Simulation Runs Specifications

@@ -10,7 +10,7 @@
 OUTPATH: '/storage/clay_models'
 
 # name of system
-SYSNAME: SWa-1
+SYSNAME: SWy-1
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
