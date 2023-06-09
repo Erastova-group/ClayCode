@@ -149,18 +149,10 @@ class GMXCommands:
                     )
                 )
                 with tempfile.TemporaryDirectory() as odir:
-                    output = sp.run(
-                        [
-                            "/bin/bash",
-                            "-i",
-                            "-c",
-                            f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup",
-                        ],
-                        check=True,
-                        text=True,
-                        capture_output=True
-                        # **outputargs,
-                    )
+
+                    output = sp.run([f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"],
+                        shell=True, check=True, text=True, capture_output=True)
+
                     try:
                         temp_file.unlink()
                     except AttributeError:
@@ -190,12 +182,10 @@ class GMXCommands:
         return func_decorator
 
     def __run_without_args(self) -> Tuple[str, str]:
-        output = sp.run(
-            ["/bin/bash", "-i", "-c", f"{self.gmx_alias}"],
-            check=True,
-            text=True,
-            capture_output=True,
-        )
+
+        output = sp.run([f"{self.gmx_alias}"],
+                        shell=True, check=True, text=True, capture_output=True)
+
         err, out = output.stderr, output.stdout
         return err, out
 
@@ -224,12 +214,10 @@ class GMXCommands:
 
     @cached_property
     def gmx_info(self) -> str:
-        output = sp.run(
-            ["/bin/bash", "-i", "-c", f"{self.gmx_alias}"],
-            check=True,
-            text=True,
-            capture_output=True,
-        )
+
+        output = sp.run([f"{self.gmx_alias}"],
+                        shell=True, check=True, text=True, capture_output=True)
+
         err, out = output.stderr, output.stdout
         try:
             gmx_version = re.search(
@@ -400,8 +388,9 @@ class GMXCommands:
         :type o: str
         """
         _ = execute_bash_command(
-            f'echo -e "\n q" | gmx make_ndx -f {f} -o {o}', capture_output=True
+            f'echo -e "\n q" | {self.gmx_alias} make_ndx -f {f} -o {o}', capture_output=True
         )
+
         assert Path(o).is_file(), f"No index file {o} was written."
 
     def run_gmx_genion_conc(
