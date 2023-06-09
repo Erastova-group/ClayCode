@@ -392,6 +392,7 @@ class BuildArgs(_Args):
         "UC_RATIOS_LIST",
         "ION_WATERS",
         "UC_WATERS",
+        "SPACING_WATERS",
         "DEFAULT_D_SPACE",
         "BOX_HEIGHT",
         "BULK_SOLV",
@@ -508,6 +509,15 @@ class BuildArgs(_Args):
             self.il_solv = selected_solv
         except KeyError:
             self.il_solv = il_solv
+        il_solv_prms = [
+            prm
+            for prm in self.data.keys()
+            if prm in ["UC_WATERS", "ION_WATERS", "SPACING_WATERS"]
+        ]
+        assert len(il_solv_prms) == 1, (
+            f"Only one interlayer solvation specification allowed!\n Found {len(il_solv_prms)}: "
+            + ", ".join(il_solv_prms)
+        )
         for prm in [
             "BUILD",
             "X_CELLS",
@@ -620,13 +630,17 @@ class BuildArgs(_Args):
         )
         self._target_comp.write_csv(self.outpath)
 
+    def _was_specified(self, parameter: str) -> bool:
+        return parameter.upper() in self.data.keys()
+
     def get_il_solvation_data(self):
         n_ions = np.sum([*self.n_il_ions.values()])
         if self.il_solv == True:
-            if hasattr(self, "ion_waters") and not (
-                hasattr(self, "uc_waters") or hasattr(self, "spacing_waters")
+            if self._was_specified("ion_waters") and not (
+                self._was_specified("uc_waters")
+                or self._was_specified("spacing_waters")
             ):
-                waters = self.ion_waters
+                waters = self.data["ION_WATERS"]
                 if isinstance(waters, dict):
                     assert waters.keys() in self.ion_df.index
                     for ion_type in waters.keys():
@@ -636,16 +650,18 @@ class BuildArgs(_Args):
                     waters *= n_ions
                 self.n_waters = waters + n_ions
                 self.il_solv_height = None
-            elif hasattr(self, "uc_waters") and not (
-                hasattr(self, "ion_waters") or hasattr(self, "spacing_waters")
+            elif self._was_specified("uc_waters") and not (
+                self._was_specified("ion_waters")
+                or self._was_specified("spacing_waters")
             ):
                 self.n_waters = self.uc_waters * self.sheet_n_cells + n_ions
                 self.il_solv_height = None
-            elif hasattr(self, "spacing_waters") and not (
-                hasattr(self, "uc_waters") or hasattr(self, "ion_waters")
+            elif self._was_specified("spacing_waters") and not (
+                self._was_specified("uc_waters")
+                or self._was_specified("ion_waters")
             ):
                 self.n_waters = None
-                self.il_solv_height = self.spacing_waters
+                self.il_solv_height = self.data["SPACING_WATERS"]
             else:
                 raise AttributeError(
                     "Number of water molecules or interlayer solvent height to add must be "
@@ -654,8 +670,8 @@ class BuildArgs(_Args):
                 )
         else:
             self.n_waters = None
-            if hasattr(self, "spacing_waters"):
-                self.il_solv_height = self.spacing_waters
+            if self._was_specified["SPACING_WATERS"]:
+                self.il_solv_height = self.data["SPACING_WATERS"]
             else:
                 self.il_solv_height = (
                     n_ions * self.default_d_space

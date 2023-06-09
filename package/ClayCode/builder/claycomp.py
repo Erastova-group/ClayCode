@@ -818,11 +818,15 @@ class TargetClayComposition:
             charge_diff = sheet_charges.sum() - tot_charge
             if np.isclose(charge_diff, 0.0000):
                 pass
+            elif charge_diff < self.occ_corr_threshold:
+                charge_dict["tot"] = sheet_charges.sum()
             else:
-                logger.debug(
+                logger.error(
                     f"Sheet charges ({sheet_charges.sum()}) "
-                    f"do not sum to specified total charge ({tot_charge})"
+                    f"do not sum to specified total charge ({tot_charge})\n"
+                    "Please specify valid charges!"
                 )
+                self.__abort()
         return charge_dict
 
     @property

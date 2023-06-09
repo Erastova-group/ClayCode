@@ -41,10 +41,10 @@ CLAY_TYPE: D21
 # =============================================================================
 
 # number of unit cells in x direction (Default 7)
-X_CELLS: 7
+X_CELLS: 5
 
 # number of unit cells in y direction (Default 5)
-Y_CELLS: 5
+Y_CELLS: 3
 
 # number of unit cells in z direction (Default 3)
 N_SHEETS: 3
@@ -82,10 +82,10 @@ IL_SOLV: True
 # ION_WATERS = 12
 
 # 3. OR per unit cell
-UC_WATERS: 20
+# UC_WATERS: 20
 
 # 4. OR for a target d-spacing value in nm
-# SPACING_WATERS = 1.0
+SPACING_WATERS: 15.0
 
 # =============================================================================
 # Optional: Simulation Box Specifications

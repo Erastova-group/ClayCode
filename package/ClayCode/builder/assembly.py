@@ -39,6 +39,8 @@ __all__ = ["Builder", "Sheet"]
 
 logger = logging.getLogger(__name__)
 
+SOLV_EXTRA = 0.4  # A
+
 
 class Builder:
     __tmp_outpath = tempfile.TemporaryDirectory()
@@ -208,8 +210,8 @@ class Builder:
                 p=self.stack.top,
                 pp=solv_box_crd.top,
                 cp=self.stack,
-                # radius=0.2,
-                # scale=0.57,
+                radius=0.105,
+                scale=0.57,
                 o=solv_box_crd,
                 maxsol=0,
                 box="{} {} {}".format(
@@ -792,10 +794,10 @@ class Solvent:
         self.y_dim = float(y_dim)
         if z_dim is None and n_mols is not None:
             self.n_mols = int(n_mols)
-            self.z_dim = self.get_solvent_sheet_height(self.n_mols)
+            self._z_dim = self.get_solvent_sheet_height(self.n_mols)
         elif n_mols is None and z_dim is not None:
-            self.z_dim = float(z_dim)
-            self.n_mols = self.get_sheet_solvent_mols(self.z_dim)
+            self._z_dim = float(z_dim)
+            self.n_mols = self.get_sheet_solvent_mols(self._z_dim)
         else:
             raise ValueError(
                 "No sheet height or number of molecules specified"
@@ -806,6 +808,10 @@ class Solvent:
             self.n_ions = n_ions
             self.n_mols += self.n_ions
         self.n_mols: int = int(self.n_mols)
+
+    @property
+    def z_dim(self) -> float:
+        return self._z_dim + SOLV_EXTRA
 
     @property
     def universe(self) -> Universe:
@@ -863,12 +869,12 @@ class Solvent:
         #     topology.write(spc_topname)
         # elif topology.__class__.__name__ == 'TOPFile':
         #     spc_topname = str(topology.resolve())
-        # dr = [self.x_dim / 10, self.y_dim / 10, self.z_dim / 20]
+        # dr = [self.x_dim / 10, self.y_dim / 10, self._z_dim / 20]
         # with tempfile.NamedTemporaryFile(
         #         suffix=".dat"
         # ) as posfile:
         #     write_insert_dat(
-        #         n_mols=self.n_mols, save=posfile.name, posz=self.z_dim / 20
+        #         n_mols=self.n_mols, save=posfile.name, posz=self._z_dim / 20
         #     )
         #     assert Path(posfile.name).is_file()
 
@@ -879,16 +885,16 @@ class Solvent:
         #     nmol = self.n_mols,
         #     o=spc_gro,
         #     dr="{} {} {}".format(*dr),
-        #     box=f"{self.x_dim / 10} {self.y_dim / 10} {self.z_dim / 10}"
+        #     box=f"{self.x_dim / 10} {self.y_dim / 10} {self._z_dim / 10}"
         # )
         solv, out = self.gmx_commands.run_gmx_solvate(
             cs="spc216",
             maxsol=self.n_mols,
             o=spc_gro,
             p=spc_top,
-            scale=0.55,
+            scale=0.57,
             v="",
-            box=f"{self.x_dim / 10} {self.y_dim / 10} {self.z_dim / 10}",
+            box=f"{self.x_dim / 10} {self.y_dim / 10} {(self.z_dim / 10)}",
         )
         self.check_solvent_nummols(solv)
         logger.debug(f"Saving solvent sheet as {spc_gro.stem!r}")
