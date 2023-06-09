@@ -22,7 +22,7 @@ SYSNAME: SWa-1
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: /storage/claycode/package/ClayCode/builder/tests/data/exp_non.csv
+CLAY_COMP: package/ClayCode/builder/tests/data/exp_non.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
@@ -84,8 +84,8 @@ IL_SOLV: True
 # 3. OR per unit cell
 UC_WATERS: 20
 
-# 4. OR for a target d-spacing value in nm
-# SPACING_WATERS = 1.0
+# 4. OR for a target d-spacing value in A
+# SPACING_WATERS = 10.0
 
 # =============================================================================
 # Optional: Simulation Box Specifications

@@ -138,8 +138,8 @@ IL_SOLV: True
 # 3. OR per unit cell
 UC_WATERS: 20
 
-# 4. OR for a target d-spacing value in nm
-# SPACING_WATERS = 1.0
+# 4. OR for a target d-spacing value in A
+# SPACING_WATERS = 10.0
 
 # =============================================================================
 # Optional: Simulation Box Specifications

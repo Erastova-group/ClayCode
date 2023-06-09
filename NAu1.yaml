@@ -7,10 +7,11 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: '/storage/clay_models'
+OUTPATH: './'
 
 # name of system
-SYSNAME: KGa-1
+# compositions included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
+SYSNAME: NAu-1-fe
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
@@ -22,7 +23,7 @@ SYSNAME: KGa-1
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: package/ClayCode/builder/tests/data/exp_non.csv
+CLAY_COMP: exp_clay.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
@@ -33,7 +34,7 @@ CLAY_COMP: package/ClayCode/builder/tests/data/exp_non.csv
 # layered double hydroxide 2:1 - L21
 # Sepiolite - SEP
 
-CLAY_TYPE: D11
+CLAY_TYPE: D21
 
 
 # =============================================================================
@@ -41,13 +42,13 @@ CLAY_TYPE: D11
 # =============================================================================
 
 # number of unit cells in x direction (Default 7)
-X_CELLS: 6 #7
+X_CELLS: 7
 
 # number of unit cells in y direction (Default 5)
-Y_CELLS: 4 # 5
+Y_CELLS: 5
 
 # number of unit cells in z direction (Default 3)
-N_SHEETS: 2 # 3
+N_SHEETS: 3
 
 # ----------------------------------------------------------------------------
 # Optional: Unit Cell Composition and Ratios input
@@ -65,7 +66,7 @@ N_SHEETS: 2 # 3
 # -----------------------------------------------------------------------------
 
 # interlayer solvent present or not (Default True)
-IL_SOLV: False
+IL_SOLV: True
 
 # -----------------------------------------------------------------------------
 # Optional: Interlayer Ion Specification Options (comment the other options!)
@@ -84,15 +85,15 @@ IL_SOLV: False
 # 3. OR per unit cell
 UC_WATERS: 20
 
-# 4. OR for a target d-spacing value in A
-# SPACING_WATERS = 10.0
+# 4. OR for a target d-spacing value in nm
+# SPACING_WATERS = 1.0
 
 # =============================================================================
 # Optional: Simulation Box Specifications
 # =============================================================================
 
 # full simulation box height in A (Default 150.0)
-BOX_HEIGHT: 50 # 150.0
+BOX_HEIGHT: 150.0
 
 # =============================================================================
 # Optional: Solvation and Bulk Ions Specifications
@@ -106,10 +107,8 @@ BULK_SOLV: True
 #  Na: 0.1)
 
 BULK_IONS:
-  Na: 0
-  Cl: 0
-#  Na: 0.1
-#  Cl: 0.05
+  Na: 0.1
+  Cl: 0.05
 
 # =============================================================================
 # Optional: Simulation Runs Specifications
@@ -149,4 +148,4 @@ BULK_IONS:
 # bash alias for used GROMACS version
 # -----------------------------------------------------------------------------
 
-GMX: gmx_mpi
+GMX: gmx
