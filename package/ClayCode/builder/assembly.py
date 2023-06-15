@@ -39,9 +39,6 @@ __all__ = ["Builder", "Sheet"]
 
 logger = logging.getLogger(__name__)
 
-SOLV_EXTRA = 0.4  # A
-
-
 class Builder:
     __tmp_outpath = tempfile.TemporaryDirectory()
     __tmp_file = tempfile.NamedTemporaryFile(
@@ -59,6 +56,7 @@ class Builder:
             fstem=self.args.filestem,
             outpath=self.args.outpath,
         )
+
         self.top = TopologyConstructor(self.args._uc_data, self.args.ff)
         self.__il_solv = None
         self.__stack = None
@@ -802,6 +800,9 @@ class Solvent:
             raise ValueError(
                 "No sheet height or number of molecules specified"
             )
+
+        self._z_padding = 0
+
         if n_ions is None:
             self.n_ions = 0
         else:
@@ -811,7 +812,7 @@ class Solvent:
 
     @property
     def z_dim(self) -> float:
-        return self._z_dim + SOLV_EXTRA
+        return self._z_dim + self._z_padding
 
     @property
     def universe(self) -> Universe:
@@ -887,16 +888,36 @@ class Solvent:
         #     dr="{} {} {}".format(*dr),
         #     box=f"{self.x_dim / 10} {self.y_dim / 10} {self._z_dim / 10}"
         # )
-        solv, out = self.gmx_commands.run_gmx_solvate(
-            cs="spc216",
-            maxsol=self.n_mols,
-            o=spc_gro,
-            p=spc_top,
-            scale=0.57,
-            v="",
-            box=f"{self.x_dim / 10} {self.y_dim / 10} {(self.z_dim / 10)}",
-        )
-        self.check_solvent_nummols(solv)
+
+        while True:
+
+            if self._z_padding > 5:
+                raise Exception("Usuccessful solvation after expanded z-axis by {self._z_padding} A. Something odd is going on...")
+
+            logger.info(f"Attempting solvation with z-axis = {self.z_dim:.2f} A")
+        
+            solv, out = self.gmx_commands.run_gmx_solvate(
+                cs="spc216",
+                maxsol=self.n_mols,
+                o=spc_gro,
+                p=spc_top,
+                scale=0.57,
+                v="",
+                box=f"{self.x_dim / 10} {self.y_dim / 10} {(self.z_dim / 10)}",
+            )
+
+            # check if a sufficient number of water molecules has been added
+            # if not, expand z-axis by 1 A and try again
+            try:
+                self.check_solvent_nummols(solv)
+            except Exception as e:
+                logger.info(f"{e}")
+                self._z_padding += 0.5
+                continue
+
+            break
+
+
         logger.debug(f"Saving solvent sheet as {spc_gro.stem!r}")
         self.__universe: Universe = spc_gro.universe
         self.__top: TopologyConstructor = topology
@@ -909,5 +930,5 @@ class Solvent:
             raise ValueError(
                 "With chosen box height, GROMACS was only able to "
                 f"insert {added_wat} instead of {self.n_mols} water "
-                f"molecules.\nIncrease box size!"
+                f"molecules. Increase box size!"
             )
