@@ -333,21 +333,37 @@ siminpparser.add_argument("-run_config")
 #
 
 
-def read_yaml_decorator(f):
-    def wrapper(self: _Args):
-        assert isinstance(self, _Args), "Wrong class for decorator"
-        with open(self.data["yaml_file"], "r") as file:
-            self.__yaml_data = yaml.safe_load(file)
-        logger.info(f"Reading {file.name!r}:\n")
-        for k, v in self.__yaml_data.items():
-            if k in self._arg_names:
-                self.data[k] = v
-                logger.info(f"\t{k} = {v!r}")
-            else:
-                raise KeyError(f"Unrecognised argument {k}!")
-        return f(self)
+def read_yaml_path_decorator(*path_args):
+    def read_yaml_decorator(f):
+        def wrapper(self: _Args):
+            assert isinstance(self, _Args), "Wrong class for decorator"
+            with open(self.data["yaml_file"], "r") as file:
+                self.__yaml_data = yaml.safe_load(file)
+            logger.info(f"Reading {file.name!r}:\n")
+            for k, v in self.__yaml_data.items():
+                if k in self._arg_names:
+                    if k in path_args:
+                        path = BasicPath(v).resolve()
+                        if path.suffix != "":
+                            try:
+                                path = File(path, check=True)
+                            except FileNotFoundError:
+                                path = File(
+                                    self.data["yaml_file"].parent / v,
+                                    check=True,
+                                )
+                        else:
+                            path = Dir(path)
+                        v = str(path)
+                    self.data[k] = v
+                    logger.info(f"\t{k} = {v!r}")
+                else:
+                    raise KeyError(f"Unrecognised argument {k}!")
+            return f(self)
 
-    return wrapper
+        return wrapper
+
+    return read_yaml_decorator
 
 
 class _Args(ABC, UserDict):
@@ -435,7 +451,7 @@ class BuildArgs(_Args):
         # self.check()
         self.process()
 
-    @read_yaml_decorator
+    @read_yaml_path_decorator("CLAY_COMP", "OUTPATH")
     def read_yaml(self) -> None:
         """Read clay model builder specifications
         and mdp_parameter defaults from yaml file."""
@@ -451,6 +467,9 @@ class BuildArgs(_Args):
                 self.data.pop(cmdline_dest)
             try:
                 yaml_csv_file = File(self.data[yaml_kwd], check=True)
+            # except FileNotFoundError:
+            #     yaml_csv_file = BasicPath(self.data[yaml_kwd]).resolve().relative_to(BasicPath('.').resolve())
+            #     yaml_csv_file = File(self.data['yaml_file'].parent / yaml_csv_file, check=True)
             except KeyError:
                 pass
             if (
