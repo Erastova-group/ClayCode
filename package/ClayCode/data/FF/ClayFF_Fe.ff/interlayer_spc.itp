@@ -8,11 +8,20 @@
   2     HW      1       iSL     HW1     1               0.41
   3     HW      1       iSL     HW2     1               0.41
 
+
+#ifndef FLEXIBLE
+[ constraints ]
+;i j funct doh  dhh
+1       2       1       0.1
+1       3       1       0.1
+2       3       1       0.1633
+#else
 [ bonds ]
 ; i     j       funct   length  force.c.
   1     2       1       0.1     345000  0.1     345000
   1     3       1       0.1     345000  0.1     345000
-        
+
 [ angles ]
 ; i     j       k       funct   angle   force.c.
   2     1       3       1       109.47  383     109.47  383
+#endif
