@@ -23,7 +23,7 @@ SYSNAME: NAu-1-fe
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: ./Tutorial/exp_clay.csv
+CLAY_COMP: ./exp_clay.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
@@ -148,4 +148,4 @@ BULK_IONS:
 # bash alias for used GROMACS version
 # -----------------------------------------------------------------------------
 
-GMX: gmx
+GMX: gmx_mpi

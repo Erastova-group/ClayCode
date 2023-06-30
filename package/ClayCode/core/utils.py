@@ -132,20 +132,20 @@ def _(str_obj: str):
 
 
 def execute_bash_command(command, **outputargs):
-    output = sp.run([command], shell=True, **outputargs)
+    output = sp.run([command], shell=True, capture_output=True, text=True)
     return output
 
 
 def get_file_diff(file_1, file_2):
     diff = execute_bash_command(
-        f"diff {file_1} {file_2}", capture_output=True, text=True
+        f"diff {file_1} {file_2}", shell=True, capture_output=True, text=True
     )
     return diff.stdout
 
 
 def grep_file(file, regex: str):
     diff = execute_bash_command(
-        f'grep -E "{regex}" {file}', capture_output=True, text=True
+        f'grep -E "{regex}" {file}', shell=True, capture_output=True, text=True
     )
     return diff.stdout
 

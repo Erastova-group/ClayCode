@@ -7,7 +7,7 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: './'
+OUTPATH: .
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
 # compositions included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
@@ -23,7 +23,7 @@ SYSNAME: SWy-1
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: ./exp_clay.csv
+CLAY_COMP: exp_clay.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21

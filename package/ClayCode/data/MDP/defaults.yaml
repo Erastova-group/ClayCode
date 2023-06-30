@@ -146,13 +146,14 @@ D-SPACE:
 EM:
   integrator: steep
   emtol: 500
-  emstep: 0.01
-  nsteps: 500
+  emstep: 0.001
+  nsteps: 5000
   lincs-order: 8
   lincs-iter: 8
   nstxout: 1
   nstenergy: 1
   rvdw: 1.4
+  rcoulomb: 1.4
   rlist: 1.4
   constraints: none
 
