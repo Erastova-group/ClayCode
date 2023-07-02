@@ -29,7 +29,7 @@ __all__ = [
     "get_first_item_as_int",
     "check_file_exists",
     "str_to_int",
-    "execute_bash_command",
+    "execute_shell_command",
     "get_file_diff",
     "grep_file",
     "get_logfname",
@@ -131,22 +131,35 @@ def _(str_obj: str):
     return int(str_obj)
 
 
-def execute_bash_command(command, **outputargs):
-    output = sp.run([command], shell=True, capture_output=True, text=True)
+def execute_shell_command(command):
+    try:
+        output = sp.run(
+            [command], shell=True, capture_output=True, text=True, check=True
+        )
+    except sp.CalledProcessError:
+        shell = sp.run(
+            ["echo $SHELL"],
+            shell=True,
+            text=True,
+            check=True,
+            capture_output=True,
+        ).stdout.strip()
+        output = sp.run(
+            [shell, "-c", "-i", command],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
     return output
 
 
 def get_file_diff(file_1, file_2):
-    diff = execute_bash_command(
-        f"diff {file_1} {file_2}", shell=True, capture_output=True, text=True
-    )
+    diff = execute_shell_command(f"diff {file_1} {file_2}")
     return diff.stdout
 
 
 def grep_file(file, regex: str):
-    diff = execute_bash_command(
-        f'grep -E "{regex}" {file}', shell=True, capture_output=True, text=True
-    )
+    diff = execute_shell_command(f'grep -E "{regex}" {file}')
     return diff.stdout
 
 

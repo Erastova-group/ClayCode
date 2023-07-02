@@ -12,7 +12,7 @@ from typing import Tuple
 
 from ClayCode.analysis import MDP
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.utils import execute_bash_command, set_mdp_parameter
+from ClayCode.core.utils import execute_shell_command, set_mdp_parameter
 
 DEFAULT_GMX = "gmx"
 DEFAULT_MDP_FILE = MDP / "mdp_prms"
@@ -56,6 +56,7 @@ def gmx_command_wrapper(f):
 class GMXCommands:
     def __init__(self, gmx_alias="gmx", mdp_template=None, mdp_defaults={}):
         self.gmx_alias = gmx_alias
+        # self.shell = sp.run('echo $SHELL', shell=True, capture_output=True, text=True, check=True).stdout
         _ = self.gmx_header
         try:
             self._mdp_template = mdp_template
@@ -157,14 +158,8 @@ class GMXCommands:
                         f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
                     )
                     try:
-                        output = sp.run(
-                            [
-                                f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
-                            ],
-                            shell=True,
-                            check=True,
-                            text=True,
-                            capture_output=True,
+                        output = execute_shell_command(
+                            f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
                         )
                         temp_file.unlink()
                     except AttributeError:
@@ -218,13 +213,17 @@ class GMXCommands:
         return func_decorator
 
     def __run_without_args(self) -> Tuple[str, str]:
-        output = sp.run(
-            [f"{self.gmx_alias}"],
-            shell=True,
-            check=True,
-            text=True,
-            capture_output=True,
-        )
+        # try:
+        output = execute_shell_command(f"{self.gmx_alias}")
+        # output = sp.run(
+        #     [self.shell.strip(), "-i", "-c", f"{self.gmx_alias}"],
+        #     shell=True,
+        #     check=True,
+        #     text=True,
+        #     capture_output=True,
+        # )
+        # except sp.CalledProcessError as e:
+        #     print(e.stderr, e.stdout)
         err, out = output.stderr, output.stdout
         return err, out
 
@@ -253,13 +252,14 @@ class GMXCommands:
 
     @cached_property
     def gmx_info(self) -> str:
-        output = sp.run(
-            [f"{self.gmx_alias}"],
-            shell=True,
-            check=True,
-            text=True,
-            capture_output=True,
-        )
+        output = execute_shell_command(f"{self.gmx_alias}")
+        # output = sp.run(
+        #     [f"{self.gmx_alias}"],
+        #     shell=True,
+        #     check=True,
+        #     text=True,
+        #     capture_output=True,
+        # )
         err, out = output.stderr, output.stdout
         try:
             gmx_version = re.search(
@@ -429,7 +429,7 @@ class GMXCommands:
         :param o: ndx filename
         :type o: str
         """
-        _ = execute_bash_command(
+        _ = execute_shell_command(
             f'echo -e "\n q" | {self.gmx_alias} make_ndx -f {f} -o {o}'
         )
         assert Path(o).is_file(), f"No index file {o} was written."
@@ -461,14 +461,12 @@ class GMXCommands:
         else:
             istr = f"-nname {iname} -nq {iq}"
         with tempfile.TemporaryDirectory() as odir:
-            output = execute_bash_command(
+            output = execute_shell_command(
                 f'cd {odir}; echo -e " SOL \n q" | '
                 f"{self.gmx_alias} genion -s {s} -p {p} -o {o} -n {n} "
                 f"-conc {conc} "
                 f"{istr} "
-                f"-rmin 0.2 -noneutral -nobackup",
-                capture_output=True,
-                text=True,
+                f"-rmin 0.2 -noneutral -nobackup"
             )
             logger.debug(
                 f'echo -e " SOL \n q" | '
@@ -513,14 +511,12 @@ class GMXCommands:
         :type nq: int
         """
         with tempfile.TemporaryDirectory() as odir:
-            output = execute_bash_command(
+            output = execute_shell_command(
                 f'cd {odir}; echo -e " SOL \n q" | '
                 f"{self.gmx_alias} genion -s {s} -p {p} -o {o} -n {n} "
                 f"-pname {pname} -pq {pq} "
                 f"-nname {nname} -nq {nq} "
-                f"-rmin 0.2 -neutral -nobackup",
-                capture_output=True,
-                text=True,
+                f"-rmin 0.2 -neutral -nobackup"
             )
             logger.debug(
                 f'echo -e " SOL \n q" | '
@@ -567,14 +563,12 @@ class GMXCommands:
         :type nq: int
         """
         with tempfile.TemporaryDirectory() as odir:
-            output = execute_bash_command(
+            output = execute_shell_command(
                 f'cd {odir}; echo -e " SOL \n q" | '
                 f"{self.gmx_alias} genion -s {s} -p {p} -o {o} -n {n} "
                 f"-pname {pname} -pq {pq} -nn {nn} "
                 f"-nname {nname} -nq {nq} -np {np} "
-                f"-rmin 0.2 -noneutral -nobackup",
-                capture_output=True,
-                text=True,
+                f"-rmin 0.2 -noneutral -nobackup"
             )
             logger.debug(
                 f'echo -e " SOL \n q" | '

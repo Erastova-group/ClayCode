@@ -39,6 +39,7 @@ __all__ = ["Builder", "Sheet"]
 
 logger = logging.getLogger(__name__)
 
+
 class Builder:
     __tmp_outpath = tempfile.TemporaryDirectory()
     __tmp_file = tempfile.NamedTemporaryFile(
@@ -890,12 +891,15 @@ class Solvent:
         # )
 
         while True:
-
             if self._z_padding > 5:
-                raise Exception("Usuccessful solvation after expanded z-axis by {self._z_padding} A. Something odd is going on...")
+                raise Exception(
+                    "Usuccessful solvation after expanded z-axis by {self._z_padding} A. Something odd is going on..."
+                )
 
-            logger.info(f"Attempting solvation with z-axis = {self.z_dim:.2f} A")
-        
+            logger.info(
+                f"Attempting solvation with z-axis = {self.z_dim:.2f} A"
+            )
+
             solv, out = self.gmx_commands.run_gmx_solvate(
                 cs="spc216",
                 maxsol=self.n_mols,
@@ -916,7 +920,6 @@ class Solvent:
                 continue
 
             break
-
 
         logger.debug(f"Saving solvent sheet as {spc_gro.stem!r}")
         self.__universe: Universe = spc_gro.universe

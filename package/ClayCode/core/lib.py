@@ -714,7 +714,8 @@ def add_ions_n_mols(
     :rtype: int
     """
     logger.debug(f"adding {n_atoms} {ion} ions to {crdin}")
-    mdp = MDP / "genion.mdp"
+    mdp = MDP / gmx_commands.version / "mdp_prms.mdp"  # , "genion.mdp"
+    print(mdp)
     assert mdp.exists(), f"{mdp.resolve()} does not exist"
     odir = Path(odir).resolve()
     assert odir.is_dir()
