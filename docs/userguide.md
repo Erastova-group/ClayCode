@@ -86,7 +86,7 @@ See details in the  [YAML](YAML.md)
 
 ### Parameters
 
-<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/input_illustration.png"  height="600">
+<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/input_illustration.png" height="600">
 
 
 
