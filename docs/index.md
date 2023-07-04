@@ -1,6 +1,6 @@
 **Welcome to ClayCode wiki!**
 
-<img src="/docs/assets/ClayCode_Logo1.png" alt="Logo" width="200"/>
+![Book logo](/assets/ClayCode_Logo1.png)
 
 by Hannah Pollak, Matteo Degiacomi, Valentina Erastova
 
