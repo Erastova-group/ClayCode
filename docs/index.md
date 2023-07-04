@@ -1,7 +1,6 @@
 **Welcome to ClayCode wiki!**
 
-![logo](https://github.com/Erastova-group/ClayCode/blob/main/docs/assets/ClayCode_Logo1.png?raw=true)
-
+![logo](https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/ClayCode_Logo1.png)
 
 by Hannah Pollak, Matteo Degiacomi, Valentina Erastova
 
