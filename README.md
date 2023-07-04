@@ -9,12 +9,11 @@ University of Edinburgh, 2023
 This package requires [python version >=3.9](https://docs.python.org/3/using/index.html) and [pipx](https://pypa.github.io/pipx/installation/), and it also uses some of the functionality of [Gromacs](https://manual.gromacs.org/current/install-guide/index.html).
 
 Install ClayCode:
-
-     ```shell
-     gh repo clone Erastova-group/ClayCode
-     cd ClayCode
-     bash install.sh
-     ````
+```shell
+gh repo clone Erastova-group/ClayCode
+cd ClayCode
+bash install.sh
+````
 
 ### Example usage:
 ```shell
