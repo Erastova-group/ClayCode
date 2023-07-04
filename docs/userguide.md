@@ -17,6 +17,7 @@ Furthermore, solvent molecules and ions are added as GROMACS subprocesses. There
 # Code structure:
 
 Modules:
+
 * ClayCode.builder
 * ClayCode.siminp
 * ClayCode.config
@@ -24,6 +25,7 @@ Modules:
 * ClayCode.tests
 
 Environemnt set up files:
+
 * setup.py
 * ...
 
