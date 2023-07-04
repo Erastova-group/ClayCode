@@ -141,7 +141,7 @@ dmypy.json
 .gro
 *.tpr
 *.zip
-*.png
+# *.png
 *.bz2
 .idea/
 *#*
