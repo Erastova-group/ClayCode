@@ -5,11 +5,12 @@ University of Edinburgh, 2023
 
 ## Installation
 
-This package requires python version >=3.9 and pipx.
+This package requires python version >=3.9 and pipx, and it also uses some of the functionality of Gromacs.
 
-1. Install Python 3.9: Follow the [Python Setup and Usage guide](https://docs.python.org/3/using/index.html) for your OS
-1. Install pipx: Follow the [Installation guide](https://pypa.github.io/pipx/installation/) for your OS
-1. Install ClayCode
+1. Install Python 3.9: Follow the [Python Setup and Usage guide](https://docs.python.org/3/using/index.html)
+2. Install pipx: Follow the [Installation guide](https://pypa.github.io/pipx/installation/)
+3. Install Gromacs: Follow the [Current Gromacs installation guide](https://manual.gromacs.org/current/install-guide/index.html) 
+4. Install ClayCode:
 
      ```shell
      gh repo clone Erastova-group/ClayCode
