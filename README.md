@@ -3,7 +3,12 @@ Hannah Pollak, Matteo Degiacomi, Valentina Erastova
 
 University of Edinburgh, 2023
 
-
+[Documetation]:  https://erastova-group.github.io/ClayCode
+<div class="text-center">
+<a href="docs/" class="btn btn-primary" role="button">Documentation</a> 
+</div>
+  
+ 
 ### Quick start:
 
 This package requires [python version](https://docs.python.org/3/using/index.html) >=3.9 and [pipx](https://pypa.github.io/pipx/installation/), and it also uses some of the functionality of [Gromacs](https://manual.gromacs.org/current/install-guide/index.html).
@@ -22,8 +27,8 @@ bash install.sh
 ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
 
-### Manual and Examples:
-Please see [Wiki](https://github.com/Erastova-group/ClayCode/wiki) for manual and examples
+### Documentation and Examples:
+Please see [ClayCode website](https://erastova-group.github.io/ClayCode) for manual and examples.
 
 ### Cite as:
 XXX
