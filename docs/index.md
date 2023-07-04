@@ -1,12 +1,11 @@
+
+
+<!--- ![logo](https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/ClayCode_Logo1.png)-->
+<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/ClayCode_Logo1.png"  width="400" height="400">
+
 **Welcome to ClayCode wiki!**
 
-![logo](https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/ClayCode_Logo1.png)
 
-by Hannah Pollak, Matteo Degiacomi, Valentina Erastova
-
-University of Edinburgh, 2023
-
-***
 
 ClayCode generates clay mineral structures based upon their natural partially ocupied unit cell compositions and assigns ClayFF forecefield parameters, generating all the input files ready for simulation with Gromacs software.
 
@@ -25,6 +24,7 @@ ClayCode generates clay mineral structures based upon their natural partially oc
 
 ***
 
+
 **Report bugs** via [issues](https://github.com/Erastova-group/ClayCode/issues),
 give suggestions for future improvements and new features,
 and contribute via [pull requests](https://github.com/Erastova-group/ClayCode/pulls).
@@ -32,7 +32,9 @@ and contribute via [pull requests](https://github.com/Erastova-group/ClayCode/pu
 
 Claycode is published under the [MIT License](https://github.com/Erastova-group/ClayCode/blob/main/LICENSE.txt)
 
+ClayCode is developed by: Hannah Pollak, Matteo Degiacomi and Valentina Erastova, University of Edinburgh, 2023
+
 
 **CITE**: HP, MTD, VE "ClayCode: setting up clay structures from simulation in Gromacs", DOI: XXX
 
-***
+
