@@ -42,6 +42,10 @@ theme:
         - yaml
         - python
         - bash
+    collapse_navigation: true
+    titles_only: false
+    navigation_depth: 4
+    sticky_navigation: true
  
 
 
