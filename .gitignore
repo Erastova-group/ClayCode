@@ -150,4 +150,6 @@ notebooks
 results
 dask-worker-space
 data
+
+# the website goes into the gh-pages branch 
 site/
