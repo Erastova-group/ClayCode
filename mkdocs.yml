@@ -24,7 +24,7 @@ nav:
         - Output files: output.md
 
     - Tutorials: 
-        - Tutorials: tutorials.md
+        - Overview: tutorials.md
         - Example files:
             - MMT: mmt.md
             - Nont: nont.md
