@@ -19,7 +19,7 @@ nav:
         - Modules:
             - ClayCode.builder: builder.md
         - Input files: 
-            - CVS: CSV.md
+            - CSV: CSV.md
             - YAML: YAML.md
         - Output files: output.md
 

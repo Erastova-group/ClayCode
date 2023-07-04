@@ -1,4 +1,4 @@
-Builder 
+## ClayCode.builder 
 
 Builds clay models based on average target occupancies for a specified unit cell type.
 
@@ -7,8 +7,8 @@ Builds clay models based on average target occupancies for a specified unit cell
 ### Usage
 
 Arguments for `builder` are:
-  - `-f`: [System specifications YAML file] (docs/)
-  - `-comp`: [Clay composition in CSV format](#2-clay-composition-in-csv-format) (can also be given in system specifications YAML)
+  - `-f`: [System specifications YAML file](YAML.md)
+  - `-comp`: [Clay composition in CSV format](CSV.md) (can also be given in system specifications YAML)
   - `--manual_setup` (run builder in interactive mode)
 #### Example:
 

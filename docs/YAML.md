@@ -1,9 +1,8 @@
 System specifications YAML file
 
-The first section contains general parameters that are required for the model construction.[^2]
+The first section contains general parameters that are required for the model construction.
 If the directives in the optional section are not given by the user, `ClayCode` will use default values.
 
-[^2]: Currently only dioctahedral 2:1 unit cell type available
 
 ```yaml
 # =============================================================================
