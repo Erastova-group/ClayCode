@@ -1,0 +1,34 @@
+
+# Project information
+site_name: ClayCode
+site_url: https://erastova-group.github.io/ClayCode/
+site_author: Valentina Erastova
+
+# Repository
+repo_name: ClayCode
+repo_url: https://github.com/Erastova-group/ClayCode
+edit_uri: edit/master/docs
+docs_dir: docs
+
+# Navigation
+nav:
+    - Welcome: welcome.md
+    - Quick Start: start.md
+    - ClayCode.builder: builder.md
+    - Input files: 
+        - CVS: CSV.md
+        - YAML: YAML.md
+    - Output files: output.md
+
+
+
+# Theme
+theme: 
+    name: readthedocs
+    highlightjs: true
+    hljs_languages:
+        - yaml
+
+# Plugins
+plugins:
+  - search
