@@ -1,4 +1,8 @@
+
 # ClayCode
+
+<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/ClayCode_Logo1.png"  width="200" height="200">
+
 Hannah Pollak, Matteo Degiacomi, Valentina Erastova
 
 University of Edinburgh, 2023
