@@ -3,11 +3,6 @@ Hannah Pollak, Matteo Degiacomi, Valentina Erastova
 
 University of Edinburgh, 2023
 
-[Documetation]:  https://erastova-group.github.io/ClayCode
-<div class="text-center">
-<a href="docs/" class="btn btn-primary" role="button">Documentation</a> 
-</div>
-  
  
 ### Quick start:
 
@@ -28,7 +23,7 @@ ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
 
 ### Documentation and Examples:
-Please see [ClayCode website](https://erastova-group.github.io/ClayCode) for manual and examples.
+Please see [ClayCode website https://erastova-group.github.io/ClayCode ](https://erastova-group.github.io/ClayCode) for manual and examples.
 
 ### Cite as:
 XXX
