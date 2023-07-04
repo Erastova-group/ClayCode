@@ -4,6 +4,7 @@ Builds clay models based on average target occupancies for a specified unit cell
 
 `ClayCode.builder` will match a combination of differently substituted unit cells to fit the average target occupancies specified by the user.
 
+
 ### Usage
 
 Arguments for `builder` are:
@@ -17,6 +18,7 @@ Arguments for `builder` are:
 ```shell
 ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
+
 
 ### Required input files:
 
