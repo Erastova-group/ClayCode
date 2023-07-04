@@ -14,17 +14,23 @@ repo_url: https://github.com/Erastova-group/ClayCode
 nav:
     - Home: index.md
     - Quick Start: start.md
-    - User guide:  
-        - ClayCode.builder: builder.md
+    - Documentation: 
+        - User Guide: userguide.md
+        - Modules:
+            - ClayCode.builder: builder.md
         - Input files: 
             - CVS: CSV.md
             - YAML: YAML.md
         - Output files: output.md
+
     - Tutorials: 
-        - MMT: mmt.md
-        - Nont: nont.md
-        - Kao: kao.md
-        - LDH: ldh.md
+        - Tutorials: tutorials.md
+        - Example files:
+            - MMT: mmt.md
+            - Nont: nont.md
+            - Kao: kao.md
+            - LDH: ldh.md
+    - Developers Guide: developers.md
 
 
 
