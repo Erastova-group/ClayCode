@@ -1,13 +1,20 @@
 ## user guide outline
 
-is compatible with \ac{UNIX} operating systems. 
 
-It relies on the following python libraries: NumPy (1.21.2) \cite{harris2020array}, 
 
-Pandas (1.3.4) and MDAnalysis (2.0.0) 
 
-Furthermore, solvent molecules and ions are added as \ac{GROMACS} subprocesses. Therefore, in order to execute \cc*[builder], a local \ac{GROMACS} installation is required.
 
+## Dependencies:
+
+
+ClayCode is compatible with UNIX operating systems. 
+
+It relies on the following python libraries: NumPy (1.21.2), Pandas (1.3.4) and MDAnalysis (2.0.0).
+
+Furthermore, solvent molecules and ions are added as GROMACS subprocesses. Therefore, in order to execute builder, a local GROMACS installation is required.
+
+
+# Code structure:
 
 Modules:
 * ClayCode.builder
@@ -49,13 +56,41 @@ ClayCode
 ```
 
 
+
+# Data files
+
+The main two data files are the clay structure file, unit cell structures, and the force field file
+
+
+## Clay composition
+
+See details in the [CSV](CSV.md)
+
+## Clay Unite Cell structures
+
+The unit cells are D211...
+T21...
+
+
 ## Force fields 
 
+ClayFF force field
+Note on the Fe
 
 
 
-## Input files:
+
+## Input parameters 
+
+See details in the  [YAML](YAML.md)
+
+### Parameters
+
+<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/input_illustration.png"  height="600">
 
 
-<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/input_illustratiion.png"  width="400" height="400">
+
+## Output
+
+See [Output files](output.md)
 

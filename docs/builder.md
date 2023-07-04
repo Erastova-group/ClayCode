@@ -1,11 +1,11 @@
-## ClayCode.builder 
+# ClayCode.builder 
 
 Builds clay models based on average target occupancies for a specified unit cell type.
 
 `ClayCode.builder` will match a combination of differently substituted unit cells to fit the average target occupancies specified by the user.
 
 
-### Usage
+# Usage
 
 Arguments for `builder` are:
 * `-f`: [System specifications YAML file](YAML.md)
@@ -13,14 +13,10 @@ Arguments for `builder` are:
 * `--manual_setup` (run builder in interactive mode)
 
 
-#### Example:
+## Example:
 
 ```shell
 ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
 
 
-### Required input files:
-
-* [YAML](YAML.md)
-* [CSV](CSV.md)
