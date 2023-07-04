@@ -12,7 +12,7 @@ docs_dir: docs
 
 # Navigation
 nav:
-    - Welcome: welcome.md
+- Welcome: welcome.md
     - Quick Start: start.md
     - ClayCode.builder: builder.md
     - Input files: 
