@@ -1,4 +1,10 @@
+System specifications YAML file
 
+The first section contains general parameters that are required for the model construction.
+If the directives in the optional section are not given by the user, `ClayCode` will use default values.
+
+
+```yaml
 # =============================================================================
 # General specifications for clay model construction
 # =============================================================================
@@ -7,22 +13,12 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: .
+OUTPATH: /path/to/output/directory
+# name of system
+SYSNAME: NAu-1-fe
 
-# name of system to call according to CLAY_COMP (exp_clay.csv)
-# compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
-SYSNAME: SWy-1
-
-# specify whether new clay model should be constructed:
-# new - a new clay model is constructed
-# load - sheet coordinates or unit cell sequences are loaded from existent .gro or .npy files
-# load: [X, Y]
-# with X - 'np' or 'gro', Y - '.npy' or '.gro' filename
-# False - no clay model is constructed
-BUILD: new
-
-# name of .csv file with target stoichiometry
-CLAY_COMP: exp_clay.csv
+# name of CSV file with target stoichiometry
+CLAY_COMP: /path/to/clay_comp.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
@@ -51,7 +47,7 @@ N_SHEETS: 3
 
 # ----------------------------------------------------------------------------
 # Optional: Unit Cell Composition and Ratios input
-# if not given, these will be calculated from data in the CLAY_COMP .csv file
+# if not given, these will be calculated from data in the CLAY_COMP CSV file
 # (Default UC_INDEX_LIST: [], UC_RATIOS_LIST: [])
 # -----------------------------------------------------------------------------
 
@@ -59,7 +55,7 @@ N_SHEETS: 3
 # UC_INDEX_LIST: [1]
 
 # probability list of unit cells in system
-# p(tot): 1.00
+# p(tot) = 1.00
 # UC_RATIOS_LIST: [1]
 
 # -----------------------------------------------------------------------------
@@ -74,18 +70,18 @@ IL_SOLV: True
 
 # 1. Number of water molecules that should be added per ion (ION_WATERS)
 # a. as ion species dictionary for hydration number
-# ION_WATERS: {'Ca': 12,
+# ION_WATERS = {'Ca': 12,
 #               'Na': 12
 #               }
 
 # b. as ion species int for hydration number
-# ION_WATERS : 12
+# ION_WATERS = 12
 
 # 3. OR per unit cell
-#UC_WATERS: 25
+UC_WATERS: 20
 
 # 4. OR for a target d-spacing value in A
-SPACING_WATERS: 20
+# SPACING_WATERS = 10.0
 
 # =============================================================================
 # Optional: Simulation Box Specifications
@@ -103,48 +99,16 @@ BULK_SOLV: True
 
 # Ion species and concentration in mol/L name to add in bulk solvent
 # (Default: BULK_IONS:
-#  Na: 0.1)
+#  Na: 0.1
+#  Cl: 0.1)
 
 BULK_IONS:
   Na: 0.1
-  Cl: 0.05
-
-# =============================================================================
-# Optional: Simulation Runs Specifications
-# =============================================================================
-
-# Generate scripts and '.mdp' files for simulation runs.
-# Available options:
-# EM - energy minimisation
-# EQ - equilibration
-# D-SPACE - d-spacing equilibration
-# P - production
-# SIMINP: [EM, D-SPACE]
-
-# select where EM and EQ should be run (Default: False)
-# MDRUNS_REMOTE: False
-
-# -----------------------------------------------------------------------------
-# d-spacing equilibration options
-# -----------------------------------------------------------------------------
-
-# Target d-spacing in A
-# D_SPACE: 19.5
-
-# Water molecules to be removed at a time during d-spacing equilibration runs
-# REMOVE_STEPS: 1000
-
-# Absolute number of water molecules per interlayer space
-# SHEET_WAT: 2
-
-# Number of water molecules per unit cell
-# UC_WAT: 0.1
-
-# Percentage of water molecules from interlayer
-# PERCENT_WAT: 5
+  Cl: 0.1
 
 # -----------------------------------------------------------------------------
 # bash alias for used GROMACS version
 # -----------------------------------------------------------------------------
 
-GMX: gmx
+GMX: gmx_mpi
+```

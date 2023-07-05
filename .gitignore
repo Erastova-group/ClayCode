@@ -141,7 +141,7 @@ dmypy.json
 .gro
 *.tpr
 *.zip
-*.png
+# *.png
 *.bz2
 .idea/
 *#*
@@ -150,3 +150,6 @@ notebooks
 results
 dask-worker-space
 data
+
+# the website goes into the gh-pages branch 
+site/

@@ -1,0 +1,30 @@
+integrator               = md
+nsteps                   = 50000
+dt			 = 0.001
+nstenergy                = 5000
+nstxout	                 = 5000
+nstvout	                 = 5000
+energygrps               = System
+; cut-offs at 1nm
+cutoff-scheme		 = Verlet
+rlist                    = 1.2
+nstlist                  = 10
+coulombtype              = PME
+rcoulomb                 = 1.2              
+vdw-type                 = cut-off
+rvdw                     = 1.2
+; set temperature to 300K
+tcoupl                   = V-rescale
+tc-grps                  = System 
+tau-t                    = 1.0  
+ref-t                    = 300   
+; and pressure to 1 bar
+pcoupl			 = C-rescale
+pcoupltype               = semiisotropic
+ref-p			 = 1 1
+tau-p			 = 1
+compressibility          = 4.5e-5   4.5e-5
+
+; OPTIONS FOR BONDS     
+constraints              = h-bonds
+

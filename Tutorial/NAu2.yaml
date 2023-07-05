@@ -7,11 +7,11 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: .
+OUTPATH: './'
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
-# compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
-SYSNAME: SWy-1
+# compositions included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
+SYSNAME: NAu-2-fe
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
@@ -22,7 +22,7 @@ SYSNAME: SWy-1
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: exp_clay.csv
+CLAY_COMP: ./exp_clay.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
@@ -79,13 +79,13 @@ IL_SOLV: True
 #               }
 
 # b. as ion species int for hydration number
-# ION_WATERS : 12
+# ION_WATERS: 12
 
 # 3. OR per unit cell
-#UC_WATERS: 25
+UC_WATERS: 20
 
 # 4. OR for a target d-spacing value in A
-SPACING_WATERS: 20
+# SPACING_WATERS: 10.0
 
 # =============================================================================
 # Optional: Simulation Box Specifications
