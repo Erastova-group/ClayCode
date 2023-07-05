@@ -1,11 +1,7 @@
-## user guide outline
+# User Guide 
 
 
-
-
-
-## Dependencies:
-
+## Dependencies
 
 ClayCode is compatible with UNIX operating systems. 
 
@@ -14,79 +10,49 @@ It relies on the following python libraries: NumPy (1.21.2), Pandas (1.3.4) and 
 Furthermore, solvent molecules and ions are added as GROMACS subprocesses. Therefore, in order to execute builder, a local GROMACS installation is required.
 
 
-# Code structure:
 
-Modules:
+## Data files
 
-* ClayCode.builder
-* ClayCode.siminp
-* ClayCode.config
-* ClayCode.data
-* ClayCode.tests
+The data files store information necasary to construct the clay stuctiures for MD simulation. 
 
-Environemnt set up files:
+The files are stored within `ClayCode/data/` directory:
 
-* setup.py
-* ...
-
-
-The code structure is as follows:
-```
+```shell
 ClayCode
-│   │ 
-│ 	└───config
-│ 
-└───Package
-│     │ 	
-│     └───main.py
-│     │ 	
-│     └───builder
-│     │ 	│ 
-│     │ 	└───
-│     │     	
-│     └───siminp
-│     │ 	│ 
-│     │ 	└───
-│     │ 	
-│     └───...
-│   
-└─── Smth..
-│ 	│ 
-│ 	   
-└─── Smth..
-	│  
+│
+...
+│
+└── data
+   ├── FF
+   │    └── ClayFF_Fe.ff
+   ├── MDP
+   ├── UCS
+   │   ├── D11
+   │   ├── D21
+   │   └── LDH31
+   └── user
+
+
 ```
+where:
+* `FF` contains force fields files, currently storing ClayFF force field with added Fe parameters in a directory `ClayFF_Fe.ff`, as dictated by Gromacs format.
+* `UCS` contains unit cell structures in .GRO format and their corresponding .ITP, topology assigned to ClayFF force field. The files are grouped per type, where `D21` us dioctohedral 2:1 clay, `D11` is dioctohedral 1:1 and `LDH31` is a layered double hydroxide.
+* `MDP` contains Gromacs version specific .MDP files for energy minimisation and equilibration.
 
 
 
-# Data files
+## Clay Composition
 
-The main two data files are the clay structure file, unit cell structures, and the force field file
-
-
-## Clay composition
-
-See details in the [CSV](CSV.md)
-
-## Clay Unite Cell structures
-
-The unit cells are D211...
-T21...
-
-
-## Force fields 
-
-ClayFF force field
-Note on the Fe
+The file in .CSV format containing the reduced unit cell structure, including partial atomic ocupancies, charge balancing ions and layer charges for each clay listed.
+See full details in the [Input files CSV](CSV.md)
 
 
 
+## Input Parameters 
 
-## Input parameters 
+System specification for the set-up are done given in .YAML format. See full details in [Input files YAML](YAML.md)
 
-See details in the  [YAML](YAML.md)
-
-### Parameters
+Parameters
 
 <img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/input_illustration.png" height="600">
 
