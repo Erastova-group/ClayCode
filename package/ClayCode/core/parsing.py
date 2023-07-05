@@ -263,7 +263,7 @@ dspace_arg_group = siminpparser.add_argument_group(
 
 dspace_arg_group.add_argument(
     "-dspace",
-    help="d-spacing in A",
+    help="d-spacing in \u00C5",
     metavar="d_spacing",
     dest="dspace",
     type=float,
@@ -853,7 +853,7 @@ class SiminpArgs(_Args):
             self.n_wat = self.data["n_wat"]
             self.n_steps = self.data["n_steps"]
             self.data["runs"].append("D_SPACE")
-            logger.info(f"Target spacing: {self.d_spacing:2.2f} A")
+            logger.info(f"Target spacing: {self.d_spacing:2.2f} \u00C5")
             logger.info(
                 f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"
             )

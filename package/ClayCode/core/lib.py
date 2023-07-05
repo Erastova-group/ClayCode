@@ -714,9 +714,8 @@ def add_ions_n_mols(
     :rtype: int
     """
     logger.debug(f"adding {n_atoms} {ion} ions to {crdin}")
-    mdp = MDP / gmx_commands.version / "mdp_prms.mdp"  # , "genion.mdp"
-    print(mdp)
-    assert mdp.exists(), f"{mdp.resolve()} does not exist"
+    # mdp = gmx_commands.get_mdp_parameter_file(run_type='GENION') #/ "mdp_prms.mdp"  # , "genion.mdp"
+    # assert mdp.exists(), f"{mdp.resolve()} does not exist"
     odir = Path(odir).resolve()
     assert odir.is_dir()
     tpr = odir / "add_ions.tpr"
@@ -740,7 +739,7 @@ def add_ions_n_mols(
         nn = 0
     if ndx.is_file():
         gmx_commands.run_gmx_grompp(
-            f=MDP / "genion.mdp",
+            # f=mdp, # MDP / "genion.mdp",
             c=crdin,
             p=topin,
             o=tpr,
@@ -748,6 +747,7 @@ def add_ions_n_mols(
             po=tpr.with_suffix(".mdp"),
             v="",
             maxwarn=1,
+            run_type="GENION",
         )
         err, out = gmx_commands.run_gmx_genion_add_n_ions(
             s=tpr,
@@ -812,8 +812,8 @@ def add_ions_neutral(
     :rtype: int
     """
     logger.debug(f"Neutralising with {pion} and {nion}")
-    mdp = MDP / "genion.mdp"
-    assert mdp.exists(), f"{mdp.resolve()} does not exist"
+    # mdp = MDP / gmx_commands.version /  "mdp_prms.mdp" # "genion.mdp"
+    # assert mdp.exists(), f"{mdp.resolve()} does not exist"
     odir = Path(odir).resolve()
     assert odir.is_dir()
     tpr = odir / "neutral.tpr"
@@ -821,7 +821,7 @@ def add_ions_neutral(
     gmx_commands.run_gmx_make_ndx(f=crdin, o=ndx)
     if ndx.is_file():
         gmx_commands.run_gmx_grompp(
-            f=MDP / "genion.mdp",
+            # f=mdp, # MDP / "genion.mdp",
             c=crdin,
             p=topin,
             o=tpr,
@@ -1379,8 +1379,8 @@ def add_ions_conc(
     gmx_commands,
 ):
     logger.debug(f"Adding {conc} mol/L {ion}")
-    mdp = MDP / "genion.mdp"
-    assert mdp.exists(), f"{mdp.resolve()} does not exist"
+    # mdp = MDP / gmx_commands.version / "mdp_prms.mdp" # "genion.mdp"
+    # assert mdp.exists(), f"{mdp.resolve()} does not exist"
     odir = Path(odir).resolve()
     assert odir.is_dir()
     # make_opath = lambda p: odir / method"{p.stem}.{p.suffix}"
@@ -1396,7 +1396,7 @@ def add_ions_conc(
         # else:
         #     otop_copy = False
         gmx_commands.run_gmx_grompp(
-            f=MDP / "genion.mdp",
+            # f=mdp, #MDP / "genion.mdp",
             c=crdout,
             p=topin,
             pp=topout,
@@ -1405,6 +1405,7 @@ def add_ions_conc(
             v="",
             maxwarn=1,
             # renum="",
+            run_type="GENION",
         )
         # err = search_gmx_error(out)
         # err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
@@ -1471,7 +1472,7 @@ def check_insert_numbers(
 
 @gmx_command_wrapper
 def run_em(
-    mdp: str,
+    # mdp: str,
     crdin: Union[str, Path],
     topin: Union[str, Path],
     odir: Path,
@@ -1497,9 +1498,9 @@ def run_em(
     :return: Convergence information message
     :rtype: Union[str, None]
     """
-    if not pl.Path(mdp).is_file():
-        mdp = MDP / mdp
-    assert mdp.is_file()
+    # if not pl.Path(mdp).is_file():
+    #     mdp = MDP / mdp
+    # assert mdp.is_file()
     logger.debug("# MINIMISING ENERGY")
     outname = (Path(odir) / outname).resolve()
     topout = outname.with_suffix(".top")
@@ -1514,7 +1515,7 @@ def run_em(
         otop_copy = False
     tpr = outname.with_suffix(".tpr")
     gmx_commands.run_gmx_grompp(
-        f=mdp,
+        # f=mdp,
         c=crdin,
         p=topin,
         o=tpr,
@@ -1522,6 +1523,7 @@ def run_em(
         v="",
         po=tpr.with_suffix(".mdp"),
         mdp_prms=mdp_prms,
+        run_type="EM",
     )
     error, em, out = gmx_commands.run_gmx_mdrun(s=tpr, deffnm=outname, v="")
     if error is None:

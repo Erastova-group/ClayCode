@@ -1622,7 +1622,7 @@ class MatchClayComposition:
                 "Getting matching unit cell combination for target composition"
             )
         )
-        for n_ucs in range(2, len(self.unique_uc_array) + 1):
+        for n_ucs in range(2, 3):  # len(self.unique_uc_array) + 1):
             logger.info(
                 f"\nGetting combinations for {n_ucs} unique unit cells"
             )

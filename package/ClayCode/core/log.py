@@ -22,7 +22,9 @@ class ClayCodeLogger(logging.Logger):
     def __init__(self, name, level=logging.INFO):
         super().__init__(name, level=level)
         self.logfilename = self.__class__._logfilename.with_suffix(".log")
-        file_handler = logging.FileHandler(self.logfilename, "w")
+        file_handler = logging.FileHandler(
+            self.logfilename, "w", encoding="UTF-8"
+        )
         file_handler.setLevel(level=level)
         self.addHandler(file_handler)
         self.info(f"{self.__class__._name} - {exec_date} - {exec_time}")
