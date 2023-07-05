@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: UTF-8 -*-
 # from . import consts, classes, gmx, lib, parsing, log
 from pathlib import Path
 

@@ -8,14 +8,14 @@ import tempfile
 import warnings
 from functools import cached_property, update_wrapper, wraps
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ClayCode.analysis import MDP
 from ClayCode.builder.utils import select_input_option
+from ClayCode.core.classes import Dir, File
+from ClayCode.core.consts import MDP, MDP_DEFAULTS
 from ClayCode.core.utils import execute_shell_command, set_mdp_parameter
 
 DEFAULT_GMX = "gmx"
-DEFAULT_MDP_FILE = MDP / "mdp_prms"
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,9 @@ def gmx_command_wrapper(f):
 
 
 class GMXCommands:
-    def __init__(self, gmx_alias="gmx", mdp_template=None, mdp_defaults={}):
+    def __init__(
+        self, gmx_alias="gmx", mdp_template=None, mdp_defaults={}, odir=None
+    ):
         self.gmx_alias = gmx_alias
         # self.shell = sp.run('echo $SHELL', shell=True, capture_output=True, text=True, check=True).stdout
         _ = self.gmx_header
@@ -63,8 +65,23 @@ class GMXCommands:
         except TypeError:
             pass
         self._mdp_template = mdp_template
-        self.mdp_defaults = mdp_defaults
+        self._mdp_defaults = mdp_defaults
         logger.info(f"\n{self.gmx_info}")
+        if odir:
+            self.odir = Dir(odir)
+        else:
+            self.odir = None
+
+    @property
+    def mdp_defaults(self):
+        if self._mdp_defaults:
+            return self._mdp_defaults
+        else:
+            return MDP_DEFAULTS[int(self.version)]
+
+    @property
+    def default_mdp_file(self):
+        return MDP / self.version / "mdp_prms.mdp"
 
     @property
     def mdp_string(self):
@@ -75,15 +92,15 @@ class GMXCommands:
 
     @property
     def mdp_template(self):
-        if self._mdp_template is not None:
+        if self._mdp_template:
             return self._mdp_template
-        # else:
-        #     raise ValueError('No MDP template set!')
+        else:
+            return self.default_mdp_file
 
     @mdp_template.setter
     def mdp_template(self, mdp_filename):
         try:
-            self._mdp_template = Path(mdp_filename)
+            self._mdp_template = Path(mdp_filename).with_suffix(".mdp")
             assert (
                 self._mdp_template.is_file()
             ), f"MDP file {self._mdp_template.resolve()!r} does not exist"
@@ -92,43 +109,70 @@ class GMXCommands:
                 f"Not setting MDP template, mdp_template = {mdp_filename!r}"
             )
 
-    def get_mdp_parameter_file(self, commandargs_dict, mdp_prms=None):
+    def get_mdp_parameter_file(
+        self,
+        commandargs_dict: Optional[Dict[str, str]] = None,
+        mdp_prms: Optional[Dict[str, str]] = None,
+        run_type: Optional[str] = None,
+    ):
         mdp_temp_file = None
+        if commandargs_dict is None:
+            commandargs_dict = {"f": self.mdp_template}
+        if run_type:
+            try:
+                run_type = MDP_DEFAULTS[run_type]
+            except KeyError:
+                raise KeyError(f"{run_type} is invalid GROMACS run type.")
+            except ValueError:
+                raise ValueError(
+                    f"{run_type} is an invalid argument for run_type"
+                )
         for prm, value in commandargs_dict.items():
             try:
                 file = Path(value)
                 if file.suffix == ".mdp":
                     if self.mdp_defaults and not mdp_prms:
                         mdp_prms = self.mdp_defaults
-                    if mdp_prms:
-                        try:
+                    if mdp_prms or run_type:
+                        if file.is_file():
                             with open(file, "r") as mdp_file:
                                 mdp_str = mdp_file.read()
-                        except FileNotFoundError:
+                        else:
                             mdp_str = self.mdp_string
-                            if mdp_temp_file is None:
-                                file = tempfile.TemporaryFile(
+                            if not mdp_temp_file:
+                                odir = tempfile.TemporaryDirectory()
+                                mdp_temp_file = tempfile.NamedTemporaryFile(
                                     delete=False,
                                     suffix=".mdp",
-                                    prefix=DEFAULT_MDP_FILE.stem,
-                                    dir=DEFAULT_MDP_FILE.parent,
+                                    prefix=self.mdp_template.stem,
+                                    dir=odir.name,
                                 )
-                                file = mdp_temp_file = (
-                                    DEFAULT_MDP_FILE.parent / file.name
-                                )
-                        for parameter, value in mdp_prms.items():
-                            mdp_str = set_mdp_parameter(
-                                parameter, value, mdp_str
-                            )
+                                file = mdp_temp_file = File(mdp_temp_file.name)
+                        for prm_dict in [run_type, mdp_prms]:
+                            try:
+                                for parameter, value in prm_dict.items():
+                                    logger.info(f"{parameter}: {value}")
+                                    mdp_str = set_mdp_parameter(
+                                        parameter, value, mdp_str
+                                    )
+                            except AttributeError:
+                                logger.debug("No parameters/run type defined.")
                         with open(file, "w") as mdp_file:
                             mdp_file.write(mdp_str)
-            except TypeError:
-                pass
+            except TypeError as e:
+                logger.error(e)
             return mdp_temp_file
 
-    def run_gmx_command(commandargs_dict, opt_args_list):
-        def func_decorator(func):
-            def wrapper(self, mdp_prms=None, **kwdargs):
+    def run_gmx_command(
+        commandargs_dict: Dict[str, Any], opt_args_list: List[Any]
+    ):
+        def func_decorator(func: Callable):
+            def wrapper(
+                self,
+                mdp_prms: Optional[Dict[str, str]] = None,
+                run_type: Optional[str] = None,
+                **kwdargs,
+            ):
                 for arg in kwdargs.keys():
                     if arg in commandargs_dict.keys():
                         commandargs_dict[arg] = str(kwdargs[arg])
@@ -139,10 +183,14 @@ class GMXCommands:
                             rf'Invalid argument "-{arg}" passed to "gmx '
                             rf'{re.match(r"run_gmx_(.*)", func.__name__).group(1)}"'
                         )
-                if self.mdp_template or self.mdp_defaults != {} or mdp_prms:
+                if mdp_prms or run_type:
                     temp_file = self.get_mdp_parameter_file(
-                        commandargs_dict, mdp_prms
+                        commandargs_dict=commandargs_dict,
+                        mdp_prms=mdp_prms,
+                        run_type=run_type,
                     )
+                    if temp_file:
+                        commandargs_dict["f"] = temp_file
                 command, outputargs = func(self)
                 kwd_str = " ".join(
                     list(
@@ -163,6 +211,8 @@ class GMXCommands:
                         )
                         temp_file.unlink()
                     except AttributeError:
+                        pass
+                    except UnboundLocalError:
                         pass
                     except sp.CalledProcessError as e:
                         logger.error(
@@ -234,11 +284,23 @@ class GMXCommands:
             raise RuntimeError(
                 f"{self.gmx_header} is not a supported version of GROMACS"
             )
+        if int(version) not in MDP_DEFAULTS.keys():
+            supported_versions = ", ".join(
+                [
+                    f"{v}"
+                    for v in MDP_DEFAULTS.keys()
+                    if str(v).startswith("20")
+                ]
+            )
+            raise ValueError(
+                f"GROMACS version {version} is not supported.\n"
+                f"ClayCode works with GROMACS {supported_versions}"
+            )
         return version
 
     @cached_property
     def gmx_header(self):
-        err, out = self.__run_without_args()
+        err, _ = self.__run_without_args()
         check_str = re.search(
             r":-\) (.+?) \(-:", err, flags=re.MULTILINE | re.DOTALL
         )

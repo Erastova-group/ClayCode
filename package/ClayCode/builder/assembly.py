@@ -34,6 +34,7 @@ from ClayCode.core.utils import (
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.units import constants
 from numpy._typing import NDArray
+from pyparsing import unicode_string
 
 __all__ = ["Builder", "Sheet"]
 
@@ -64,16 +65,18 @@ class Builder:
         self.__box_ext = False
         logger.info(get_header(f"Building {self.args.name} model"))
         logger.info(
-            f"{self.args.n_sheets} sheets\n"
-            f"Sheet dimensions: "
-            f"{self.sheet.x_cells * self.sheet.uc_dimensions[0]:.2f} A X {self.sheet.y_cells * self.sheet.uc_dimensions[1]:.2f} A "
-            f"({self.sheet.x_cells} unit cells X {self.sheet.y_cells} unit cells)\n"
-            f"Box height: {self.args.box_height:.1f} A"
+            (
+                f"{self.args.n_sheets} sheets\n"
+                f"Sheet dimensions: "
+                f"{self.sheet.x_cells * self.sheet.uc_dimensions[0]:.2f} \u00C5 X {self.sheet.y_cells * self.sheet.uc_dimensions[1]:.2f} \u00C5 "
+                f"({self.sheet.x_cells} unit cells X {self.sheet.y_cells} unit cells)\n"
+                f"Box height: {self.args.box_height:.1f} \u00C5"
+            )
         )
         self.gmx_commands = GMXCommands(gmx_alias=self.args.gmx_alias)
-        self.gmx_commands.mdp_template = (
-            MDP / f"{self.gmx_commands.version}/mdp_prms.mdp"
-        )
+        # self.gmx_commands.mdp_template = (
+        #     MDP / f"{self.gmx_commands.version}/mdp_prms.mdp"
+        # )
 
     @property
     def extended_box(self) -> bool:
@@ -176,7 +179,7 @@ class Builder:
         if type(self.args.box_height) in [int, float]:
             if self.args.box_height > self.stack.universe.dimensions[2]:
                 logger.info(
-                    f"Extending simulation box to {self.args.box_height:.1f} A"
+                    f"Extending simulation box to {self.args.box_height:.1f} \u00C5"
                 )
                 self.__box_ext: bool = True
                 ext_boxname: GROFile = self.get_filename("ext", suffix=".gro")
@@ -826,7 +829,7 @@ class Solvent:
         return top
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.n_mols} molecules, {self.x_dim:.2f} X {self.y_dim:.2f} X {self.z_dim:.2f} A))"
+        return f"{self.__class__.__name__}({self.n_mols} molecules, {self.x_dim:.2f} X {self.y_dim:.2f} X {self.z_dim:.2f} \u00C5))"
 
     def __str__(self) -> str:
         return self.__repr__()
@@ -893,13 +896,13 @@ class Solvent:
         while True:
             if self._z_padding > 5:
                 raise Exception(
-                    "Usuccessful solvation after expanded z-axis by {self._z_padding} A. Something odd is going on..."
+                    f"Usuccessful solvation after expanding interlayer by {self._z_padding} \u00C5.\nSomething odd is going on..."
                 )
 
             logger.info(
-                f"Attempting solvation with z-axis = {self.z_dim:.2f} A"
+                f"Attempting solvation with interlayer height = {self.z_dim:.2f} \u00C5\n"
             )
-
+            print(self.z_dim)
             solv, out = self.gmx_commands.run_gmx_solvate(
                 cs="spc216",
                 maxsol=self.n_mols,
@@ -915,8 +918,11 @@ class Solvent:
             try:
                 self.check_solvent_nummols(solv)
             except Exception as e:
-                logger.info(f"{e}")
+                logger.info(f"\t{e}")
                 self._z_padding += 0.5
+                logger.info(
+                    f"Increasing box size by {self._z_padding} \u00C5\n"
+                )
                 continue
 
             break
@@ -933,5 +939,5 @@ class Solvent:
             raise ValueError(
                 "With chosen box height, GROMACS was only able to "
                 f"insert {added_wat} instead of {self.n_mols} water "
-                f"molecules. Increase box size!"
+                f"molecules."  # \n\tIncreasing box size!"
             )
