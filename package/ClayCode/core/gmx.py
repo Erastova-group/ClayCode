@@ -1,3 +1,4 @@
+import copy
 import logging
 import pathlib
 import re
@@ -11,9 +12,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.classes import Dir, File
+from ClayCode.core.classes import Dir, File, MDPFile
 from ClayCode.core.consts import MDP, MDP_DEFAULTS
-from ClayCode.core.utils import execute_shell_command, set_mdp_parameter
+from ClayCode.core.utils import (
+    execute_shell_command,
+    set_mdp_freeze_clay,
+    set_mdp_parameter,
+)
 
 DEFAULT_GMX = "gmx"
 
@@ -55,10 +60,12 @@ def gmx_command_wrapper(f):
 
 class GMXCommands:
     def __init__(
-        self, gmx_alias="gmx", mdp_template=None, mdp_defaults={}, odir=None
+        self,
+        gmx_alias="gmx",
+        mdp_template=None,
+        mdp_defaults={},  # , odir=None
     ):
         self.gmx_alias = gmx_alias
-        # self.shell = sp.run('echo $SHELL', shell=True, capture_output=True, text=True, check=True).stdout
         _ = self.gmx_header
         try:
             self._mdp_template = mdp_template
@@ -67,10 +74,6 @@ class GMXCommands:
         self._mdp_template = mdp_template
         self._mdp_defaults = mdp_defaults
         logger.info(f"\n{self.gmx_info}")
-        if odir:
-            self.odir = Dir(odir)
-        else:
-            self.odir = None
 
     @property
     def mdp_defaults(self):
@@ -111,57 +114,63 @@ class GMXCommands:
 
     def get_mdp_parameter_file(
         self,
-        commandargs_dict: Optional[Dict[str, str]] = None,
+        mdp_file: Optional[str] = None,
         mdp_prms: Optional[Dict[str, str]] = None,
         run_type: Optional[str] = None,
+        freeze_dims: Optional[List[str]] = None,
+        freeze_grps: Optional[List[str]] = None,
     ):
-        mdp_temp_file = None
-        if commandargs_dict is None:
-            commandargs_dict = {"f": self.mdp_template}
-        if run_type:
+        mdp_temp_file = True
+        if mdp_file:
+            file = Path(mdp_file).with_suffix(".mdp")
+            if file != self.mdp_template:
+                with open(file, "r") as mdp_file:
+                    mdp_str = mdp_file.read()
+                    mdp_temp_file = None
+        if mdp_temp_file:
+            mdp_str = self.mdp_string
+            mdp_temp_file = tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=".mdp",
+                prefix=self.mdp_template.stem,
+            )
+            file = mdp_temp_file = Path(mdp_temp_file.name)
+        run_dict = {}
+        if (
+            not mdp_temp_file
+            and not mdp_prms
+            and not (freeze_grps and freeze_dims)
+        ):
+            return
+        elif mdp_temp_file and run_type:
             try:
-                run_type = MDP_DEFAULTS[run_type]
+                run_dict.update(MDP_DEFAULTS[run_type])
             except KeyError:
-                raise KeyError(f"{run_type} is invalid GROMACS run type.")
+                logger.warning(f"{run_type} is invalid GROMACS run type.")
             except ValueError:
-                raise ValueError(
+                logger.warning(
                     f"{run_type} is an invalid argument for run_type"
                 )
-        for prm, value in commandargs_dict.items():
+        if mdp_temp_file and not mdp_prms:
+            mdp_prms = self.mdp_defaults
+
+        for prm_dict in [run_dict, mdp_prms]:
             try:
-                file = Path(value)
-                if file.suffix == ".mdp":
-                    if self.mdp_defaults and not mdp_prms:
-                        mdp_prms = self.mdp_defaults
-                    if mdp_prms or run_type:
-                        if file.is_file():
-                            with open(file, "r") as mdp_file:
-                                mdp_str = mdp_file.read()
-                        else:
-                            mdp_str = self.mdp_string
-                            if not mdp_temp_file:
-                                odir = tempfile.TemporaryDirectory()
-                                mdp_temp_file = tempfile.NamedTemporaryFile(
-                                    delete=False,
-                                    suffix=".mdp",
-                                    prefix=self.mdp_template.stem,
-                                    dir=odir.name,
-                                )
-                                file = mdp_temp_file = File(mdp_temp_file.name)
-                        for prm_dict in [run_type, mdp_prms]:
-                            try:
-                                for parameter, value in prm_dict.items():
-                                    logger.info(f"{parameter}: {value}")
-                                    mdp_str = set_mdp_parameter(
-                                        parameter, value, mdp_str
-                                    )
-                            except AttributeError:
-                                logger.debug("No parameters/run type defined.")
-                        with open(file, "w") as mdp_file:
-                            mdp_file.write(mdp_str)
-            except TypeError as e:
-                logger.error(e)
-            return mdp_temp_file
+                for parameter, value in prm_dict.items():
+                    logger.debug(f"{parameter}: {value}")
+                    mdp_str = set_mdp_parameter(parameter, value, mdp_str)
+            except AttributeError:
+                logger.debug("No parameters/run type defined.")
+        if isinstance(freeze_dims, list) and isinstance(freeze_grps, list):
+            mdp_str = set_mdp_freeze_clay(
+                uc_names=freeze_grps,
+                file_or_str=mdp_str,
+                freeze_dims=freeze_dims,
+            )
+
+        with open(file, "w") as mdp_outfile:
+            mdp_outfile.write(mdp_str)
+        return mdp_temp_file
 
     def run_gmx_command(
         commandargs_dict: Dict[str, Any], opt_args_list: List[Any]
@@ -169,35 +178,56 @@ class GMXCommands:
         def func_decorator(func: Callable):
             def wrapper(
                 self,
-                mdp_prms: Optional[Dict[str, str]] = None,
-                run_type: Optional[str] = None,
                 **kwdargs,
             ):
+                gmx_args = copy.copy(commandargs_dict)
                 for arg in kwdargs.keys():
-                    if arg in commandargs_dict.keys():
-                        commandargs_dict[arg] = str(kwdargs[arg])
+                    if arg in gmx_args.keys():
+                        gmx_args[arg] = str(kwdargs[arg])
                     elif arg in opt_args_list:
-                        commandargs_dict[arg] = str(kwdargs[arg])
+                        gmx_args[arg] = str(kwdargs[arg])
                     else:
                         warnings.warn(
                             rf'Invalid argument "-{arg}" passed to "gmx '
                             rf'{re.match(r"run_gmx_(.*)", func.__name__).group(1)}"'
                         )
-                if mdp_prms or run_type:
-                    temp_file = self.get_mdp_parameter_file(
-                        commandargs_dict=commandargs_dict,
-                        mdp_prms=mdp_prms,
-                        run_type=run_type,
-                    )
-                    if temp_file:
-                        commandargs_dict["f"] = temp_file
-                command, outputargs = func(self)
+                temp_file = None
+                try:
+                    mdp_file = gmx_args["f"]
+                    if mdp_file:
+                        mdp_file = MDPFile(mdp_file, check=True)
+                except KeyError:
+                    command, outputargs = func(self)
+                except ValueError:
+                    command, outputargs = func(self)
+                except FileNotFoundError:
+                    command, outputargs = func(self)
+                else:
+                    prm_dict = {}
+                    for prm in [
+                        "mdp_prms",
+                        "run_type",
+                        "freeze_dims",
+                        "freeze_grps",
+                    ]:
+                        try:
+                            prm_dict[prm] = kwdargs[prm]
+                        except KeyError:
+                            prm_dict[prm] = None
+                    command, outputargs = func(self, mdp_file, **prm_dict)
+                    if command == "grompp":
+                        if outputargs["temp_file"]:
+                            temp_file = outputargs["temp_file"]
+                            gmx_args["f"] = temp_file
+                    else:
+                        logger.warning("Bug: This point should ot be reached!")
+
                 kwd_str = " ".join(
                     list(
                         map(
                             lambda key, val: f"-{key} {val}",
-                            commandargs_dict.keys(),
-                            commandargs_dict.values(),
+                            gmx_args.keys(),
+                            gmx_args.values(),
                         )
                     )
                 )
@@ -210,9 +240,10 @@ class GMXCommands:
                             f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
                         )
                         temp_file.unlink()
+                    except FileNotFoundError as e:
+                        logger.error(f"This point should not be reached!")
+                        sys.exit()
                     except AttributeError:
-                        pass
-                    except UnboundLocalError:
                         pass
                     except sp.CalledProcessError as e:
                         logger.error(
@@ -223,18 +254,18 @@ class GMXCommands:
                             instance_or_manual_setup=True,
                             options=["y", "n", ""],
                             result=None,
-                            result_map={"y": True, "n": False, "": False},
+                            result_map={"y": True, "n": False, "": True},
                         )
                         if print_error:
                             print(e.stderr)
                             if command == "grompp":
                                 try:
                                     odir = re.search(
-                                        "-o ([\w/.\-]+) ", kwd_str
+                                        r"-o ([\w/.\-]+) ", kwd_str
                                     ).group(1)
                                     odir = pathlib.Path(odir)
                                     shutil.copy(
-                                        temp_file, odir / temp_file.name
+                                        temp_file, odir.parent / temp_file.name
                                     )
                                     temp_file.unlink()
                                 except AttributeError:
@@ -263,17 +294,7 @@ class GMXCommands:
         return func_decorator
 
     def __run_without_args(self) -> Tuple[str, str]:
-        # try:
         output = execute_shell_command(f"{self.gmx_alias}")
-        # output = sp.run(
-        #     [self.shell.strip(), "-i", "-c", f"{self.gmx_alias}"],
-        #     shell=True,
-        #     check=True,
-        #     text=True,
-        #     capture_output=True,
-        # )
-        # except sp.CalledProcessError as e:
-        #     print(e.stderr, e.stdout)
         err, out = output.stderr, output.stdout
         return err, out
 
@@ -315,13 +336,6 @@ class GMXCommands:
     @cached_property
     def gmx_info(self) -> str:
         output = execute_shell_command(f"{self.gmx_alias}")
-        # output = sp.run(
-        #     [f"{self.gmx_alias}"],
-        #     shell=True,
-        #     check=True,
-        #     text=True,
-        #     capture_output=True,
-        # )
         err, out = output.stderr, output.stdout
         try:
             gmx_version = re.search(
@@ -358,7 +372,7 @@ class GMXCommands:
 
     @run_gmx_command(
         commandargs_dict={
-            "f": "grompp.mdp",
+            "f": None,
             "c": "conf.crdin",
             "p": "topol.top",
             "po": "mdout.mdp",
@@ -368,8 +382,26 @@ class GMXCommands:
         },
         opt_args_list=["ndx", "v", "nov", "renum", "norenum", "t"],
     )
-    def run_gmx_grompp(self):
-        return "grompp", {"capture_output": True, "text": True}
+    def run_gmx_grompp(
+        self,
+        mdp_file: Optional[str] = None,
+        mdp_prms: Optional[Dict[str, str]] = None,
+        run_type: Optional[str] = None,
+        freeze_dims: Optional[List[str]] = None,
+        freeze_grps: Optional[List[str]] = None,
+    ):
+        temp_file = self.get_mdp_parameter_file(
+            mdp_file=mdp_file,
+            mdp_prms=mdp_prms,
+            run_type=run_type,
+            freeze_dims=freeze_dims,
+            freeze_grps=freeze_grps,
+        )
+        return "grompp", {
+            "capture_output": True,
+            "text": True,
+            "temp_file": temp_file,
+        }
 
     @run_gmx_command(
         commandargs_dict={},

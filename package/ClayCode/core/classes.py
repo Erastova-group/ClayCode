@@ -355,7 +355,7 @@ class BasicPath(_Path):
         if not self.exists():
             raise FileNotFoundError(r"{self.name} does not exist")
         else:
-            logger.info(f"{self.name} exists")
+            logger.debug(f"{self.name} exists")
 
     @property
     def name_split(self) -> Tuple[str, str]:
@@ -409,10 +409,8 @@ class File(BasicPath):
     def check(self):
         if not self.is_file():
             raise FileNotFoundError(f"{self.name} is not a file.")
-        if self._suffix != "*":
-            assert (
-                self.suffix == self._suffix
-            ), f"Expected {self._suffix}, found {self.suffix}"
+        if self._suffix != "*" and self.suffix != self._suffix:
+            raise ValueError(f"Expected {self._suffix}, found {self.suffix}")
         else:
             logger.debug("Correct file extension.")
 
@@ -980,8 +978,8 @@ class ITPFile(File):
         `molecules`: name, atoms, bonds, angles, dihedrals
         `system`: system parameters"""
 
-    suffix = ".itp"
-    _kwd_dict = _KWD_DICT[suffix]
+    _suffix = ".itp"
+    _kwd_dict = _KWD_DICT[_suffix]
     _prm_types = [Parameter, Parameters]
     _mol_types = [MoleculeParameter, MoleculeParameters]  # , Molecules]
     _sys_types = [SystemParameter, SystemParameters]  # , Systems]
@@ -1218,7 +1216,7 @@ class ITPFile(File):
 class GROFile(File):
     """Container for .gro file contents."""
 
-    suffix = ".gro"
+    _suffix = ".gro"
 
     def __init__(self, *args, **kwargs):
         # check if file exists
@@ -1324,12 +1322,12 @@ class GROFile(File):
 
 
 class MDPFile(File):
-    suffix = ".mdp"
+    _suffix = ".mdp"
     pass
 
 
 class TOPFile(File):
-    suffix = ".top"
+    _suffix = ".top"
 
     def __init__(self, *args, **kwargs):
         super(TOPFile, self).__init__(*args, **kwargs)
@@ -1347,10 +1345,10 @@ class Dir(BasicPath):
     def check(self):
         if not self.is_dir():
             raise FileNotFoundError(f"{self.name} is not a directory.")
-        if self._suffix != "*":
-            assert (
-                self.suffix == self._suffix
-            ), f"Expected {self._suffix!r}, found {self.suffix!r}"
+        if self._suffix != "*" and self.suffix != self._suffix:
+            raise ValueError(
+                f"Expected {self._suffix!r}, found {self.suffix!r}"
+            )
 
     def _get_filelist(self, ext: Union[str, list] = _suffices):
         assert type(ext) in [
@@ -1782,7 +1780,6 @@ class SimDir(Dir):
         if self.subfolder is False:
             idsl = idsl[[*str(self.resolve()).split("/")[-3:]]]
         else:
-            logger.info("subfolder")
             idsl = idsl[[*str(self.resolve()).split("/")[-4:-1]]]
         return idsl
 
@@ -1821,7 +1818,6 @@ class SimDir(Dir):
                 suffix=suffix,
                 how="latest",
             )
-            logger.info(f"{f}")
             if f is None:
                 continue
                 # method = select_named_file(self.resolve(),

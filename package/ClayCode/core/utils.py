@@ -418,7 +418,11 @@ def file_or_str(f):
 
 
 @file_or_str
-def set_mdp_freeze_clay(uc_names, input_string, freeze_dims=["Y", "Y", "Y"]):
+def set_mdp_freeze_clay(
+    uc_names: List[str],
+    input_string,
+    freeze_dims: List[Union[Literal["Y"], Literal["N"]]] = ["Y", "Y", "Y"],
+):
     freezegrpstr = " ".join(uc_names)
     if len(freeze_dims) != 3:
         raise ValueError("Freeze dimensions must have 3 elements")

@@ -263,7 +263,7 @@ dspace_arg_group = siminpparser.add_argument_group(
 
 dspace_arg_group.add_argument(
     "-dspace",
-    help="d-spacing in \u00C5",
+    help="d-spacing in \u212B",
     metavar="d_spacing",
     dest="dspace",
     type=float,
@@ -422,6 +422,7 @@ class BuildArgs(_Args):
         "CHARGE_PRIORITY",
         "MDP_PRMS",
         "ZERO_THRESHOLD",
+        "Z_PADDING",
     ]
 
     def __init__(self, data) -> None:
@@ -554,12 +555,15 @@ class BuildArgs(_Args):
             "SEL_PRIORITY",
             "CHARGE_PRIORITY",
             "ZERO_THRESHOLD",
+            "Z_PADDING",
         ]:
             try:
                 prm_value = self.data[prm]
             except KeyError:
                 prm_value = self._build_defaults[prm]
             setattr(self, prm.lower(), prm_value)
+        if self.z_padding <= 0:
+            raise ValueError(f"Interlayer padding must be > 0 \u212B")
         setattr(self, "mdp_parameters", MDP_DEFAULTS)
         try:
             mdp_prm_file = self.data["MDP_PRMS"]
@@ -853,7 +857,7 @@ class SiminpArgs(_Args):
             self.n_wat = self.data["n_wat"]
             self.n_steps = self.data["n_steps"]
             self.data["runs"].append("D_SPACE")
-            logger.info(f"Target spacing: {self.d_spacing:2.2f} \u00C5")
+            logger.info(f"Target spacing: {self.d_spacing:2.2f} \u212B")
             logger.info(
                 f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"
             )

@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from functools import cached_property
 from pathlib import Path
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Literal, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -68,15 +68,12 @@ class Builder:
             (
                 f"{self.args.n_sheets} sheets\n"
                 f"Sheet dimensions: "
-                f"{self.sheet.x_cells * self.sheet.uc_dimensions[0]:.2f} \u00C5 X {self.sheet.y_cells * self.sheet.uc_dimensions[1]:.2f} \u00C5 "
+                f"{self.sheet.x_cells * self.sheet.uc_dimensions[0]:.2f} \u212B X {self.sheet.y_cells * self.sheet.uc_dimensions[1]:.2f} \u212B "
                 f"({self.sheet.x_cells} unit cells X {self.sheet.y_cells} unit cells)\n"
-                f"Box height: {self.args.box_height:.1f} \u00C5"
+                f"Box height: {self.args.box_height:.1f} \u212B"
             )
         )
         self.gmx_commands = GMXCommands(gmx_alias=self.args.gmx_alias)
-        # self.gmx_commands.mdp_template = (
-        #     MDP / f"{self.gmx_commands.version}/mdp_prms.mdp"
-        # )
 
     @property
     def extended_box(self) -> bool:
@@ -90,15 +87,14 @@ class Builder:
             n_mols=self.args.n_waters,
             z_dim=self.args.il_solv_height,
             gmx_commands=self.gmx_commands,
+            z_padding=self.args.z_padding,
         )
         spc_file: GROFile = self.get_filename("interlayer", suffix=".gro")
         solvent.write(spc_name=spc_file, topology=self.top)
         self.il_solv: GROFile = spc_file
-        # self.il_solv = spc_file
         logger.info(f"Writing interlayer sheet to {self.il_solv.name!r}\n")
 
     def rename_il_solv(self) -> None:
-        # crdout = self.get_filename('solv', 'ions', 'iSL', suffix='.gro')
         il_u: Universe = Universe(str(self.il_solv))
         il_resnames: NDArray = il_u.residues.resnames
         il_resnames: list = list(
@@ -112,37 +108,53 @@ class Builder:
         # self.top.add_molecules(il_u)
         # self.top.write(self.il_solv.top)
 
-    def run_em(self):
+    def run_em(
+        self,
+        freeze_clay: Optional[
+            Union[List[Union[Literal["Y"], Literal["N"]]], bool]
+        ] = ["Y", "Y", "Y"],
+    ):
         logger.info(get_subheader("Minimising energy"))
         # logger.info(f'{self.gmx_info()}')
         # em_inp = MDP / f"{self.gmx_commands.version}/em.mdp"
-        em_inp = self.gmx_commands.mdp_template
-        uc_names = np.unique(self.clay.residues.resnames)
-        em_filestr = set_mdp_freeze_clay(
-            uc_names=uc_names, file_or_str=em_inp, freeze_dims=["Y", "Y", "Y"]
-        )
-        for em_prm, prm_value in self.args.mdp_parameters["EM"].items():
-            em_filestr = set_mdp_parameter(em_prm, prm_value, em_filestr)
-            # em_filestr = set_mdp_parameter("constraints", "all-bonds", em_filestr)
-            # em_filestr = set_mdp_parameter("emstep", "0.001", em_filestr)
-            # em_filestr = set_mdp_parameter("emtol", "1000", em_filestr)
-        mdp_file = Path(self.__tmp_outpath.name) / f"{Path(em_inp).stem}.mdp"
-        with open(mdp_file, "w") as file:
-            # tempfile.NamedTemporaryFile(
-            # mode="w+",
-            # prefix=Path(em_inp).stem,
-            # suffix=".mdp",
-            # delete=False,
-            # dir=self.__tmp_outpath,
-            # ) as mdp_file:
-            file.write(em_filestr)
+        # em_inp = self.gmx_commands.mdp_template
+        # uc_names = None
+        if freeze_clay:
+            if isinstance(freeze_clay, bool):
+                freeze_dims = ["Y", "Y", "Y"]
+            else:
+                freeze_dims = freeze_clay
+            freeze_grps = np.unique(self.clay.residues.resnames)
+        else:
+            freeze_grps = None
+            freeze_dims = None
+        # em_filestr = set_mdp_freeze_clay(
+        #     uc_names=uc_names, file_or_str=em_inp, freeze_dims=["Y", "Y", "Y"]
+        # )
+        # for em_prm, prm_value in self.args.mdp_parameters["EM"].items():
+        #     em_filestr = set_mdp_parameter(em_prm, prm_value, em_filestr)
+        # em_filestr = set_mdp_parameter("constraints", "all-bonds", em_filestr)
+        # em_filestr = set_mdp_parameter("emstep", "0.001", em_filestr)
+        # em_filestr = set_mdp_parameter("emtol", "1000", em_filestr)
+        # mdp_file = Path(self.__tmp_outpath.name) / f"{Path(em_inp).stem}.mdp"
+        # with open(mdp_file, "w") as file:
+        # tempfile.NamedTemporaryFile(
+        # mode="w+",
+        # prefix=Path(em_inp).stem,
+        # suffix=".mdp",
+        # delete=False,
+        # dir=self.__tmp_outpath,
+        # ) as mdp_file:
+        # file.write(em_filestr)
         result = run_em(
-            mdp=mdp_file,
+            # mdp=mdp_file,
             crdin=self.stack,
             topin=self.stack.top,
             odir=self.args.outpath,
             outname=self.stack.stem,
             gmx_commands=self.gmx_commands,
+            freeze_grps=freeze_grps,
+            freeze_dims=freeze_dims,
         )
         outpath = Dir(self.args.outpath)
         crd_top_files = [
@@ -179,7 +191,7 @@ class Builder:
         if type(self.args.box_height) in [int, float]:
             if self.args.box_height > self.stack.universe.dimensions[2]:
                 logger.info(
-                    f"Extending simulation box to {self.args.box_height:.1f} \u00C5"
+                    f"Extending simulation box to {self.args.box_height:.1f} \u212B"
                 )
                 self.__box_ext: bool = True
                 ext_boxname: GROFile = self.get_filename("ext", suffix=".gro")
@@ -791,6 +803,7 @@ class Solvent:
         z_dim: Optional[Union[int, float]] = None,
         n_mols: Optional[Union[int]] = None,
         n_ions: Optional[Union[int]] = None,
+        z_padding: float = 0.4,
     ):
         self.x_dim = float(x_dim)
         self.y_dim = float(y_dim)
@@ -806,6 +819,7 @@ class Solvent:
             )
 
         self._z_padding = 0
+        self._z_padding_increment = z_padding
 
         if n_ions is None:
             self.n_ions = 0
@@ -829,7 +843,7 @@ class Solvent:
         return top
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.n_mols} molecules, {self.x_dim:.2f} X {self.y_dim:.2f} X {self.z_dim:.2f} \u00C5))"
+        return f"{self.__class__.__name__}({self.n_mols} molecules, {self.x_dim:.2f} X {self.y_dim:.2f} X {self.z_dim:.2f} \u212B))"
 
     def __str__(self) -> str:
         return self.__repr__()
@@ -896,13 +910,12 @@ class Solvent:
         while True:
             if self._z_padding > 5:
                 raise Exception(
-                    f"Usuccessful solvation after expanding interlayer by {self._z_padding} \u00C5.\nSomething odd is going on..."
+                    f"Usuccessful solvation after expanding interlayer by {self._z_padding} \u212B.\nSomething odd is going on..."
                 )
 
             logger.info(
-                f"Attempting solvation with interlayer height = {self.z_dim:.2f} \u00C5\n"
+                f"Attempting solvation with interlayer height = {self.z_dim:.2f} \u212B\n"
             )
-            print(self.z_dim)
             solv, out = self.gmx_commands.run_gmx_solvate(
                 cs="spc216",
                 maxsol=self.n_mols,
@@ -914,14 +927,14 @@ class Solvent:
             )
 
             # check if a sufficient number of water molecules has been added
-            # if not, expand z-axis by 1 A and try again
+            # if not, expand z-axis by 0.5 A and try again
             try:
                 self.check_solvent_nummols(solv)
             except Exception as e:
                 logger.info(f"\t{e}")
                 self._z_padding += 0.5
                 logger.info(
-                    f"Increasing box size by {self._z_padding} \u00C5\n"
+                    f"Increasing box size by {self._z_padding} \u212B\n"
                 )
                 continue
 

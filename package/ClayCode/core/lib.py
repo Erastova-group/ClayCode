@@ -739,7 +739,6 @@ def add_ions_n_mols(
         nn = 0
     if ndx.is_file():
         gmx_commands.run_gmx_grompp(
-            # f=mdp, # MDP / "genion.mdp",
             c=crdin,
             p=topin,
             o=tpr,
@@ -821,14 +820,13 @@ def add_ions_neutral(
     gmx_commands.run_gmx_make_ndx(f=crdin, o=ndx)
     if ndx.is_file():
         gmx_commands.run_gmx_grompp(
-            # f=mdp, # MDP / "genion.mdp",
             c=crdin,
             p=topin,
             o=tpr,
-            # pp=topout,
             po=tpr.with_suffix(".mdp"),
             v="",
             maxwarn=1,
+            run_type="GENION",
         )
         if nq is None:
             nq = int(get_ion_charges()[nion])
@@ -1396,7 +1394,6 @@ def add_ions_conc(
         # else:
         #     otop_copy = False
         gmx_commands.run_gmx_grompp(
-            # f=mdp, #MDP / "genion.mdp",
             c=crdout,
             p=topin,
             pp=topout,
@@ -1470,7 +1467,7 @@ def check_insert_numbers(
     )
 
 
-@gmx_command_wrapper
+# @gmx_command_wrapper
 def run_em(
     # mdp: str,
     crdin: Union[str, Path],
@@ -1479,6 +1476,12 @@ def run_em(
     gmx_commands,
     outname: str = "em",
     mdp_prms: Optional[Dict[str, str]] = None,
+    freeze_grps: Optional[
+        Union[List[Union[Literal["Y"], Literal["N"]]], bool]
+    ] = None,
+    freeze_dims: Optional[
+        Union[List[Union[Literal["Y"], Literal["N"]]], bool]
+    ] = ["Y", "Y", "Y"],
 ) -> Union[str, None]:
     """
     Run an energy minimisation using gmx and
@@ -1515,7 +1518,6 @@ def run_em(
         otop_copy = False
     tpr = outname.with_suffix(".tpr")
     gmx_commands.run_gmx_grompp(
-        # f=mdp,
         c=crdin,
         p=topin,
         o=tpr,
@@ -1524,6 +1526,8 @@ def run_em(
         po=tpr.with_suffix(".mdp"),
         mdp_prms=mdp_prms,
         run_type="EM",
+        freeze_grps=freeze_grps,
+        freeze_dims=freeze_dims,
     )
     error, em, out = gmx_commands.run_gmx_mdrun(s=tpr, deffnm=outname, v="")
     if error is None:

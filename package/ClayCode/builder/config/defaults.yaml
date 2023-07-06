@@ -128,5 +128,10 @@ CHARGE_PRIORITY: total_charge
 # Parameters for EM run
 # -----------------------------------------------------------------------------
 
-#MDP_PRMS: 'mdp_parameters.yaml'
+#MDP_PRMS: 'mdp_prms.mdp'
 
+# -----------------------------------------------------------------------------
+# Parameters for interlayer solvation increments
+# -----------------------------------------------------------------------------
+
+Z_PADDING: 0.5  # A
