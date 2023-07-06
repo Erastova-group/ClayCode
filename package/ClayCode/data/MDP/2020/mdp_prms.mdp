@@ -1,18 +1,6 @@
 ;
-;	File 'mdout.mdp' was generated
-;	By user: hannahpollak (1000)
-;	On host: SCE-CHEM-C02075
-;	At date: Sat Jul  1 19:10:21 2023
-;
-;	Created by:
 ;	             :-) GROMACS - 2020 (-:
-;	
-;	Executable:   /usr/bin/gmx
-;	Data prefix:  /usr
-;	Working dir:  /storage/clay_models/NAu-1-fe
-;	Command line:
-;	  gmx grompp -f NAu-1-fe_7_5_solv_ions.mdp -c NAu-1-fe_7_5_solv_ions.gro -p NAu-1-fe_7_5_solv_ions.top
-
+;
 ; VARIOUS PREPROCESSING OPTIONS
 ; Preprocessor information: use cpp syntax.
 ; e.g.: -I/home/joe/doe -I/home/mary/roe

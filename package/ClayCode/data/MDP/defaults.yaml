@@ -207,4 +207,16 @@ EM:
 
 GENION:
   integrator: "steep"
-  rlist: "2"
+  rlist: "0.2"
+  emtol: "1000"
+  emstem: "0.01"
+  nsteps: "5000"
+  nstlist: 1
+  cutoff-scheme: "verlet"
+  verlet-buffer-tolerance: "-1"
+  ns-type: "grid"
+  rlist: "0.2"
+  coulombtype: "cutoff"
+  rcoulomb: "0.2"
+  rvdw: "0.2"
+  pbc: "xyz"
