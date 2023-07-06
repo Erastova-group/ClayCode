@@ -6,11 +6,11 @@ on:
       - master
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest macos-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
         with:
           python-version: 3.x
-      - run: pip install --upgrade pip && pip install mkdocs mkdocs-gen-files 
+      - run: pip install --upgrade pip && pip install mkdocs mkdocs-gen-files  mkdocs-bibtex
       - run: mkdocs gh-deploy --force

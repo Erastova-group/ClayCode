@@ -4,6 +4,8 @@ The first section contains general parameters that are required for the model co
 If the directives in the optional section are not given by the user, `ClayCode` will use default values.
 
 
+example:
+
 ```yaml
 # =============================================================================
 # General specifications for clay model construction

@@ -1,14 +1,11 @@
 
-# Project information
 site_name: ClayCode
 site_url: https://erastova-group.github.io/ClayCode
 site_author: Valentina Erastova
 
-# Repository
 repo_name: ClayCode
 repo_url: https://github.com/Erastova-group/ClayCode
-#edit_uri: edit/master/docs
-#docs_dir: docs
+
 
 # Navigation
 nav:
@@ -24,17 +21,17 @@ nav:
         - OUTPUT files: output.md
 
     - Tutorials: 
-        - Overview: tutorials.md
-        - Example files:
-            - MMT: mmt.md
-            - Nont: nont.md
-            - Kao: kao.md
+        - Tutorials: tutorials.md
+        - Clays:
+            - Montmorillonite: mmt.md
+            - Illite: imt.md 
+            - Nontronite: nont.md
+            - Fe-smectite: swa.md
+            - Kaolinite: kao.md
             - LDH: ldh.md
     - Developers Guide: developers.md
 
-
-
-# Theme
+# set up theme
 theme: 
     name: readthedocs
     highlightjs: true
@@ -47,8 +44,22 @@ theme:
     navigation_depth: 4
     sticky_navigation: true
  
+# math
+extra_javascript: 
+#   - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML
+    - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML
+
+markdown_extensions:
+    - mdx_math
+    - footnotes
 
 
-# Plugins
 plugins:
   - search
+  - bibtex:
+      bib_file: "./docs/refs.bib"
+
+
+
+
+
