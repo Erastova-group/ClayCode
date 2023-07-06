@@ -36,15 +36,17 @@ ClayCode
 ```
 where:
 
-* `FF` contains force fields files, currently storing ClayFF force field with added Fe parameters in a directory `ClayFF_Fe.ff`, as dictated by Gromacs format.
-* `UCS` contains unit cell structures in .GRO format and their corresponding .ITP, topology assigned to ClayFF force field. The files are grouped per type, where `D21` us dioctohedral 2:1 clay, `D11` is dioctohedral 1:1 and `LDH31` is a layered double hydroxide.
-* `MDP` contains Gromacs version specific .MDP files for energy minimisation and equilibration.
+* `data/FF` contains force fields files, currently storing ClayFF force field with added Fe parameters in a directory `ClayFF_Fe.ff`, as dictated by Gromacs format.
+* `data/UCS` contains unit cell structures in .GRO format and their corresponding .ITP, topology assigned to ClayFF force field. The files are grouped per type, where `D21` us dioctohedral 2:1 clay, `D11` is dioctohedral 1:1 and `LDH31` is a layered double hydroxide.
+* `data/MDP` contains Gromacs version-specific .MDP files for energy minimisation and equilibration.
+* `data/user` reserved for user files.
 
 
 
 ## Clay Composition
 
 The file in .CSV format containing the reduced unit cell structure, including partial atomic ocupancies, charge balancing ions and layer charges for each clay listed.
+
 See full details in the [Input files CSV](CSV.md)
 
 

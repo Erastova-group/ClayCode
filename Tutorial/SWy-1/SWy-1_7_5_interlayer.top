@@ -1,0 +1,31 @@
+; selection FF params for clay, water and ions
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/FF/ClayFF_Fe.ff/forcefield.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/FF/ClayFF_Fe.ff/ffnonbonded.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/FF/AmberIons.ff/ffnonbonded.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/FF/ClayFF_Fe.ff/ffbonded.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/FF/ClayFF_Fe.ff/spc.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/FF/ClayFF_Fe.ff/interlayer_spc.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/FF/AmberIons.ff/ions.itp"
+
+; include clay unit cell topology
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D220.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D221.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D222.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D223.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D224.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D225.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D226.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D227.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D228.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D236.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D237.itp"
+#include "/Users/valentina/.local/pipx/venvs/claycode/lib/python3.9/site-packages/ClayCode/data/UCS/D21/D238.itp"
+
+[ system ]
+ D21
+[ molecules ]
+; Compound        nmols
+iSL	1
+Ca	2
+K	2
+Na	13

@@ -18,10 +18,10 @@ nav:
         - User Guide: userguide.md
         - Modules:
             - ClayCode.builder: builder.md
-        - Input files: 
-            - CSV: CSV.md
+        - INPUT files: 
             - YAML: YAML.md
-        - Output files: output.md
+            - CSV: CSV.md
+        - OUTPUT files: output.md
 
     - Tutorials: 
         - Overview: tutorials.md
