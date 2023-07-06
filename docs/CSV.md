@@ -1,11 +1,11 @@
-# Clay composition in CSV format
+# Clay stoicheometry in CSV format
 
-## Including into Input
+## Including into Input Parameter File
 
-Inclusion of the CSV file into the [INPUT .YAML file](YAML.md):
+The .CSV file must be included into the [INPUT .YAML file](YAML.md):
 
 - the path to the CSV file is specified under `CLAY_COMP`, 
-- target occupancies from the CSV file are given by `SYSNAME`, corresponding to the clay name
+- target occupancies from the CSV file are given by `SYSNAME`, corresponding to the clay name.
 
 e.g.:
 
