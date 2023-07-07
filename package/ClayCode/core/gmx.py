@@ -241,7 +241,7 @@ class GMXCommands:
                         )
                         temp_file.unlink()
                     except FileNotFoundError as e:
-                        logger.error(f"This point should not be reached!")
+                        logger.error("This point should not be reached!")
                         sys.exit()
                     except AttributeError:
                         pass

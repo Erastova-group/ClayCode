@@ -693,7 +693,7 @@ class BuildArgs(_Args):
                 )
         else:
             self.n_waters = None
-            if self._was_specified["SPACING_WATERS"]:
+            if self._was_specified("spacing_waters"):
                 self.il_solv_height = self.data["SPACING_WATERS"]
             else:
                 self.il_solv_height = (
