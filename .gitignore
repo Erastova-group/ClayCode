@@ -154,3 +154,6 @@ dask-worker-space
 
 # the website goes into the gh-pages branch 
 site/
+
+#tutorial folders
+Tutorial/*/
