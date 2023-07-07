@@ -3,7 +3,7 @@ import logging
 import sys
 
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.parsing import ArgsFactory, BuildArgs, parser
+from ClayCode.core.parsing import ArgsFactory, BuildArgs, SiminpArgs, parser
 
 __all__ = ["run"]
 
@@ -63,6 +63,8 @@ def run():
             else:
                 logger.debug("\nFinished setup!\n")
         clay_builder.conclude()
+        if isinstance(args, SiminpArgs):
+            print("siminp")
 
 
 if __name__ == "__main__":

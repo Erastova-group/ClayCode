@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 import re
 import shutil
 import subprocess as sp
@@ -15,6 +16,7 @@ from typing import List, Literal, Optional, Union
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
+import yaml
 from ClayCode.core.consts import exec_date, exec_time
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -403,15 +405,29 @@ def add_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"):
 def file_or_str(f):
     @wraps(f)
     def wrapper(file_or_str, *args, **kwargs):
-        try:
-            with open(file_or_str, "r") as file:
-                file_str = file.read()
-        except FileNotFoundError:
+        import json
+
+        import yaml
+
+        read_dict = {".yaml": yaml.safe_load, ".json": json.load}
+        if isinstance(file_or_str, str):
             file_str = file_or_str
-        except OSError:
-            file_str = file_or_str
-        except TypeError:
-            file_str = file_or_str
+        else:
+            try:
+                read_func = read_dict[Path(file_or_str).suffix]
+            except KeyError:
+                read_func = lambda x: x.read()
+            finally:
+                with open(file_or_str, "r") as file:
+                    file_str = read_func(file)
+        # except FileNotFoundError:
+        #     file_str = file_or_str
+        # except OSError:
+        #     file_str = file_or_str
+        # except TypeError:
+        #     file_str = file_or_str
+        # else:
+        #     file_str = file_or_str
         return f(*args, input_string=file_str, **kwargs)
 
     return wrapper
@@ -439,14 +455,19 @@ def set_mdp_freeze_clay(
 
 
 @file_or_str
-def mdp_to_yaml(input_string: str) -> str:
-    mdp_options = re.findall(
-        r"^[a-z0-9\-]+\s*=.*?(?=[\n;^])",
+def mdp_to_yaml(input_string: str) -> Dict[str, str]:
+    mdp_options: list = re.findall(
+        r"^[a-z0-9\-_]+\s*=.*?(?=[\n;^])",
         input_string,
         flags=re.MULTILINE | re.IGNORECASE,
     )
-    mdp_yaml = "\n".join(mdp_options)
-    mdp_yaml = re.sub("=", ":", mdp_yaml, flags=re.MULTILINE)
-    mdp_yaml = re.sub(r"[\t ]+", " ", mdp_yaml, flags=re.MULTILINE)
+
+    # mdp_yaml = {k: v for }
+    mdp_yaml: str = "\n".join(mdp_options)
+    # mdp_yaml = re.sub("=", ":", mdp_yaml, flags=re.MULTILINE)
+    mdp_yaml = re.sub(r"[\t ]+", "", mdp_yaml, flags=re.MULTILINE)
+    # mdp_yaml = re.sub(r':', ': !mdp ', flags=re.MULTILINE)
+    mdp_yaml = dict(line.split("=") for line in mdp_yaml.splitlines())
     # mdp_yaml = re.sub(r'\n\n+', '\n', mdp_yaml, flags=re.MULTILINE)
-    # print(mdp_yaml)
+    print(yaml.dump(mdp_yaml))
+    return mdp_yaml

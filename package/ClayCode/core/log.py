@@ -5,6 +5,7 @@ import random
 import re
 from pathlib import Path
 
+import numpy as np
 from ClayCode.core.consts import exec_date, exec_datetime, exec_time
 
 __all__ = ["ClayCodeLogger"]
@@ -13,7 +14,7 @@ __all__ = ["ClayCodeLogger"]
 class ClayCodeLogger(logging.Logger):
     logging.basicConfig(format="%(message)s", level=logging.INFO, force=False)
     logging.captureWarnings(True)
-    _logfilename = Path(".logfile")
+    _logfilename = Path.cwd() / ".logfile"
     _logfilename = _logfilename.with_stem(
         f"{_logfilename.stem}_{random.randrange(0, 9999):04}"
     )
@@ -23,11 +24,12 @@ class ClayCodeLogger(logging.Logger):
         super().__init__(name, level=level)
         self.logfilename = self.__class__._logfilename.with_suffix(".log")
         file_handler = logging.FileHandler(
-            self.logfilename, "w", encoding="UTF-8"
+            self.logfilename, "a", encoding="UTF-8"
         )
         file_handler.setLevel(level=level)
         self.addHandler(file_handler)
-        self.info(f"{self.__class__._name} - {exec_date} - {exec_time}")
+        if self.name == "root":
+            self.info(f"{self.__class__._name} - {exec_date} - {exec_time}")
 
     def set_file_name(self, new_filepath=None, new_filename=None, final=False):
         if new_filename is None:

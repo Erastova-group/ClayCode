@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import copy
 import logging
 import os
 import re
@@ -255,36 +255,66 @@ checkparser = subparsers.add_parser(
 siminpparser = subparsers.add_parser(
     "siminp", help="Generate clay model equilibration run input files."
 )
+
+siminpparser.add_argument(
+    "-f",
+    help="Equilibration parameter yaml file.",
+    type=File,
+    required=False,
+    dest="EQ_CONF",
+)
+
+
 siminp_subparsers = siminpparser.add_subparsers()
 
-dspace_arg_group = siminpparser.add_argument_group(
-    "il_spacing"
-)  # , help='Equilibrate d-spacing')
+dspace_arg_group = siminpparser.add_argument_group("il_spacing")
+
+remove_wat_group = siminpparser.add_mutually_exclusive_group(required=False)
 
 dspace_arg_group.add_argument(
     "-dspace",
     help="d-spacing in \u212B",
     metavar="d_spacing",
-    dest="dspace",
+    dest="D_SPACE",
     type=float,
     required=True,
 )
 
-dspace_arg_group.add_argument(
-    "-n_wat",
+remove_wat_group.add_argument(
+    "-uc_wat",
     help="number of water molecules to remove per cycle per unit cell",
     metavar="n_waters",
-    dest="n_wat",
+    dest="UC_WAT",
     type=float,
-    default=0.2,
+    default=0.1,
+    required=False,
+)
+
+remove_wat_group.add_argument(
+    "-sheet_wat",
+    help="number of water molecules to remove per cycle per sheet",
+    metavar="n_waters",
+    dest="SHEET_WAT",
+    type=float,
+    default=None,
+    required=False,
+)
+
+remove_wat_group.add_argument(
+    "-percent_wat",
+    help="percentage of inital water molecules to remove per cycle per sheet",
+    metavar="n_waters",
+    dest="PERCENT_WAT",
+    type=float,
+    default=None,
     required=False,
 )
 
 dspace_arg_group.add_argument(
-    "-n_steps",
+    "-remove_steps",
     help="water removal interval",
-    metavar="n_steps",
-    dest="n_steps",
+    metavar="remove_steps",
+    dest="REMOVE_STEPS",
     type=int,
     default=1000000,
     required=False,
@@ -841,19 +871,47 @@ class PlotArgs(_Args):
 class SiminpArgs(_Args):
     option = "siminp"
     # TODO: Add csv or yaml for eq run prms
-    _run_order = ["EQ", "P"]
+    _run_order = ["EM", "EQ", "D_SPACE", "P"]
+    from ClayCode.siminp.consts import SIMINP_DEFAULTS as _siminp_defaults
+
+    _arg_names = [
+        "OUTPATH",
+        "SYSNAME",
+        "INDIR",
+        "INP_FILENAME" "GRO_NAME",
+        "TOP_NAME",
+        "SIMINP",
+        "REMOVE_STEPS",
+        "D_SPACE",
+        "SHEET_WAT",
+        "UC_WAT",
+        "PERCENT_WAT",
+        "GMX",
+    ]
 
     def __init__(self, data):
-        super().__init__(data)
+        super().__init__(self, data)
         self.process()
 
     def process(self):
         logger.info(get_header("Getting simulation input parameters"))
+        run_specs = self.data["SIMINP"]
+        logger.info("Selected run types:")
+        run_id = 0
+        runs = []
+        for run_type in self._run_order:
+            try:
+                run_id += 1
+                run = run_specs.pop(run_type)
+                runs.append(0, run)
+                logger.info(f"\t{run_id}: {run_type}")
+            except KeyError:
+                pass
         if "dspace" in self.data:
             logger.info(get_subheader("d-spacing equilibration parameters"))
-            self.d_spacing = (
-                self.data["dspace"] / 10
-            )  # convert d-spacing from A to nm
+            self.d_spacing = self.data[
+                "D_SPACE"
+            ]  # convert d-spacing from A to nm
             self.n_wat = self.data["n_wat"]
             self.n_steps = self.data["n_steps"]
             self.data["runs"].append("D_SPACE")

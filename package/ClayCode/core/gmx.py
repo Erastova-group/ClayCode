@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.classes import Dir, File, MDPFile
+from ClayCode.core.classes import MDPFile
 from ClayCode.core.consts import MDP, MDP_DEFAULTS
 from ClayCode.core.utils import (
     execute_shell_command,
@@ -63,7 +63,7 @@ class GMXCommands:
         self,
         gmx_alias="gmx",
         mdp_template=None,
-        mdp_defaults={},  # , odir=None
+        mdp_defaults={},
     ):
         self.gmx_alias = gmx_alias
         _ = self.gmx_header

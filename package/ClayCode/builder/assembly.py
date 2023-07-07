@@ -163,11 +163,14 @@ class Builder:
             *outpath.gro_filelist,
             *outpath._get_filelist(ext=".csv"),
             *outpath._get_filelist(ext=".mdp"),
-            *outpath._get_filelist(ext=".log"),
+            *outpath._get_filelist(ext=".edr"),
+            *outpath._get_filelist(ext=".trr"),
         ]
         for file in outpath.iterdir():
             if file not in crd_top_files:
                 file.unlink(missing_ok=True)
+            else:
+                shutil.move(file, file.with_stem(f"{file.stem}_em"))
         return result
 
     def conclude(self):
@@ -178,6 +181,7 @@ class Builder:
             f"Wrote final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
         )
         logger.info(get_header(f"{self.args.name} model setup complete"))
+        logger.set_file_name(final=True)
 
     def remove_il_solv(self) -> None:
         logger.info("Removing interlayer solvent")

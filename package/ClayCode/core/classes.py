@@ -36,9 +36,10 @@ from typing import (
 
 import numpy as np
 import pandas as pd
+import yaml
 from ClayCode.core.consts import FF
 from ClayCode.core.consts import KWD_DICT as _KWD_DICT
-from ClayCode.core.utils import select_named_file
+from ClayCode.core.utils import file_or_str, mdp_to_yaml, select_named_file
 from MDAnalysis import AtomGroup, ResidueGroup, Universe
 from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
@@ -1325,6 +1326,9 @@ class MDPFile(File):
     _suffix = ".mdp"
     pass
 
+    def to_yaml(self):
+        return mdp_to_yaml(self)
+
 
 class TOPFile(File):
     _suffix = ".top"
@@ -1336,6 +1340,37 @@ class TOPFile(File):
     @property
     def gro(self):
         return GROFile(self.with_suffix(".gro"))
+
+
+class YAMLFile(File):
+    _suffix = ".yaml"
+
+    def __init__(self, *args, **kwargs):
+        super(YAMLFile, self).__init__(*args, **kwargs)
+        self._data = None
+
+    @property
+    def data(self):
+        if not self._data:
+            self._data = self._read_data()
+        return self._data
+
+    def _read_data(self):
+        try:
+            with open(self, "r") as file:
+                return yaml.safe_load(file)
+        except FileNotFoundError:
+            logger.warning(f"{str(self.name)!r} does not exist.")
+            return {}
+
+    def _write_data(self):
+        with open(self, "w") as file:
+            yaml.dump(self._data, file)
+
+    @data.setter
+    @file_or_str
+    def data(self, input_string):
+        self._data = input_string
 
 
 class Dir(BasicPath):
