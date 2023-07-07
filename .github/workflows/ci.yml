@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - master
+      - website-edits
 jobs:
   deploy:
     runs-on: ubuntu-latest 

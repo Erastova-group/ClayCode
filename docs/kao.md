@@ -19,3 +19,43 @@ STRUCTURE:(Mg.02 Ca.01 Na.01 K.01)[Al3.86 Fe(III).02 Mntr Ti.11][Si3.83Al.17]O10
 
 
 The supplied `exp_clay.csv` file and contains clay structures corresponding to the **Source Clays** listed under "Physical and Chemical Data of Source Clays" [clays.org](https://www.clays.org/sourceclays_data/).
+
+
+
+
+Removing invalid atom types:
+
+```
+
+	sheet - at-type: occupancy
+	  O   -   Mn   :      0.00, 	  O   -   Ti   :      0.11
+
+Could not guess Ti charge.
+Enter Ti charge value:  (or exit with 'e')
+
+```
+>4
+```
+4
+Assuming Ti charge of 4.
+
+Getting sheet occupancies:
+	Found 'O' sheet occupancies of 3.8800/4.0000 (-0.1200)
+	Found 'T' sheet occupancies of 4.0000/4.0000 (+0.0000)
+
+Adjusting values to match expected occupancies:
+	old occupancies -> new occupancies per unit cell:
+	sheet - atom type : occupancies  (difference)
+		'O'   -    'ao'   : 3.8600 -> 3.9800 (+0.1200)
+
+Splitting total iron content (0.0200) to match charge.
+
+	Will use the following target composition:
+		'T'   -    'at'   : 0.1700
+		'T'   -    'st'   : 3.8300
+		'O'   -    'ao'   : 3.9800
+		'O'   -   'feo'   : 0.0200
+
+Writing new target clay composition to 'KGa-1_exp_df.csv'
+
+```

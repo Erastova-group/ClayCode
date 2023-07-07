@@ -7,11 +7,11 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: './'
+OUTPATH: '.'
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
 # compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
-SYSNAME: KGa-1
+SYSNAME: Pyr-1
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
@@ -22,7 +22,7 @@ SYSNAME: KGa-1
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: ./exp_clay.csv
+# CLAY_COMP: ./exp_clay.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
@@ -32,7 +32,8 @@ CLAY_COMP: ./exp_clay.csv
 # layered double hydroxide 3:1 - L31
 # layered double hydroxide 2:1 - L21
 # Sepiolite - SEP
-CLAY_TYPE: D11
+
+CLAY_TYPE: D21
 
 
 # =============================================================================
@@ -40,13 +41,13 @@ CLAY_TYPE: D11
 # =============================================================================
 
 # number of unit cells in x direction (Default 7)
-X_CELLS: 8
+X_CELLS: 6 #7
 
 # number of unit cells in y direction (Default 5)
-Y_CELLS: 6
+Y_CELLS: 4 # 5
 
 # number of unit cells in z direction (Default 3)
-N_SHEETS: 3
+N_SHEETS: 2 # 3
 
 # ----------------------------------------------------------------------------
 # Optional: Unit Cell Composition and Ratios input
@@ -55,16 +56,15 @@ N_SHEETS: 3
 # -----------------------------------------------------------------------------
 
 # required UCs to builder system as list
-# UC_INDEX_LIST: [1]
+UC_INDEX_LIST: [D221 D228]
 
 # probability list of unit cells in system
-# p(tot): 1.00
-# UC_RATIOS_LIST: [1]
+UC_RATIOS_LIST: [0.9 0.1]
 
 # -----------------------------------------------------------------------------
 
 # interlayer solvent present or not (Default True)
-IL_SOLV: False  
+IL_SOLV: False
 
 # -----------------------------------------------------------------------------
 # Optional: Interlayer Ion Specification Options (comment the other options!)
@@ -81,9 +81,9 @@ IL_SOLV: False
 # ION_WATERS: 12
 
 # 3. OR per unit cell
-UC_WATERS: 0
+# UC_WATERS: 20
 
-# 4. OR for a target d-spacing value in A
+# 4. OR for a target interlayer value in A
 # SPACING_WATERS: 10.0
 
 # =============================================================================
@@ -91,7 +91,7 @@ UC_WATERS: 0
 # =============================================================================
 
 # full simulation box height in A (Default 150.0)
-BOX_HEIGHT: 50.0
+BOX_HEIGHT: 50 # 150.0
 
 # =============================================================================
 # Optional: Solvation and Bulk Ions Specifications
@@ -105,8 +105,10 @@ BULK_SOLV: True
 #  Na: 0.1)
 
 BULK_IONS:
-  Na: 0.5
-  Cl: 0.5
+  Na: 0.3
+  Cl: 0.3
+#  Na: 0.1
+#  Cl: 0.05
 
 # =============================================================================
 # Optional: Simulation Runs Specifications
@@ -146,4 +148,4 @@ BULK_IONS:
 # bash alias for used GROMACS version
 # -----------------------------------------------------------------------------
 
-GMX: gmx
+GMX: gmx 
