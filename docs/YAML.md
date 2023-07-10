@@ -1,4 +1,4 @@
-# System specifications YAML file
+# `ClayCode.builder` System Specifications YAML file 
 
 `ClayCode.builder` reads the parameters specified in this file.
 
@@ -186,3 +186,12 @@ To use your MPI-compiled version:
 ```yaml
 GMX: gmx_mpi
 ```
+
+
+***
+
+# `ClayCode.siminp` System Specifications YAML file 
+
+`ClayCode.simpinp` reads the parameters specified in this file and generates simulation inputs for GROMACS.
+
+Coming soon...
