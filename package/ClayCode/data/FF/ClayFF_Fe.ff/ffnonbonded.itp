@@ -1,6 +1,6 @@
 [ atomtypes ]
 ; atom descriptions and masses are assigned in ffclayff.atp
-; edited feo to be "D_o value for Fe should be 9.0298 x 10-7, not 9.0298 x 10-6 as in the paper"-Andrey K.
+; edited feo to be "D_o value for Fe should be 9.0298 x 10-7, not 9.0298 x 10-6 as in the 2004 paper"
 ; i.e D_o of Fe is = Mg not Li
 ; introduced Fe(II) -fe2- that is same as Fe(III) -feo- nbut has charges of octahedral Mg -mgo-
 ; name at.number mass   charge  ptype   sigma           epsilon

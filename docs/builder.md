@@ -21,7 +21,3 @@ ClayCode builder -f path/to/input_NAu-1-fe.yaml
 
 
 
-
-
-There is no need to specify how much of the total iron is Fe3+ or Fe2+ if at least two values among the total, T and O unit cell charge are specified.
-`ClayCode.builder` can perform the splitting between the two iron species.

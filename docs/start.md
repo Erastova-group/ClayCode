@@ -16,7 +16,7 @@ This package requires python version >=3.9 and pipx, and it also uses some of th
 ## Running ClayCode
 
 ```shell
-ClayCode builder -f path/to/input_NAu-1-fe.yaml
+ClayCode builder -f path/to/input_Clay.yaml
 ```
 
 

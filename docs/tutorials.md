@@ -3,11 +3,13 @@
 
 In this section we show how to set up the following clay systems:
 
- * [Kaolinite](kao.md),
+
  * Wyoming [Montmorillonite](mmt.md),
  * [Illite](imt.md),
- * [Ferruginous Smectite](swa.md),
+ * [pyrophyllite](pyr.md),
  * Brown and green Uley [nontronites](nont.md),
+ * [Ferruginous Smectite](swa.md),
+ * [Kaolinite](kao.md),
  * [Layered double hydroxide](ldh.md).
 
 All the necessary input files (the `.CSV` and corresponding `.YAML`  files) can be found in the `Tutorial` directory.
@@ -31,4 +33,6 @@ The supplied `exp_clay.csv` file and contains clay structures corresponding to t
 * example Al-Mg 3:1 layered double hydroxide:
 
     * LDH31.
+
+Note, that Pyrophilite composition is not given in the .CSV file, and it s fully described in the .YAML.
 

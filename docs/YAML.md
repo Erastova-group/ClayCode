@@ -1,9 +1,9 @@
-# `ClayCode.builder` System Specifications YAML file 
+## `ClayCode.builder` System Specifications YAML file 
 
 `ClayCode.builder` reads the parameters specified in this file.
 
 
-## Requiered Parameters
+### Requiered Parameters
 
 The first section contains general parameters that are required for the model construction.
 
@@ -52,11 +52,11 @@ CLAY_TYPE: D21
 
 
 
-## Optional Parameters
+### Optional Parameters
 
 This is an optional parameter section, if the directives are not given by the user, `ClayCode.builder` will use default values.
 
-### Clay Sheet Size
+#### Clay Sheet Size
 
 `X_CELLS` - Unit cell number [int] (Default: 7)<br/>
 Number of unit cells in x-direction. <br/>
@@ -83,7 +83,7 @@ Y_CELLS: 5
 N_SHEETS: 3
 ```
 
-### Clay Composition 
+#### Clay Composition 
 
 `ClayCode.builder` calculates the number and type of unit cells necessary to match the desired compossition, as given in [CSV](CSV.md) file. <br/>
 If, instead, the user would like to specify this manually, the following parameters can be used:
@@ -110,7 +110,7 @@ UC_RATIOS_LIST: [0.8 0.2]
 ```
 
 
-### Interlayer Solvent and Ions
+#### Interlayer Solvent and Ions
 
 `IL_SOLV` - interlayer solvent presence [bool] (Default: *True*)<br/>
 If *True* interlayer space should be solvated, otherwise *False* will produce non-hydrated clay.
@@ -142,7 +142,7 @@ Target interlayer spacing filled with water, final value may vary due to the wat
 
 
 
-### Simulation Box Specifications
+#### Simulation Box Specifications
 
 `BOX_HEIGHT` - simulation box height in A [float]  <br/>
 Size of the final simulation box in z-direction in A, note the clay layers are possitioned in xy-plane.
@@ -172,7 +172,7 @@ BULK_IONS:
   Cl: 0.1
 ```
 
-### GROMACS version specification
+#### GROMACS version specification
 
 Sometimes more than one version of GROMACS may be installed, this allows user to specify the one to use. 
 
@@ -190,8 +190,9 @@ GMX: gmx_mpi
 
 ***
 
-# `ClayCode.siminp` System Specifications YAML file 
+## `ClayCode.siminp` System Specifications YAML file 
 
 `ClayCode.simpinp` reads the parameters specified in this file and generates simulation inputs for GROMACS.
+
 
 Coming soon...

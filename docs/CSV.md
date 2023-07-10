@@ -30,23 +30,23 @@ SYSNAME: NAu-1-fe
     - The oxidation state of clay atoms can be specified by adding the charge after the element name (e.g. Fe2).
    
 
-### Rules
+## Rules
 
-**Occupancies:**
+### **Occupancies:**
 
  - Total occupancies for each dioctahedral/trioctahedral tetrahedral (`T`) sheet should sum up to 4.
  - For octahedral (`O`) sheets, the total occupancies should amount to 4/3 for dioctahedral/trioctahedral unit cell types, respectively.
  - For example, the occupancies of a dioctahedral 2:1 clay (TOT) should have `T` occupancies of 8, and `O` occupancies of 4;
  - Experimental stoichiometries do not necessarily sum up to interger occupancies. `ClayCode.builder` will first process the target composition such that the occupancies match those expected for the specified [unit cell type](userguide.md## Data files).
 
- **Interlayer Ions:**
+ ### **Interlayer Ions:**
 
 - Interlayer ions will be added to compensate the total charge imbalance resulting from substitutions.
 - The ratio of these ions can be specified in the `I` section. The sum of all ion contributions should sum to 1.
 - Only ion species of the opposite sign to the layer charge will be considered.
 
 
-**Iron 2+/3+:**
+### **Iron 2+/3+:**
 
 - There is no need to specify how much of the total iron is Fe3+ or Fe2+ if at least two values among the total, `T` and `O` unit cell charge are specified.
 - `ClayCode.builder` can perform the splitting between the two iron species.
@@ -71,9 +71,10 @@ The supplied file within directory `Tutorial` is `exp_clay.csv` and contains cla
     * Nontronite NAu-2-fe,
     * Nontronite NG-1; 
 
-* example Al-Mg 3:1 layered double hydroxide:
+* example Al-Mg 3:1 layered double hydroxide (not via [clays.org](https://www.clays.org/sourceclays_data/)):
 
     * LDH31.
+
 
 
 
