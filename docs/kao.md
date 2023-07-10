@@ -14,7 +14,7 @@ CATION EXCHANGE CAPACITY (CEC): 2.0 meq/100g
 SURFACE AREA: N2 area: 10.05 +/- 0.02 m2 /g
 THERMAL ANALYSIS: DTA: endotherm at 630oC, exotherm at 1015oC, TG: dehydroxylationweight loss 13.11% (theory 14%) indicating less than 7% impurities.
 INFRARED SPECTROSCOPY: Typical spectrum for well crystallized kaolinite,however not as well crystallized as a typical China clay from Cornwall,as judged from the intensity of the 3669 cm-1 band. Splitting of the 1100cm- 1 band is due to the presence of coarse crystals.
-STRUCTURE:(Mg.02 Ca.01 Na.01 K.01)[Al3.86 Fe(III).02 Mntr Ti.11][Si3.83Al.17]O10(OH)8, Octahedral charge:.11, Tetrahedral charge:-.17,Interlayer charge:-.06, Unbalanced charge:0.00
+STRUCTURE:(Mg.02 Ca.01 Na.01 K.01)[Al3.86 Fe(III).02 Mntr Ti.11][Si3.83Al.17] O10(OH)8, Octahedral charge:.11, Tetrahedral charge:-.17,Interlayer charge:-.06, Unbalanced charge:0.00
 
 
 
@@ -36,7 +36,6 @@ Enter Ti charge value:  (or exit with 'e')
 ```
 >4
 ```
-4
 Assuming Ti charge of 4.
 
 Getting sheet occupancies:
