@@ -171,4 +171,11 @@ GMX: gmx_mpi
 ```
 
 
-## 
+
+```shell
+ClayCode builder -f path/to/input_Clay.yaml
+```
+
+
+
+

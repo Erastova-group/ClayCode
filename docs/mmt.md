@@ -15,7 +15,7 @@ The provided  `clay_comp.csv` file contains an entry `SWy-1` which corresponds t
 
 ## Construction of the model
 
-Let's examine the `Swy-1.yaml`, which is provided in the `Tutorial` directory. This file contains all of the information necessary to build the clay model.
+Let's examine the `Swy1.yaml`, which is provided in the `Tutorial` directory. This file contains all of the information necessary to build the clay model.
 
 Please consult [YAML](YAML.md) for the parameter description
 
@@ -176,4 +176,15 @@ BULK_IONS:
 GMX: gmx
 
 ```
+
+
+run as
+
+
+```shell
+ClayCode builder -f path/to/input_Clay.yaml
+```
+
+
+
 

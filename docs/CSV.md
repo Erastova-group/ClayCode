@@ -14,7 +14,7 @@ CLAY_COMP: /path/to/clay_comp.csv
 SYSNAME: NAu-1-fe
 
 ```
-
+<br/>
 
 ## File Structure
 
@@ -29,6 +29,7 @@ SYSNAME: NAu-1-fe
     - charges for the `T` layer, `O` layer and `tot` total;
     - The oxidation state of clay atoms can be specified by adding the charge after the element name (e.g. Fe2).
    
+<br/>
 
 ## Rules
 
@@ -39,7 +40,7 @@ SYSNAME: NAu-1-fe
  - For example, the occupancies of a dioctahedral 2:1 clay (TOT) should have `T` occupancies of 8, and `O` occupancies of 4;
  - Experimental stoichiometries do not necessarily sum up to interger occupancies. `ClayCode.builder` will first process the target composition such that the occupancies match those expected for the specified [unit cell type](userguide.md## Data files).
 
- ### **Interlayer Ions:**
+### **Interlayer Ions:**
 
 - Interlayer ions will be added to compensate the total charge imbalance resulting from substitutions.
 - The ratio of these ions can be specified in the `I` section. The sum of all ion contributions should sum to 1.
@@ -53,6 +54,7 @@ SYSNAME: NAu-1-fe
 
 
 
+<br/>
 
 ## Supplied CSV file
 
@@ -77,6 +79,7 @@ The supplied file within directory `Tutorial` is `exp_clay.csv` and contains cla
 
 
 
+<br/>
 
 ## Example 
 

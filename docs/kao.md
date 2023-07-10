@@ -58,3 +58,11 @@ Splitting total iron content (0.0200) to match charge.
 Writing new target clay composition to 'KGa-1_exp_df.csv'
 
 ```
+
+
+```shell
+ClayCode builder -f path/to/input_Clay.yaml
+```
+
+
+

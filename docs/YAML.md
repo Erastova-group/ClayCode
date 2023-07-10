@@ -50,6 +50,7 @@ CLAY_TYPE: D21
 # Dioctahedral 2:1 - D21
 ```
 
+<br/>
 
 
 ### Optional Parameters
@@ -83,6 +84,9 @@ Y_CELLS: 5
 N_SHEETS: 3
 ```
 
+<br/>
+
+
 #### Clay Composition 
 
 `ClayCode.builder` calculates the number and type of unit cells necessary to match the desired compossition, as given in [CSV](CSV.md) file. <br/>
@@ -108,6 +112,7 @@ UC_INDEX_LIST: [D221 D228]
 # probability list of unit cells in system
 UC_RATIOS_LIST: [0.8 0.2]
 ```
+<br/>
 
 
 #### Interlayer Solvent and Ions
@@ -140,6 +145,7 @@ The specified number of water molecules multiplied by the number of unit cells i
 `SPACING_WATERS` - hydrated interleyer spacing, in A [float] (Default 10.0 A) <br/>
 Target interlayer spacing filled with water, final value may vary due to the water rearrangement when in contact with clay surface and packing around ions.
 
+<br/>
 
 
 #### Simulation Box Specifications
@@ -171,6 +177,7 @@ BULK_IONS:
   Na: 0.1
   Cl: 0.1
 ```
+<br/>
 
 #### GROMACS version specification
 
@@ -186,6 +193,7 @@ To use your MPI-compiled version:
 ```yaml
 GMX: gmx_mpi
 ```
+<br/>
 
 
 ***
