@@ -6,7 +6,7 @@ In this section we show how to set up the following clay systems:
 
  * Wyoming [Montmorillonite](mmt.md),
  * [Illite](imt.md),
- * [pyrophyllite](pyr.md),
+ * [Pyrophyllite](pyr.md),
  * Brown and green Uley [nontronites](nont.md),
  * [Ferruginous Smectite](swa.md),
  * [Kaolinite](kao.md),
@@ -34,5 +34,5 @@ The supplied `exp_clay.csv` file and contains clay structures corresponding to t
 
     * LDH31.
 
-Note, that Pyrophilite composition is not given in the .CSV file, and it s fully described in the .YAML.
+Note, that Pyrophyllite composition is not given in the .CSV file, and it s fully described in the .YAML.
 

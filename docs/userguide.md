@@ -13,7 +13,7 @@ Furthermore, solvent molecules and ions are added as GROMACS subprocesses. There
 
 ## Data files
 
-The data files store information necasary to construct the clay stuctiures for MD simulation. 
+The data files store information necessary to construct the clay structures for MD simulation. 
 
 The files are stored within `ClayCode/data/` directory:
 
@@ -37,11 +37,11 @@ ClayCode
 ```
 where:
 
-* `data/FF` contains force fields files, as dictated by Gromacs format, currently included:
+* `data/FF` contains force fields files, as dictated by GROMACS format, currently included:
 		-  ClayFF force field[@Cygan2004, @Cygan2021] (with added Fe parameters based on personal communication with Andrey Kalinichev) in a directory `ClayFF_Fe.ff`, and
 		-  Ions by Pengfei Li [@li2016advances, @smith2023consequences] in `Ions.ff`, default is IOD-type, HFE and CN also included.
 * `data/UCS` contains unit cell structures in .GRO format and their corresponding .ITP, topology assigned to ClayFF force field. The files are grouped per type, where `D21` us dioctohedral 2:1 clay, `D11` is dioctohedral 1:1 and `LDH31` is a layered double hydroxide. To include new UCs, see [Adding Unit Cells](#Adding_UC).
-* `data/MDP` contains Gromacs version-specific .MDP files for energy minimisation and equilibration.
+* `data/MDP` contains GROMACS version-specific .MDP files for energy minimisation and equilibration.
 * `data/user` reserved for user files.
 
 
@@ -50,11 +50,11 @@ where:
 
 ## Clay Composition
 
-The file in .CSV format containing the reduced unit cell structure, including partial atomic ocupancies, charge balancing ions and layer charges for each clay listed.
+The file in .CSV format containing the reduced unit cell structure, including partial atomic occupancies, charge balancing ions and layer charges for each clay listed.
 
 See full details in the [Input files: CSV](CSV.md)
 
-It is also possible to supply clay compossioton within the [.YAML](YAML.md) input only. See [Pyrophyllite](pyr.md) as an example
+It is also possible to supply clay composition within the [.YAML](YAML.md) input only. See [Pyrophyllite](pyr.md) as an example
 
 
 
@@ -83,7 +83,7 @@ Use of ClayCode should not be dictated only by the Unite Cells provided with thi
 1 - Obtain a crystal structure. <br/>
 We recommend downloading .cif from the [American Mineralogist Crystal Structure Database](http://rruff.geo.arizona.edu/AMS/amcsd.php).
 
-2 - Convert it to full ocupancy expanded structure .gro (or .pdb). <br/>
+2 - Convert it to full occupancy expanded structure .gro (or .pdb). <br/>
 We recommend using one of the the following [OpenBabel](http://openbabel.org/wiki/Main_Page), [Avogadro](https://avogadro.cc)[@hanwell2012avogadro] (not Avogadro2) or [Mercury](https://www.ccdc.cam.ac.uk/solutions/software/mercury/) by CCDC (licence needed). We prefer Avogadro.
 
 3 - Manually rename the atoms in the .gro to have unique names. <br/>

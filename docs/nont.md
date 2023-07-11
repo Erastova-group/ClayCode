@@ -13,14 +13,14 @@ where \(\mathrm{M^{charge}}\) indicates interlayer counter-balancing cationic ch
 
 ## Assigning iron distribution and valence
 
-Iron can be present as either Fe(II) or Fe(III) and found in both, the tetrahedral and the octohedral sheets, as well as a charge compensating cation in the interlayer space space. 
+Iron can be present as either Fe(II) or Fe(III) and found in both, the tetrahedral and the octahedral sheets, as well as a charge compensating cation in the interlayer space space. 
 Furthermore, in many samples, such as NAu-2, ferrihydrydes are adsorbed to clay surfaces.[@Frost2002]
-While methods such as near-infrared (NIR), extended X-ray adsorption fine structures (EXAFS), Moessbauer spectroscopy, X-ray diffraction (XRD) and thermogravimetric analysis (TGA) have been used to determine the charge distributions of Fe in the sample,[@Gates2002, @Baron2017, @Decarreau2014, Ding2002] the exact compossition of these nontronites remains matter of debate.
+While methods such as near-infrared (NIR), extended X-ray adsorption fine structures (EXAFS), Moessbauer spectroscopy, X-ray diffraction (XRD) and thermogravimetric analysis (TGA) have been used to determine the charge distributions of Fe in the sample,[@Gates2002, @Baron2017, @Decarreau2014, Ding2002] the exact composition of these nontronites remains matter of debate.
 
 Conventionally, when Al and Fe(III), are present in a structure, because of their larger ionic radius, Fe(III) is assigned complitely to the octahedral sheet. Only once all octahedral spaces are occupied by Fe(III), the structure is assumed to also have Fe(III) in tetrahedral positions.
 However, this assignment is not necessarily correct and due to the detection limits of commonly used spectroscopic or chemical analysis techniques tetrahedral Fe(III) contents below 5% often remain undetected.[@Baron2017] 
 
-To this end, after a review of the literature, we use the stuctures identified by Gates *et al*[@Gates2002]. We noth that the octohedral occupancy fro NAu-2 is 3.93 instead of full 4. ClayCode will address this when generating the stucture.  Furthermore, we assign \(\mathrm{Ca^{2+}}\) as counterbalancing ion to all the systems. Resulting structures are, therefore, as follows: 
+To this end, after a review of the literature, we use the structures identified by Gates *et al*[@Gates2002]. We note that the octahedral occupancy fro NAu-2 is 3.93 instead of full 4. ClayCode will address this when generating the structure.  Furthermore, we assign \(\mathrm{Ca^{2+}}\) as counterbalancing ion to all the systems. Resulting structures are, therefore, as follows: 
 
 
 **NAu-1:** \(\mathrm{0.525 ~Ca^{2+} \left[Si_{6.98}Al_{0.95}Fe_{0.07}\right]^{-1.02} \left[Al_{0.36}Fe_{3.61}Mg_{0.04}\right]^{-0.03}}\)

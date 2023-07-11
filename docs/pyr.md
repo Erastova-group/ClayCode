@@ -4,7 +4,7 @@ Pyrophyllite is a phyllosilicate mineral composed of aluminium silicate hydroxid
 
 non-charged
 
-can be with Fe-incoprporated, example:
+can be with Fe-incorporated, example:
 https://hal.science/insu-00160523/
 
 or
@@ -13,7 +13,7 @@ Pütürge pyrophyllite with small iron and chromium contents has a bright white 
 
 https://www.cambridge.org/core/journals/clay-minerals/article/beneficiation-of-the-puturge-pyrophyllite-ore-by-flotation-mineralogical-and-chemical-evaluation/2E4E88D5CF9A97EAFCE9E6997E2AB1DA
 
-There is no .CSV file, as quite simple set up, using 1 (or 2 if incl some Fe) UCs:
+There is no .CSV file, as quite simple set up, using 1 (or 2 if incl. some Fe) UCs:
 
 
 from the D21_UCs_infor.csv

@@ -3,7 +3,7 @@
 `ClayCode.builder` reads the parameters specified in this file.
 
 
-### Requiered Parameters
+### Required Parameters
 
 The first section contains general parameters that are required for the model construction.
 
@@ -89,7 +89,7 @@ N_SHEETS: 3
 
 #### Clay Composition 
 
-`ClayCode.builder` calculates the number and type of unit cells necessary to match the desired compossition, as given in [CSV](CSV.md) file. <br/>
+`ClayCode.builder` calculates the number and type of unit cells necessary to match the desired composition, as given in [CSV](CSV.md) file. <br/>
 If, instead, the user would like to specify this manually, the following parameters can be used:
 
 `UC_INDEX_LIST` - unit cell list [list] <br/>
@@ -103,7 +103,7 @@ required unit cells, as specified in `data/UCS` directory, to use for building t
 
 The following script will use the dioctohedral 2:1 unit cells, which are both neutral smectite unit cells, with the latter having 1 octohedral Al substitution for the Fe3.
 
-This will produce a neutal smectite with the following stoicheometry: \(\mathrm{Si_8 \left[Al_{3.8}Fe_{0.2}\right]}\).
+This will produce a neutral smectite with the following stoichiometry: \(\mathrm{Si_8 \left[Al_{3.8}Fe_{0.2}\right]}\).
 
 ```yaml
 # required UCs to builder system as list
@@ -129,7 +129,7 @@ If a single number [int] is given, all of the ions will be hydrated by the same 
 To specify number of waters per ion-type the entry should be a citionary, then the total number of water molecules will be mapped to the specifications given for each of the  interlayer occupancies `I` in the [CSV](CSV.md) entry.<br/>
 <br/>
 **Example:**<br/>
-A given number of waters will be added for each cation, which quantity is specified in the clay stoicheometry [CSV](CSV.md) file.
+A given number of waters will be added for each cation, which quantity is specified in the clay stoichiometry [CSV](CSV.md) file.
 
           ION_WATERS: 
                 Ca: 12
@@ -151,7 +151,7 @@ Target interlayer spacing filled with water, final value may vary due to the wat
 #### Simulation Box Specifications
 
 `BOX_HEIGHT` - simulation box height in A [float]  <br/>
-Size of the final simulation box in z-direction in A, note the clay layers are possitioned in xy-plane.
+Size of the final simulation box in z-direction in A, note the clay layers are positioned in xy-plane.
 
 
 `BULK_SOLV` - bulk solvent presence [bool] (Default: *True*)<br/>
@@ -159,11 +159,11 @@ If *True* the box space will be filled with water, otherwise *False* will keep t
 
 `BULK_IONS` - type of ions and their concentration in mol/L [int, Dict[str: int]] <br/>
 Ions to be added into the bulk solvated space. <br/>
-*Note*: Gromacs will not be happy if the system is not neutral!
+*Note*: GROMACS will not be happy if the system is not neutral!
 
 **Example:**
 
-This will create a simulation box of 120 A hight, filled with 0.1 M NaCl solution.
+This will create a simulation box of 120 A height, filled with 0.1 M NaCl solution.
 
 ```yaml
 
@@ -184,7 +184,7 @@ BULK_IONS:
 Sometimes more than one version of GROMACS may be installed, this allows user to specify the one to use. 
 
 
-`GMX` - bash alias for your favourite gromacs version [str]
+`GMX` - bash alias for your favourite GROMACS version [str]
 
 **Example:**
 
@@ -201,6 +201,5 @@ GMX: gmx_mpi
 ## `ClayCode.siminp` System Specifications YAML file 
 
 `ClayCode.simpinp` reads the parameters specified in this file and generates simulation inputs for GROMACS.
-
 
 Coming soon...
