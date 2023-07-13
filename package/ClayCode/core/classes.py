@@ -1253,7 +1253,16 @@ class GROFile(File):
         if self.__universe is not None:
             return self.__universe
         elif self.is_file():
-            return Universe(str(self.resolve()))
+            u = Universe(str(self.resolve()))
+            pos = u.atoms.positions
+            if "SOL" in u.residues.resnames or "iSL" in u.residues.resnames:
+                for residue in u.residues:
+                    if residue.resname in ["SOL", "iSL"]:
+                        residue.atoms.guess_bonds()
+                        assert len(residue.atoms.bonds) == 2
+                sol = u.select_atoms("resname iSL SOL")
+                sol.positions = sol.unwrap(compound="residues")
+            return u
 
     def reset_universe(self):
         self.__universe = None

@@ -32,6 +32,8 @@ from ClayCode.core.utils import (
     set_mdp_parameter,
 )
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
+from MDAnalysis.lib._cutil import make_whole
+from MDAnalysis.transformations import unwrap
 from MDAnalysis.units import constants
 from numpy._typing import NDArray
 from pyparsing import unicode_string
@@ -385,7 +387,8 @@ class Builder:
     def stack_sheets(self, extra=0.5) -> None:
         try:
             il_crds: GROFile = self.il_solv
-            il_u = il_crds.universe
+            il_u: Universe = il_crds.universe
+            # il_u.positions = il_u.atoms.unwrap(compound='residues')
             il_solv = True
         except AttributeError:
             il_solv = False
@@ -864,12 +867,9 @@ class Solvent:
     def get_sheet_solvent_mols(self, z_dim: Union[float, int]) -> int:
         mols_sol = (
             z_dim
-            / 10
             * constants["N_Avogadro"]
             * self.x_dim
-            / 10
             * self.y_dim
-            / 10
             * self.solv_density
         ) / (self.mw_sol)
         return round(mols_sol, 0)
@@ -936,13 +936,13 @@ class Solvent:
                 self.check_solvent_nummols(solv)
             except Exception as e:
                 logger.info(f"\t{e}")
-                self._z_padding += 0.5
+                self._z_padding += self._z_padding_increment
                 logger.info(
                     f"Increasing box size by {self._z_padding} \u212B\n"
                 )
                 continue
-
-            break
+            else:
+                break
 
         logger.debug(f"Saving solvent sheet as {spc_gro.stem!r}")
         self.__universe: Universe = spc_gro.universe

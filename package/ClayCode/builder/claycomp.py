@@ -33,8 +33,6 @@ from ClayCode.core.utils import get_subheader
 from numpy._typing import NDArray
 from tqdm import tqdm
 
-warnings.filterwarnings("ignore", category=FutureWarning)
-
 __all__ = ["TargetClayComposition"]
 
 logger = logging.getLogger(__name__)
@@ -1622,7 +1620,7 @@ class MatchClayComposition:
                 "Getting matching unit cell combination for target composition"
             )
         )
-        for n_ucs in range(2, 3):  # len(self.unique_uc_array) + 1):
+        for n_ucs in range(2, len(self.unique_uc_array) + 1):
             logger.info(
                 f"\nGetting combinations for {n_ucs} unique unit cells"
             )

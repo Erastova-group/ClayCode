@@ -16,6 +16,8 @@ from ClayCode.core.classes import MDPFile
 from ClayCode.core.consts import MDP, MDP_DEFAULTS
 from ClayCode.core.utils import (
     execute_shell_command,
+    get_header,
+    get_subheader,
     set_mdp_freeze_clay,
     set_mdp_parameter,
 )
@@ -73,6 +75,7 @@ class GMXCommands:
             pass
         self._mdp_template = mdp_template
         self._mdp_defaults = mdp_defaults
+        self.logger = logging.getLogger(self.__class__.__name__)
         logger.info(f"\n{self.gmx_info}")
 
     @property
@@ -120,6 +123,7 @@ class GMXCommands:
         freeze_dims: Optional[List[str]] = None,
         freeze_grps: Optional[List[str]] = None,
     ):
+        self.logger.info(get_header(f"Getting mdp options\n"))
         mdp_temp_file = True
         if mdp_file:
             file = Path(mdp_file).with_suffix(".mdp")
@@ -153,7 +157,6 @@ class GMXCommands:
                 )
         if mdp_temp_file and not mdp_prms:
             mdp_prms = self.mdp_defaults
-
         for prm_dict in [run_dict, mdp_prms]:
             try:
                 for parameter, value in prm_dict.items():
@@ -232,9 +235,6 @@ class GMXCommands:
                     )
                 )
                 with tempfile.TemporaryDirectory() as odir:
-                    logger.debug(
-                        f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
-                    )
                     try:
                         output = execute_shell_command(
                             f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
