@@ -11,7 +11,7 @@ OUTPATH: '.'
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
 # compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
-SYSNAME: IMt-1
+SYSNAME: IMt-2
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
