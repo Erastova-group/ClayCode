@@ -123,7 +123,7 @@ class GMXCommands:
         freeze_dims: Optional[List[str]] = None,
         freeze_grps: Optional[List[str]] = None,
     ):
-        self.logger.info(get_header(f"Getting mdp options\n"))
+        # self.logger.info(get_header(f"Getting mdp options\n"))
         mdp_temp_file = True
         if mdp_file:
             file = Path(mdp_file).with_suffix(".mdp")
