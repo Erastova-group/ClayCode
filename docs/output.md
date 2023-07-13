@@ -31,7 +31,7 @@ The output generated in the [nontronite tutorial](nont.md) executing command:
 ```shell
 ClayCode builder -f Tutorial/NAu1.yaml
 ```
-asking to generate clay named NAu-1-fe using 7 x 5 x 3 unit cells, featuring adding interlayed water and ions and solvated.
+asking to generate clay named NAu-1-fe using 7 x 5 x 3 unit cells, featuring adding interlayer water and ions and solvated.
 
 The output files are as follows:
 ```
