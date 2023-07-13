@@ -154,3 +154,5 @@ dask-worker-space
 
 # the website goes into the gh-pages branch 
 site/
+Tutorial/.DS_Store
+*.numbers
