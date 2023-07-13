@@ -1254,8 +1254,10 @@ class GROFile(File):
             return self.__universe
         elif self.is_file():
             u = Universe(str(self.resolve()))
-            pos = u.atoms.positions
-            if "SOL" in u.residues.resnames or "iSL" in u.residues.resnames:
+            # pos = u.atoms.positions
+            if re.search("interlayer", self.name) and (
+                "SOL" in u.residues.resnames or "iSL" in u.residues.resnames
+            ):
                 for residue in u.residues:
                     if residue.resname in ["SOL", "iSL"]:
                         residue.atoms.guess_bonds()
