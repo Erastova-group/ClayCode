@@ -890,6 +890,7 @@ class SiminpArgs(_Args):
 
     def __init__(self, data):
         from ClayCode.siminp.consts import SIMINP_DEFAULTS as _siminp_defaults
+
         super().__init__(self, data)
         self.process()
 
