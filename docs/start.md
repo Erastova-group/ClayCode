@@ -25,8 +25,8 @@ For further details see:
 [User Guide]: userguide.md
 [Tutorials]: tutorials.md
 <div class="text-center">
-<a href="userguide/" class="btn btn-primary" role="button">User Guide</a>
-<a href="tutorials/" class="btn btn-primary" role="button">Tutorials</a>
+<a href="../userguide" class="btn btn-primary" role="button">User Guide</a>
+<a href="../tutorials" class="btn btn-primary" role="button">Tutorials</a>
 </div>
 
 </br>

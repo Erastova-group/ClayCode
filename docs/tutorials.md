@@ -36,3 +36,13 @@ The supplied `exp_clay.csv` file and contains clay structures corresponding to t
 
 Note, that Pyrophyllite composition is not given in the .CSV file, and it s fully described in the .YAML.
 
+
+To run ClayCode:
+
+```shell
+ClayCode builder -f path/to/input_Clay.yaml
+```
+
+Your output will be a directory containing all the files for simulation:)
+
+
