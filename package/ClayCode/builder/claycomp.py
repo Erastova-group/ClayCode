@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from ClayCode.builder.utils import get_checked_input, select_input_option
-from ClayCode.core.classes import Dir, File, ITPFile, PathFactory
+from ClayCode.core.classes import Dir, File, ITPFile, PathFactory, YAMLFile
 from ClayCode.core.consts import UCS
 from ClayCode.core.lib import get_ion_charges
 from ClayCode.core.utils import get_subheader
@@ -560,20 +560,33 @@ class TargetClayComposition:
         df.loc["C"].update(charges)
         return df
 
+    @cached_property
+    def clayff_at_types(self):
+        clayff_at_types = YAMLFile(UCS / "clay_at_types.yaml")
+        return clayff_at_types.data
+
+    @cached_property
+    def clayff_elements(self):
+        reverse_at_types = {v: k for (k, v) in self.clayff_at_types.items()}
+        return reverse_at_types
+
+    def clayff_to_element(self, at_type):
+        return self.clayff_elements[at_type]
+
     def __get_match_df(self, csv_file):
         match_df = self.__read_match_df(csv_file)
         match_df = pd.DataFrame(match_df[self.name], columns=[self.name])
         match_df = self.update_charges(match_df)
         match_df.dropna(inplace=True, how="all")
-        with open(UCS / "clay_at_types.yaml", "r") as file:
-            clayff_at_types: dict = yaml.safe_load(file)
+        # with open(UCS / "clay_at_types.yaml", "r") as file:
+        #     clayff_at_types: dict = yaml.safe_load(file)
         match_df["new-at-type"] = match_df.index.get_level_values(
             "at-type"
         ).values
         match_df.loc[self.idx_sel, "new-at-type"] = (
             match_df.loc[self.idx_sel, "new-at-type"]
             .groupby("sheet", group_keys=True)
-            .apply(lambda x: clayff_at_types[x.name])
+            .apply(lambda x: self.clayff_at_types[x.name])
         )
         nan_at_types = match_df["new-at-type"][match_df["new-at-type"].isna()]
         if nan_at_types.tolist():
@@ -860,7 +873,13 @@ class TargetClayComposition:
         ).apply(lambda x: x - self.uc_data.oxidation_numbers[x.name])
         charge_substitutions["at-type"] = np.NAN
         charge_substitutions["at-type"].update(sheet_df)
-        if "fe_tot" in self.df.index.get_level_values("at-type"):
+        if self.__has_at_type("fe_tot"):
+            if self.__has_at_type("feo") or self.__has_at_type("fe2"):
+                logger.error(
+                    f"Invalid octahedral iron values!\n"
+                    f"Specify either total Fe OR Fe3 and Fe2!"
+                )
+                self.__abort()
             fe_row_no_charge = pd.DataFrame(
                 [[self.df.loc["O", "fe_tot"], 0]],
                 index=pd.MultiIndex.from_tuples([("O", "fe_tot")]),
@@ -875,6 +894,9 @@ class TargetClayComposition:
                 [charge_substitutions, fe_row_no_charge, fe_row_charged]
             )
         return charge_substitutions
+
+    def __has_at_type(self, at_type):
+        return at_type in self.df.index.get_level_values("at-type")
 
     @property
     def non_charged_sheet_df(self):  # , idx_sel=["T", "O"]):
@@ -1219,7 +1241,9 @@ class TargetClayComposition:
             outpath = outpath / f"{self.name}_exp_df{fmt}"
         tmpfile = tempfile.NamedTemporaryFile(suffix=fmt, prefix=outpath.stem)
         if fmt == ".csv":
-            self.df.to_csv(tmpfile.name)
+            print_df = self.df.copy()
+            print_clay_df = print_df.loc[["T", "O"]]
+            self.df.to_csv(tmpfile.name, float_format="%.4f")
         elif fmt == ".p":
             with open(tmpfile.name, "wb") as file:
                 pkl.dump(self.df, file)
@@ -1830,7 +1854,8 @@ class MatchClayComposition:
             outpath = outpath / f"{self.name}_match_df{fmt}"
         tmpfile = tempfile.NamedTemporaryFile(suffix=fmt, prefix=outpath.stem)
         if fmt == ".csv":
-            self.match_composition.to_csv(tmpfile.name)
+            output_format = self.match_composition
+            self.match_composition.to_csv(tmpfile.name, float_format="%.4f")
         elif fmt == ".p":
             with open(tmpfile.name, "wb") as file:
                 pkl.dump(self.match_composition)

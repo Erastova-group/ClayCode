@@ -39,6 +39,16 @@ import pandas as pd
 import yaml
 from ClayCode.core.consts import FF
 from ClayCode.core.consts import KWD_DICT as _KWD_DICT
+from ClayCode.core.types import (
+    AnyFileType,
+    AnyPathType,
+    FileListType,
+    FileNameMatchSelector,
+    FileOrStr,
+    GROFileType,
+    StrListOrStrDict,
+    StrOrListOfStr,
+)
 from ClayCode.core.utils import file_or_str, mdp_to_yaml, select_named_file
 from MDAnalysis import AtomGroup, ResidueGroup, Universe
 from pandas.errors import EmptyDataError
@@ -122,7 +132,7 @@ def match_str(searchstr: str, pattern: str) -> Union[None, str]:
 
 
 @singledispatch
-def get_match_pattern(pattern: Union[AnyStr, List[AnyStr]]):
+def get_match_pattern(pattern: StrOrListOfStr):
     """Generate search pattern from list, str, dict, int or float"""
     raise TypeError(f"Unexpected type {type(pattern)!r}!")
 
@@ -172,7 +182,7 @@ class Kwd(str):
 
     def match(
         self,
-        pattern: Union[str, List[str], Dict[str, Any]],
+        pattern: StrListOrStrDict,
         mode: Literal["full", "parts"] = "full",
     ) -> Union[Kwd, None]:
         """Match keywords against a search pattern and return match"""
@@ -319,7 +329,7 @@ class BasicPath(_Path):
         def wrapper(
             self,
             pattern: Union[str, List[str], int, float, Dict[str, Any]],
-            mode: Literal["full", "stem", "ext", "suffix", "parts"] = "full",
+            mode: FileNameMatchSelector = "full",
         ) -> Union[BasicPath, None]:
             if mode == "full":
                 check = match_str(self.name, pattern)
@@ -1349,7 +1359,7 @@ class TOPFile(File):
         self.__coordinates = None
 
     @property
-    def gro(self):
+    def gro(self) -> GROFileType:
         return GROFile(self.with_suffix(".gro"))
 
 
@@ -1366,7 +1376,7 @@ class YAMLFile(File):
             self._data = self._read_data()
         return self._data
 
-    def _read_data(self):
+    def _read_data(self) -> Dict[Any, Any]:
         try:
             with open(self, "r") as file:
                 return yaml.safe_load(file)
@@ -1380,7 +1390,7 @@ class YAMLFile(File):
 
     @data.setter
     @file_or_str
-    def data(self, input_string):
+    def data(self, input_string: FileOrStr):
         self._data = input_string
 
 
@@ -1396,7 +1406,7 @@ class Dir(BasicPath):
                 f"Expected {self._suffix!r}, found {self.suffix!r}"
             )
 
-    def _get_filelist(self, ext: Union[str, list] = _suffices):
+    def _get_filelist(self, ext: StrOrListOfStr = _suffices) -> FileListType:
         assert type(ext) in [
             str,
             list,
@@ -1427,7 +1437,7 @@ class Dir(BasicPath):
         # return filelist
 
     @property
-    def filelist(self):
+    def filelist(self) -> FileListType:
         return PathListFactory(self)
 
     @property
@@ -1474,9 +1484,7 @@ class FFDir(Dir):
 
 
 class BasicPathList(UserList):
-    def __init__(
-        self, path: Union[BasicPath, Dir], ext="*", check=False, order=None
-    ):
+    def __init__(self, path: AnyPathType, ext="*", check=False, order=None):
         if not isinstance(path, list):
             self.path = DirFactory(path)
             # if order is not None:
