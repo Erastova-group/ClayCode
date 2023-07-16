@@ -29,7 +29,7 @@ from ClayCode.builder.utils import get_checked_input, select_input_option
 from ClayCode.core.classes import Dir, File, ITPFile, PathFactory, YAMLFile
 from ClayCode.core.consts import UCS
 from ClayCode.core.lib import get_ion_charges
-from ClayCode.core.utils import get_subheader
+from ClayCode.core.utils import get_debugheader, get_subheader
 from numpy._typing import NDArray
 from tqdm import tqdm
 
@@ -101,13 +101,19 @@ class UCData(Dir):
         gro_groups = {}
         itp_groups = {}
         dimensions = {}
+        bbox_height = {}
+        dim_str = None
+        get_group = lambda: box_dims[dim_str]
         n_group = 0
         self.__dimensions = {}
+        self.__bbox_height = {}
         extract_id = lambda file: file.stem[-2:]
         for uc in sorted(self.gro_filelist):
             uc_dimensions = uc.universe.dimensions
+            bbox_height_new = np.ediff1d(uc.universe.atoms.bbox()[:, 2])[0]
             dim_str = "_".join(uc_dimensions.round(3).astype(str))
             if dim_str not in box_dims.keys():
+                bbox_height[n_group] = bbox_height_new
                 box_dims[dim_str] = n_group
                 uc_groups[n_group] = [extract_id(uc)]
                 gro_groups[n_group] = [uc]
@@ -115,15 +121,39 @@ class UCData(Dir):
                 dimensions[n_group] = uc_dimensions
                 n_group += 1
             else:
-                uc_groups[box_dims[dim_str]].append(extract_id(uc))
-                gro_groups[box_dims[dim_str]].append(uc)
-                itp_groups[box_dims[dim_str]].append(uc.with_suffix(".itp"))
-                dimensions[box_dims[dim_str]] = uc_dimensions
+                if np.less(bbox_height_new, bbox_height[box_dims[dim_str]]):
+                    bbox_height[get_group()] = bbox_height_new
+                uc_groups[get_group()].append(extract_id(uc))
+                gro_groups[get_group()].append(uc)
+                itp_groups[get_group()].append(uc.with_suffix(".itp"))
+                dimensions[get_group()] = uc_dimensions
+        self.__bbox_height = bbox_height
         self.__dimensions = dimensions
         self.__uc_groups = uc_groups
         self.__gro_groups = gro_groups
         self.__itp_groups = itp_groups
         self.__base_ucs = {}
+
+    @property
+    def bbox_height(self):
+        if self.group_id is not None:
+            return self.__bbox_height[self.group_id]
+        else:
+            return self.__bbox_height
+
+    @property
+    def bbox_z_shift(self):
+        if self.group_id is not None:
+            uc_u = self.__gro_groups[self.group_id][0].universe
+            not_oh = uc_u.select_atoms("not name [oOhH]*")
+            uc_cog_z = not_oh.center_of_geometry()[2]
+            shift = self.bbox_height / 2 - uc_cog_z
+            return shift
+        else:
+            raise ValueError("No group selected!")
+
+    def __get_z_shift(self, uc_id):
+        base_uc = self.uc_base[uc_id]
 
     def __get_base_ucs(self, uc_ids: List[str]) -> Union[List[str], str]:
         uc_df = self.__df.loc[:, uc_ids]
@@ -135,8 +165,8 @@ class UCData(Dir):
 
     @property
     def uc_base(self):
-        if self.uc_idxs is not None:
-            return self.__base_ucs[self.uc_idxs]
+        if self.group_id is not None:
+            return self.__base_ucs[self.group_id]
         else:
             logger.error("No unit cell group selected.")
 
@@ -756,15 +786,15 @@ class TargetClayComposition:
             self._df.drop(("O", "fe_tot"), inplace=True)
             # self._df.where(self._df.loc['O'] != 0, np.NaN, inplace=True)
             # charge_delta = dict(map(lambda x: (x, self._uc_data.oxidation_numbers[x] - ox_states[x]), ox_states.keys()))
+            logger.info(
+                f"\nSplitting total iron content ({missing_o:.4f}) to match charge.\n"
+            )
             assert np.isclose(
                 self.occupancies["O"], self.uc_data.occupancies["O"]
             ), f'Found incorrect occupancies of {self.occupancies["O"]}, expected {self.uc_data.occupancies["O"]}'
         except KeyError:
             pass
         sheet_df = self._df.copy()
-        logger.info(
-            f"\nSplitting total iron content ({missing_o:.4f}) to match charge.\n"
-        )
         self.print_df_composition(
             sheet_df.loc[["T", "O"], :].dropna(), fill="\t"
         )
@@ -1313,7 +1343,9 @@ class MatchClayComposition:
         sheet_n_ucs: int,
         ignore_threshold: float = 0.0,
         manual_setup: bool = True,
+        debug_run: bool = False,
     ):
+        self.debug_run = debug_run
         logger.info(get_subheader("Selecting unit cells"))
         self.manual_setup = manual_setup
         self.ignore_threshold = ignore_threshold
@@ -1628,6 +1660,15 @@ class MatchClayComposition:
             ascending=False, level="sheet", sort_remaining=True
         ).dropna()
 
+    @property
+    def max_n_uc(self) -> int:
+        if not self.debug_run:
+            n_uc_max = len(self.unique_uc_array) + 1
+        else:
+            n_uc_max = 3
+            logger.info(get_debugheader(f"max n_ucs = {n_uc_max - 1}"))
+        return n_uc_max
+
     @cached_property
     def __unique_uc_match_dict(self) -> dict:
         uc_df = self.uc_df.copy()
@@ -1644,7 +1685,8 @@ class MatchClayComposition:
                 "Getting matching unit cell combination for target composition"
             )
         )
-        for n_ucs in range(2, len(self.unique_uc_array) + 1):
+
+        for n_ucs in range(2, self.max_n_uc):
             logger.info(
                 f"\nGetting combinations for {n_ucs} unique unit cells"
             )

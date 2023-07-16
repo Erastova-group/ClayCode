@@ -220,7 +220,7 @@ class Builder:
         self.stack.reset_universe()
         self.stack.write(topology=self.top)
 
-    def solvate_box(self, extra=2) -> None:
+    def solvate_box(self, extra=1.5) -> None:
         if self.extended_box is True:
             logger.info("Adding bulk solvation:")
             solv_box_crd: GROFile = self.get_filename("solv", suffix=".gro")
@@ -384,11 +384,20 @@ class Builder:
         else:
             logger.info("\tSkipping bulk ion addition.")
 
-    def stack_sheets(self, extra=0.5) -> None:
+    def stack_sheets(self, extra=2.0) -> None:
         try:
             il_crds: GROFile = self.il_solv
             il_u: Universe = il_crds.universe
-            # il_u.positions = il_u.atoms.unwrap(compound='residues')
+            if (
+                "SOL" in il_u.residues.resnames
+                or "iSL" in il_u.residues.resnames
+            ):
+                for residue in il_u.residues:
+                    if residue.resname in ["SOL", "iSL"]:
+                        residue.atoms.guess_bonds()
+                        assert len(residue.atoms.bonds) == 2
+                sol = il_u.select_atoms("resname iSL SOL")
+                sol.positions = sol.unwrap(compound="residues")
             il_solv = True
         except AttributeError:
             il_solv = False
@@ -402,6 +411,7 @@ class Builder:
         for sheet_id in range(self.args.n_sheets):
             self.sheet.n_sheet = sheet_id
             sheet_u = self.sheet.universe.copy()
+            sheet_u.dimensions[2] = sheet_u.dimensions[2] + extra
             if il_solv is not False:
                 il_u_copy = il_u.copy()
                 if sheet_id == self.args.n_sheets - 1:
@@ -411,23 +421,19 @@ class Builder:
                             il_u_copy.residues.resnames,
                         )
                     )
-                il_u_copy.atoms.translate(
-                    [0, 0, sheet_u.dimensions[2] + extra]
-                )
+                il_u_copy.atoms.translate([0, 0, sheet_u.dimensions[2]])
                 new_dimensions: NDArray = sheet_u.dimensions
                 sheet_u: Universe = Merge(sheet_u.atoms, il_u_copy.atoms)
                 sheet_u.dimensions = new_dimensions
                 sheet_u.dimensions[2] = (
                     sheet_u.dimensions[2] + il_u_copy.dimensions[2] + extra
                 )
-                sheet_u.atoms.translate(
-                    [0, 0, sheet_id * (sheet_u.dimensions[2] + extra)]
-                )
-                sheet_u.dimensions[2]: float = sheet_u.dimensions[2] + extra
-            else:
-                sheet_u.atoms.translate(
-                    [0, 0, sheet_id * sheet_u.dimensions[2]]
-                )
+                # sheet_u.atoms.translate(
+                #     [0, 0, sheet_id * (sheet_u.dimensions[2])]
+                # )
+                # sheet_u.dimensions[2]: float = sheet_u.dimensions[2] + extra
+            # else:
+            sheet_u.atoms.translate([0, 0, sheet_id * sheet_u.dimensions[2]])
             sheet_universes.append(sheet_u.atoms.copy())
             sheet_heights.append(sheet_u.dimensions[2])
         combined: Universe = Merge(*sheet_universes)
@@ -657,13 +663,21 @@ class Sheet:
             y_cells,
             1,
         ]
-        # self.dimensions[:3] *=
         self.x_cells: int = x_cells
         self.y_cells: int = y_cells
         self.fstem: str = fstem
         self.outpath: Path = outpath
         self.__n_sheet = None
+        self.n_sheet = n_sheet
         self.__random = None
+
+    def __adjust_z_to_bbox(self):
+        u_file = self.filename
+        u = u_file.universe
+        u.atoms.translate([0, 0, self.uc_data.bbox_z_shift])
+        u.dimensions[2] = self.uc_data.bbox_height
+        u_file.universe = u
+        u_file.write()
 
     def get_filename(self, suffix: str) -> Union[GROFile, TOPFile]:
         return FileFactory(
@@ -679,8 +693,13 @@ class Sheet:
 
     @n_sheet.setter
     def n_sheet(self, n_sheet: int):
-        self.__n_sheet: int = n_sheet
-        self.__random = np.random.default_rng(n_sheet)
+        if type(n_sheet) == int:
+            self.__n_sheet: int = n_sheet
+            self.__random = np.random.default_rng(n_sheet)
+        else:
+            logger.error("Sheet number must be integer!")
+            self.__n_sheet = None
+            self.__random = None
 
     @property
     def random_generator(self) -> Union[None, np.random._generator.Generator]:
@@ -692,8 +711,8 @@ class Sheet:
     @property
     def uc_array(self) -> NDArray:
         uc_array: NDArray = np.repeat(self.uc_ids, self.uc_numbers)
-        self.random_generator.shuffle(uc_array)  # self.__uc_array)
-        return uc_array
+        # self.random_generator.shuffle(uc_array)  # self.__uc_array)
+        return sorted(uc_array)
 
     @property
     def filename(self) -> GROFile:
@@ -742,8 +761,10 @@ class Sheet:
                 )
             grofile.write(f"{self.format_dimensions(self.dimensions / 10)}\n")
         add_resnum(crdin=filename, crdout=filename)
+        uc_array = self.uc_array.copy()
+        self.random_generator.shuffle(uc_array)
         uc_n_atoms: NDArray = np.array(
-            [self.uc_data.n_atoms[uc_id] for uc_id in self.uc_array]
+            [self.uc_data.n_atoms[uc_id] for uc_id in uc_array]
         ).reshape(self.x_cells, self.y_cells)
         x_repeats: Callable = lambda n_atoms: self.__cells_shift(
             n_atoms=n_atoms, n_cells=self.x_cells
@@ -765,6 +786,7 @@ class Sheet:
         logger.info(f"Writing sheet {self.n_sheet} to {filename.name}")
         filename.universe = new_universe
         filename.write()
+        self.__adjust_z_to_bbox()
 
     def __cells_shift(self, n_cells: int, n_atoms: int) -> NDArray:
         shift: NDArray = np.atleast_2d(np.arange(n_cells)).repeat(
@@ -956,5 +978,5 @@ class Solvent:
             raise ValueError(
                 "With chosen box height, GROMACS was only able to "
                 f"insert {added_wat} instead of {self.n_mols} water "
-                f"molecules."  # \n\tIncreasing box size!"
+                f"molecules."
             )
