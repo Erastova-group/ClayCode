@@ -1,3 +1,8 @@
+; ion parameters for ion–oxygen distance (IOD) from:
+; Madelyn Smith, Zhen Li, Luke Landry, Kenneth M. Merz Jr., and Pengfei Li
+; Journal of Chemical Theory and Computation 2023 19 (7), 2064-2074
+; DOI: 10.1021/acs.jctc.2c01255
+
 [ atomtypes ]
 ; atname        at.number       mass            charge  ptype           sigma           epsilon 
 ; Ag2           47              107.868         2.00    A               0.0             0.0
