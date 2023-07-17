@@ -1037,7 +1037,7 @@ update_wrapper(get_mol_charges, "charges")
 
 PRM_METHODS = {"charges": get_mol_charges, "n_atoms": get_mol_n_atoms}
 
-ion_itp = FF / "Ion_Test.ff/ions.itp"
+ion_itp = FF / "Ions.ff/ions.itp"
 get_ion_charges = partial(get_mol_charges, itp_file=ion_itp)
 update_wrapper(get_ion_charges, ion_itp)
 
@@ -1528,6 +1528,7 @@ def run_em(
         run_type="EM",
         freeze_grps=freeze_grps,
         freeze_dims=freeze_dims,
+        renum="",
     )
     error, em, out = gmx_commands.run_gmx_mdrun(s=tpr, deffnm=outname, v="")
     if error is None:

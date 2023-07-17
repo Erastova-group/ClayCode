@@ -52,6 +52,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+*/.pytest_cache/
 
 # Translations
 *.mo
@@ -156,3 +157,7 @@ dask-worker-space
 site/
 Tutorial/.DS_Store
 *.numbers
+.flake8
+.isort.cfg
+.pre-commit-config.yaml
+
