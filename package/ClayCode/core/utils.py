@@ -359,9 +359,22 @@ def _get_header(header_str, fill, n_linechars=100):
     )
 
 
+def _get_info_box(header_str, fill, n_linechars=100, n_fillchars=0):
+    fill_len = n_fillchars // 2
+    n_linechars -= 2 * fill_len
+    return (
+        f"\n{' ':{' '}>{fill_len}}{fill:{fill}>{n_linechars}}\n"
+        f"{' ':{' '}>{fill_len}}|{header_str:^{n_linechars-2}}|\n"
+        f"{' ':{' '}>{fill_len}}{fill:{fill}>{n_linechars}}\n"
+    )
+
+
 get_header = partial(_get_header, fill="=")
 
 get_subheader = partial(_get_header, fill="-")
+
+get_debugheader = partial(_get_info_box, fill="+")
+get_debugheader = partial(get_debugheader, n_fillchars=50)
 
 
 def open_outfile(outpath: Union[Path, str], suffix: str, default: str):

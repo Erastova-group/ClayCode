@@ -96,6 +96,26 @@ class Builder:
         self.il_solv: GROFile = spc_file
         logger.info(f"Writing interlayer sheet to {self.il_solv.name!r}\n")
 
+    @staticmethod
+    def construct_solvent(
+        solvate,
+        ion_charge,
+        solvate_add_func,
+        ion_add_func,
+        solvent_remove_func,
+        solvent_rename_func=None,
+    ):
+        if not solvate and ion_charge == 0:
+            pass
+        elif solvate or ion_charge != 0:
+            solvate_add_func()
+        if ion_charge != 0:
+            ion_add_func()
+            if not solvate:
+                solvent_remove_func()
+            elif solvent_rename_func:
+                solvent_rename_func()
+
     def rename_il_solv(self) -> None:
         il_u: Universe = Universe(str(self.il_solv))
         il_resnames: NDArray = il_u.residues.resnames
@@ -564,8 +584,8 @@ class Builder:
         setattr(self, f"__{property_name}", file)
 
     def add_il_ions(self) -> None:
-        if self.il_solv is None:
-            self.solvate_clay_sheets()
+        # if self.il_solv is None:
+        #     self.solvate_clay_sheets()
         logger.info("Adding interlayer ions:")  # to {self.il_solv.name!r}')
         infile: GROFile = self.il_solv
         # outfile = self.get_filename('solv', 'ions', suffix='gro')

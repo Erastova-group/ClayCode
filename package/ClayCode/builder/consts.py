@@ -19,8 +19,7 @@ __all__ = ["BUILD_DEFAULTS", "UC_CHARGE_OCC"]
 defaults_file = Path(__file__).parent / "config/defaults.yaml"
 with open(defaults_file, "r") as file:
     BUILD_DEFAULTS = yaml.safe_load(file)
-    for prm in ["UC_INDEX_LIST", "UC_RATIOS_LIST"]:
-        BUILD_DEFAULTS[prm] = []
+    BUILD_DEFAULTS["UC_INDEX_RATIOS"] = {}
 
 # UC_CHARGE_OCC: Clay unit cell charge and occupancy data from 'charge_occ.csv'
 UC_CHARGE_OCC = (
