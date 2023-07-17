@@ -379,6 +379,7 @@ class GMXCommands:
             "pp": "processed.top",
             "o": "topol.tpr",
             "maxwarn": 2,
+            "renum": "",
         },
         opt_args_list=["ndx", "v", "nov", "renum", "norenum", "t"],
     )
