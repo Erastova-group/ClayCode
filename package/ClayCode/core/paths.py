@@ -12,7 +12,7 @@ from .classes import Dir, File, PathList
 # DATA = ''
 #
 # ClayFF = Dir(resource_filename(__name__, "../data/FF/ClayFF_Fe.ff"))
-# AmberIons = Dir(resource_filename(__name__, "../data/FF/Ions.ff"))
+# AmberIons = Dir(resource_filename(__name__, "../data/FF/AmberIons.ff"))
 # charmm27 = Dir(resource_filename(__name__, "../data/FF/charmm27.ff"))
 # charmm36 = Dir(resource_filename(__name__, "../data/FF/charmm36.ff"))
 #
