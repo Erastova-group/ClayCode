@@ -1523,7 +1523,7 @@ def run_em(
         o=tpr,
         pp=topout,
         v="",
-        po=tpr.with_suffix(".mdp"),
+        po=outname.with_suffix(".mdp"),
         mdp_prms=mdp_prms,
         run_type="EM",
         freeze_grps=freeze_grps,

@@ -82,7 +82,7 @@ D_SPACE: 19.5
 # force field selections
 FF:
   CLAY: ClayFF_Fe
-  IONS: AmberIons
+  IONS: Ions
   AA: charmm36
   # SPC water from ClayFF
   WATER: SPC

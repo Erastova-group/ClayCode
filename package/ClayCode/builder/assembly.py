@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -173,7 +174,7 @@ class Builder:
             crdin=self.stack,
             topin=self.stack.top,
             odir=self.args.outpath,
-            outname=self.stack.stem,
+            outname=f"{self.stack.stem}_em",
             gmx_commands=self.gmx_commands,
             freeze_grps=freeze_grps,
             freeze_dims=freeze_dims,
@@ -187,12 +188,17 @@ class Builder:
             *outpath._get_filelist(ext=".mdp"),
             *outpath._get_filelist(ext=".edr"),
             *outpath._get_filelist(ext=".trr"),
+            *outpath._get_filelist(ext=".log"),
         ]
         for file in outpath.iterdir():
             if file not in crd_top_files:
                 file.unlink(missing_ok=True)
             else:
-                shutil.move(file, file.with_stem(f"{file.stem}_em"))
+                if file.stem.split("_")[-1] == "em":
+                    if outpath.name != "EM":
+                        em_path = outpath / "EM"
+                        os.makedirs(em_path, exist_ok=True)
+                        shutil.move(file, em_path / file.name)
         return result
 
     def conclude(self):
@@ -203,7 +209,7 @@ class Builder:
             f"Wrote final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
         )
         logger.info(get_header(f"{self.args.name} model setup complete"))
-        logger.set_file_name(final=True)
+        logger.set_file_name(final="builder")
 
     def remove_il_solv(self) -> None:
         logger.info("Removing interlayer solvent")
