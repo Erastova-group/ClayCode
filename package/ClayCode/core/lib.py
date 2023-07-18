@@ -6,7 +6,6 @@ import pickle as pkl
 import re
 import shutil
 import tempfile
-import textwrap
 from functools import partial, update_wrapper, wraps
 from pathlib import Path, PosixPath
 from typing import (
@@ -42,6 +41,7 @@ from ClayCode.core.consts import (
     UCS,
 )
 from ClayCode.core.gmx import gmx_command_wrapper
+from ClayCode.core.utils import backup_files
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
@@ -240,7 +240,7 @@ def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
     else:
         raise ValueError('Expected 1 or 2 arguments for "other"')
     clay = u.select_atoms(f"resname {clay_type}* and name OB* o*")
-    logger.info(
+    logger.finfo(
         f"'clay': Selected {clay.n_atoms} atoms of "
         f"{clay.n_residues} {clay_type!r} unit cells"
     )
@@ -288,10 +288,11 @@ def save_selection(
     ndx=False,
     traj=".trr",
     pdbqt=False,
+    backup=False,
 ):
     ocoords = Path(outname).with_suffix(".gro").resolve()
     opdb = Path(outname).with_suffix(".pdbqt").resolve()
-    logger.info(f"Writing coordinates and trajectory ({traj!r})")
+    logger.finfo(f"Writing coordinates and trajectory ({traj!r})")
     if ndx is True:
         ondx = Path(outname).with_suffix(".ndx").resolve()
         if ondx.is_file():
@@ -315,19 +316,25 @@ def save_selection(
             if not search_ndx_group(ndx_str=ndx_str, sel_name=group_name):
                 ag.write(ondx, name=group_name, mode="a")
         outsel += ag
-        logger.info(
+        logger.finfo(
             f"New trajectory from {len(atom_groups)} groups with {outsel.n_atoms} total atoms"
         )
-    logger.info(f"1. {ocoords!r}")
+    logger.finfo(f"1. {ocoords!r}")
+    if backup:
+        backup_files(new_filename=ocoords)
     outsel.write(str(ocoords))
     if pdbqt is True:
-        logger.info(f"2. {opdb!r}")
+        logger.finfo(f"2. {opdb!r}")
+        if backup:
+            backup_files(new_filename=opdb)
         outsel.write(str(opdb), frames=outsel.universe.trajectory[-1::1])
     if type(traj) != list:
         traj = [traj]
     for t in traj:
         otraj = outname.with_suffix(t).resolve()
-        logger.info(f"3. {otraj!r}")
+        logger.finfo(f"3. {otraj!r}")
+        if backup:
+            backup_files(otraj)
         outsel.write(str(otraj), frames="all")
 
 
@@ -617,7 +624,7 @@ def get_n_mols(
     V = m / density  # L
     n_mols = conc * V
     n_mols = np.round(n_mols).astype(int)
-    logger.info(
+    logger.finfo(
         "Calculating molecule numbers:\n"
         f"Target concentration = {conc:.3f} mol L-1\n"
         f"Bulk volume = {V:.2f} A3\n"
@@ -934,7 +941,7 @@ def rename_il_solvent(
         try:
             idx: int = isl[np.ediff1d(isl.resnums, to_end=1) != 1][-1].resnum
         except IndexError:
-            logger.info("No interlayer solvation")
+            logger.finfo("No interlayer solvation")
         isl: MDAnalysis.AtomGroup = isl.atoms.select_atoms(f"resnum 0 - {idx}")
         isl.residues.resnames = "iSL"
         if type(crdout) != Path:
@@ -1446,7 +1453,7 @@ def add_ions_conc(
         replaced = re.findall(
             "Replacing solvent molecule", err, flags=re.MULTILINE
         )
-        logger.info(
+        logger.finfo(
             f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}"
         )
         # add_resnum(crdin=crdout, crdout=crdout)
@@ -1550,9 +1557,9 @@ def run_em(
         )
         if conv is None:
             logger.error("Energy minimisation run not converged!\n")
-            logger.info(textwrap.fill(error, width=LINE_LENGTH))
-            logger.info(textwrap.fill(em, width=LINE_LENGTH))
-            logger.info(textwrap.fill(out, width=LINE_LENGTH))
+            logger.finfo(error)
+            logger.finfo(em)
+            logger.finfo(out)
         else:
             fmax, n_steps = conv.groups()
             final_str = (
@@ -1564,8 +1571,13 @@ def run_em(
                 .group(0)
                 .strip("\n")
             )
-            # logger.info(f"Fmax: {fmax}, reached in {n_steps} steps")
-            logger.info(f"{final_str}\n")
+            # logger.finfo(f"Fmax: {fmax}, reached in {n_steps} steps")
+            logger.finfo(
+                f"{final_str}\n",
+                fix_sentence_endings=False,
+                replace_whitespace=False,
+                expand_tabs=False,
+            )
             logger.debug(f"Output written to {outname.name!r}")
             conv = (
                 f"Fmax: {fmax}, reached in {n_steps} steps."

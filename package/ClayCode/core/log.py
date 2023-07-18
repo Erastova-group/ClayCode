@@ -3,10 +3,18 @@ import logging.config
 import os
 import random
 import re
+import shutil
+import textwrap
+from functools import partialmethod
 from pathlib import Path
 
 import numpy as np
-from ClayCode.core.consts import exec_date, exec_datetime, exec_time
+from ClayCode.core.consts import (
+    LINE_LENGTH,
+    exec_date,
+    exec_datetime,
+    exec_time,
+)
 
 __all__ = ["ClayCodeLogger"]
 
@@ -51,6 +59,35 @@ class ClayCodeLogger(logging.Logger):
         new_filename = (
             Path(new_filepath) / f"{new_filename}{stem_suffix}"
         ).with_suffix(".log")
+        if final:
+            already_exists = list(
+                new_filename.parent.glob(f"{new_filename.name}")
+            )
+            already_exists.extend(
+                list(new_filename.parent.glob(f"{new_filename.name}.*"))
+            )
+            backups = []
+            if already_exists:
+                suffices = [f.suffix.strip(".") for f in already_exists]
+                suffices = [
+                    int(suffix)
+                    for suffix in suffices
+                    if re.match(r"[0-9]+", suffix)
+                ]
+                self.info(
+                    f'Backing up old {new_filename.suffix.strip(".")} files.'
+                )
+                for suffix in reversed(suffices):
+                    shutil.move(
+                        f"{new_filename}.{suffix}",
+                        f"{new_filename}.{suffix + 1}",
+                    )
+                    backups.append(f"{new_filename}.{suffix + 1}")
+                shutil.copy(new_filename, f"{new_filename}.1")
+                backups.append(f"{new_filename}.1")
+            if already_exists:
+                with open(new_filename, "w") as f:
+                    f.write("")
         parent_instance = self
         while parent_instance.parent.name != "root":
             parent_instance = parent_instance.parent
@@ -94,3 +131,33 @@ class ClayCodeLogger(logging.Logger):
         parent_instance.__class__._logfilename = (
             self.logfilename
         ) = new_filename
+
+    def finfo(
+        self,
+        message,
+        line_width=LINE_LENGTH,
+        kwd_str="",
+        indent="",
+        fix_sentence_endings=True,
+        initial_linebreak=False,
+        expand_tabs=False,
+        replace_whitespace=False,
+    ):
+        if initial_linebreak:
+            initial_chars = "\n"
+        else:
+            initial_chars = ""
+        message_str = textwrap.fill(
+            f"{kwd_str}{message}",
+            initial_indent=indent,
+            width=line_width,
+            fix_sentence_endings=fix_sentence_endings,
+            replace_whitespace=replace_whitespace,
+            expand_tabs=expand_tabs,
+            break_on_hyphens=False,
+            break_long_words=False,
+            subsequent_indent=" " * len(kwd_str) + indent,
+            tabsize=4,
+            drop_whitespace=False,
+        )
+        self.info(f"{initial_chars}{message_str}")
