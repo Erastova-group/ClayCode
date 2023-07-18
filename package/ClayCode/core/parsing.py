@@ -12,14 +12,9 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import yaml
-from ClayCode.builder.claycomp import (
-    BulkIons,
-    InterlayerIons,
-    MatchClayComposition,
-)
 from ClayCode.core.classes import BasicPath, Dir, File, init_path
 from ClayCode.core.consts import FF, MDP_DEFAULTS, UCS
-from ClayCode.core.utils import get_header, get_subheader
+from ClayCode.core.utils import get_debugheader, get_header, get_subheader
 
 __all__ = {
     "ArgsFactory",
@@ -434,8 +429,8 @@ class BuildArgs(_Args):
         "Y_CELLS",
         "N_SHEETS",
         "IL_SOLV",
-        "UC_INDEX_LIST",
-        "UC_RATIOS_LIST",
+        "UC_INDEX_RATIOS",
+        "IL_ION_RATIOS",
         "ION_WATERS",
         "UC_WATERS",
         "SPACING_WATERS",
@@ -455,8 +450,9 @@ class BuildArgs(_Args):
         "Z_PADDING",
     ]
 
-    def __init__(self, data) -> None:
+    def __init__(self, data, debug_run=False) -> None:
         super().__init__(data)
+        self.debug_run = debug_run
         self._target_comp = None
         self._uc_data = None
         self.filestem: str = None
@@ -552,22 +548,23 @@ class BuildArgs(_Args):
         ].values[0]
         try:
             selected_solv = self.data["IL_SOLV"]
-            if il_solv == False and selected_solv is True:
+            if not il_solv and selected_solv:
                 raise ValueError(
                     f"Invalid interlayer solvation ({selected_solv}) for selected clay type {self._uc_name}!"
                 )
             self.il_solv = selected_solv
         except KeyError:
             self.il_solv = il_solv
-        il_solv_prms = [
-            prm
-            for prm in self.data.keys()
-            if prm in ["UC_WATERS", "ION_WATERS", "SPACING_WATERS"]
-        ]
-        assert len(il_solv_prms) == 1, (
-            f"Only one interlayer solvation specification allowed!\n Found {len(il_solv_prms)}: "
-            + ", ".join(il_solv_prms)
-        )
+        if self.il_solv:
+            il_solv_prms = [
+                prm
+                for prm in self.data.keys()
+                if prm in ["UC_WATERS", "ION_WATERS", "SPACING_WATERS"]
+            ]
+            assert len(il_solv_prms) == 1, (
+                f"Only one interlayer solvation specification allowed!\n Found {len(il_solv_prms)}: "
+                + ", ".join(il_solv_prms)
+            )
         for prm in [
             "BUILD",
             "X_CELLS",
@@ -579,8 +576,8 @@ class BuildArgs(_Args):
             "BULK_IONS",
             "BULK_SOLV",
             "FF",
-            "UC_INDEX_LIST",
-            "UC_RATIOS_LIST",
+            "UC_INDEX_RATIOS",
+            "IL_ION_RATIOS",
             "OCC_TOL",
             "SEL_PRIORITY",
             "CHARGE_PRIORITY",
@@ -666,22 +663,23 @@ class BuildArgs(_Args):
         atc = self._uc_data.atomic_charges
 
     def get_exp_data(self):
-        from ClayCode.builder.claycomp import TargetClayComposition
+        if not self.uc_index_ratios:
+            from ClayCode.builder.claycomp import TargetClayComposition
 
-        clay_atoms = self._uc_data.df.index
-        clay_atoms.append(pd.MultiIndex.from_tuples([("O", "fe_tot")]))
-
-        self._target_comp = TargetClayComposition(
-            name=self.name,
-            csv_file=self.data["CLAY_COMP"],
-            uc_data=self._uc_data,
-            occ_tol=self.occ_tol,
-            sel_priority=self.sel_priority,
-            charge_priority=self.charge_priority,
-            manual_setup=self.manual_setup,
-            occ_correction_threshold=self.zero_threshold,
-        )
-        self._target_comp.write_csv(self.outpath)
+            clay_atoms = self._uc_data.df.index
+            clay_atoms.append(pd.MultiIndex.from_tuples([("O", "fe_tot")]))
+            self._target_comp = TargetClayComposition(
+                name=self.name,
+                csv_file=self.data["CLAY_COMP"],
+                uc_data=self._uc_data,
+                occ_tol=self.occ_tol,
+                sel_priority=self.sel_priority,
+                charge_priority=self.charge_priority,
+                manual_setup=self.manual_setup,
+                occ_correction_threshold=self.zero_threshold,
+            )
+            self._target_comp.write_csv(self.outpath)
+            self._ion_df = self._target_comp.ion_df
 
     def _was_specified(self, parameter: str) -> bool:
         return parameter.upper() in self.data.keys()
@@ -726,9 +724,11 @@ class BuildArgs(_Args):
             if self._was_specified("spacing_waters"):
                 self.il_solv_height = self.data["SPACING_WATERS"]
             else:
-                self.il_solv_height = (
-                    n_ions * self.default_d_space
-                ) / self.sheet_n_cells
+                self.n_waters = n_ions
+                self.il_solv_height = None
+                # self.il_solv_height = (
+                #     n_ions * self.default_d_space
+                # ) / self.sheet_n_cells
 
     @property
     def uc_df(self):
@@ -744,20 +744,45 @@ class BuildArgs(_Args):
 
     @property
     def ion_df(self):
-        return self._target_comp.ion_df
+        return self._ion_df
+        # return self._target_comp.ion_df
 
     @cached_property
     def sheet_n_cells(self):
         return self.x_cells * self.y_cells
 
     def match_uc_combination(self):
-        self.match_comp = MatchClayComposition(
-            target_composition=self._target_comp,
-            sheet_n_ucs=self.sheet_n_cells,
-            manual_setup=self.manual_setup,
-            ignore_threshold=self.zero_threshold,
-        )
-        self.match_comp.write_csv(self.outpath)
+        if not self.uc_index_ratios:
+            from ClayCode.builder.claycomp import MatchClayComposition
+
+            self.match_comp = MatchClayComposition(
+                target_composition=self._target_comp,
+                sheet_n_ucs=self.sheet_n_cells,
+                manual_setup=self.manual_setup,
+                ignore_threshold=self.zero_threshold,
+                debug_run=self.debug_run,
+            )
+            self.match_comp.write_csv(self.outpath)
+        else:
+            from ClayCode.builder.claycomp import (
+                TargetClayComposition,
+                UCClayComposition,
+            )
+
+            self.match_comp = UCClayComposition(
+                sheet_n_ucs=self.sheet_n_cells,
+                uc_data=self._uc_data,
+                uc_index_ratios=self.uc_index_ratios,
+                name=self.name,
+            )
+            ion_ratios = pd.Series(self.il_ion_ratios, name="at-type")
+            ion_idx = pd.MultiIndex.from_product(
+                [["I"], ion_ratios.index.values]
+            )
+            ion_ratios.reindex(ion_idx)
+            self._ion_df = TargetClayComposition.get_ion_numbers(
+                ion_ratios, self.match_comp.match_charge["tot"]
+            )
 
     @property
     def match_df(self) -> pd.DataFrame:
@@ -776,6 +801,8 @@ class BuildArgs(_Args):
         return self.match_comp.match_charge
 
     def get_il_ions(self):
+        from ClayCode.builder.claycomp import InterlayerIons
+
         tot_charge = self.match_charge["tot"]
         if np.isclose(tot_charge, 0.0):
             self.il_ions = InterlayerIons(
@@ -791,6 +818,8 @@ class BuildArgs(_Args):
             )
 
     def get_bulk_ions(self):
+        from ClayCode.builder.claycomp import BulkIons
+
         self._bulk_ions = BulkIons(
             self.bulk_ions, self._build_defaults["BULK_IONS"]
         )
@@ -963,9 +992,12 @@ class ArgsFactory:
         if type(parse_args) != dict:
             data = parse_args.__dict__
         option = data.pop("option")
+        debug_run = data.pop("DEBUG")
+        if debug_run:
+            logger.info(get_debugheader("DEBUG RUN"))
         try:
             _cls = cls._options[option]
         except KeyError:
             raise KeyError(f"{option!r} is not known!")
         # print(_cls)
-        return _cls(data)
+        return _cls(data, debug_run=debug_run)

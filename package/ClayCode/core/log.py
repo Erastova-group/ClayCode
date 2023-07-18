@@ -35,6 +35,11 @@ class ClayCodeLogger(logging.Logger):
         if new_filename is None:
             new_filename = self.logfilename.name
             new_filepath = self.logfilename.parent
+            new_filename = re.search(
+                r"([a-z_0-9-]*?)_[0-9]*\.log",
+                new_filename,
+                flags=re.IGNORECASE,
+            ).group(1)
         elif new_filepath is None:
             new_filename = Path(new_filename)
             new_filepath = new_filename.parent
@@ -42,7 +47,7 @@ class ClayCodeLogger(logging.Logger):
         if not final:
             stem_suffix = f"_{exec_datetime}"
         else:
-            stem_suffix = ""
+            stem_suffix = f"_{final}"
         new_filename = (
             Path(new_filepath) / f"{new_filename}{stem_suffix}"
         ).with_suffix(".log")
