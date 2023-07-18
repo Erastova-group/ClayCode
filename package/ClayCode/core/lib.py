@@ -6,6 +6,7 @@ import pickle as pkl
 import re
 import shutil
 import tempfile
+import textwrap
 from functools import partial, update_wrapper, wraps
 from pathlib import Path, PosixPath
 from typing import (
@@ -1572,12 +1573,7 @@ def run_em(
                 .strip("\n")
             )
             # logger.finfo(f"Fmax: {fmax}, reached in {n_steps} steps")
-            logger.finfo(
-                f"{final_str}\n",
-                fix_sentence_endings=False,
-                replace_whitespace=False,
-                expand_tabs=False,
-            )
+            logger.info(textwrap.fill(f"{final_str}\n", width=LINE_LENGTH))
             logger.debug(f"Output written to {outname.name!r}")
             conv = (
                 f"Fmax: {fmax}, reached in {n_steps} steps."
