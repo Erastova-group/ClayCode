@@ -89,6 +89,15 @@ buildparser.add_argument(
     required=False,
 )
 
+buildparser.add_argument(
+    "--backup",
+    help="Backup old files instead of overwriting them.",
+    dest="backup",
+    action="store_true",
+    default=False,
+    required=False,
+)
+
 # Clay model modification parser
 editparser = subparsers.add_parser("edit", help="Edit clay models.")
 
@@ -364,7 +373,7 @@ def read_yaml_path_decorator(*path_args):
             assert isinstance(self, _Args), "Wrong class for decorator"
             with open(self.data["yaml_file"], "r") as file:
                 self.__yaml_data = yaml.safe_load(file)
-            logger.info(f"Reading {file.name!r}:\n")
+            logger.finfo(f"Reading {file.name!r}:\n")
             for k, v in self.__yaml_data.items():
                 if k in self._arg_names:
                     if k in path_args:
@@ -381,7 +390,7 @@ def read_yaml_path_decorator(*path_args):
                             path = Dir(path)
                         v = str(path)
                     self.data[k] = v
-                    logger.info(f"\t{k} = {v!r}")
+                    logger.finfo(kwd_str=f"\t{k} = ", message=f"{v!r}")
                 else:
                     raise KeyError(f"Unrecognised argument {k}!")
             return f(self)
@@ -504,7 +513,7 @@ class BuildArgs(_Args):
                 and yaml_kwd in self.data.keys()
             ):
                 if csv_file.absolute() == yaml_csv_file.absolute():
-                    logger.info(
+                    logger.finfo(
                         f"{description_dict.get(cmdline_dest)} {csv_file.absolute()} specified twice."
                     )
                     self.data[yaml_kwd] = csv_file
@@ -529,7 +538,11 @@ class BuildArgs(_Args):
     def check(self) -> None:
         try:
             self.name = self.data["SYSNAME"]
-            logger.info(f"\nSetting name: {self.name!r}")
+            logger.finfo(
+                kwd_str="Setting name: ",
+                message=f"{self.name!r}",
+                initial_linebreak="\n",
+            )
         except KeyError:
             raise KeyError("Clay system name must be given")
         try:
@@ -608,7 +621,9 @@ class BuildArgs(_Args):
             GMX = self.data["GMX"]
         except KeyError:
             GMX = self._build_defaults["GMX"]
-            logger.info(f"Using default GROMACS alias: {GMX}")
+            logger.finfo(
+                kwd_str="Using default GROMACS alias: ", message=f"{GMX}"
+            )
         setattr(self, "gmx_alias", GMX)
 
     def process(self):
@@ -616,6 +631,7 @@ class BuildArgs(_Args):
         self.read_yaml()
         self.check()
         self.manual_setup = self.data["manual_setup"]
+        self.backup = self.data["backup"]
         self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         self.outpath = self.outpath / self.name
         os.makedirs(self.outpath, exist_ok=True)
@@ -627,7 +643,9 @@ class BuildArgs(_Args):
         #     new_filename=BasicPath(self.outpath.name),
         # )
         init_path(self.outpath)
-        logger.info(f"Setting output directory: {self.outpath}")
+        logger.finfo(
+            kwd_str="Setting output directory: ", message=f"{self.outpath}"
+        )
         self.get_ff_data()
         self.get_uc_data()
         self.get_exp_data()
@@ -647,9 +665,9 @@ class BuildArgs(_Args):
                 ff_sel = water_sel_dict[ff_sel][0]
             ff = ForceField(FF / ff_sel)
             ff_dict[ff_key.lower()] = ff
-            logger.info(f"\t{ff_key}: {ff.name}")
-            itp_str = "\n\t\t".join(ff.itp_filelist.stems)
-            logger.info(f"\t\t{itp_str}\n")
+            logger.finfo(kwd_str=f"{ff_key}: ", message=f"{ff.name}")
+            itp_str = f"\n\t".join(ff.itp_filelist.stems)
+            logger.info(f"\t{itp_str}\n")
         self.ff = ff_dict
 
     def get_uc_data(self):
@@ -678,7 +696,7 @@ class BuildArgs(_Args):
                 manual_setup=self.manual_setup,
                 occ_correction_threshold=self.zero_threshold,
             )
-            self._target_comp.write_csv(self.outpath)
+            self._target_comp.write_csv(self.outpath, backup=self.backup)
             self._ion_df = self._target_comp.ion_df
 
     def _was_specified(self, parameter: str) -> bool:
@@ -762,7 +780,7 @@ class BuildArgs(_Args):
                 ignore_threshold=self.zero_threshold,
                 debug_run=self.debug_run,
             )
-            self.match_comp.write_csv(self.outpath)
+            self.match_comp.write_csv(self.outpath, backup=self.backup)
         else:
             from ClayCode.builder.claycomp import (
                 TargetClayComposition,
@@ -926,7 +944,7 @@ class SiminpArgs(_Args):
     def process(self):
         logger.info(get_header("Getting simulation input parameters"))
         run_specs = self.data["SIMINP"]
-        logger.info("Selected run types:")
+        logger.finfo("Selected run types:")
         run_id = 0
         runs = []
         for run_type in self._run_order:
@@ -934,7 +952,7 @@ class SiminpArgs(_Args):
                 run_id += 1
                 run = run_specs.pop(run_type)
                 runs.append(0, run)
-                logger.info(f"\t{run_id}: {run_type}")
+                logger.finfo(f"\t{run_id}: {run_type}")
             except KeyError:
                 pass
         if "dspace" in self.data:
@@ -945,8 +963,8 @@ class SiminpArgs(_Args):
             self.n_wat = self.data["n_wat"]
             self.n_steps = self.data["n_steps"]
             self.data["runs"].append("D_SPACE")
-            logger.info(f"Target spacing: {self.d_spacing:2.2f} \u212B")
-            logger.info(
+            logger.finfo(f"Target spacing: {self.d_spacing:2.2f} \u212B")
+            logger.finfo(
                 f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"
             )
         if self.data["runs"] is not None:
@@ -972,7 +990,7 @@ class SiminpArgs(_Args):
                 prev = run_type
             logger.info(get_subheader("Selected the following run types:"))
             for run_id, run_name in enumerate(self.run_sequence):
-                logger.info(f"\t{run_id + 1}: {run_name}")
+                logger.finfo(f"\t{run_id + 1}: {run_name}")
 
     def check(self):
         ...

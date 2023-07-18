@@ -1853,9 +1853,9 @@ class SimDir(Dir):
             else:
                 break
         try:
-            logger.info(f"{suffix!r}: {f.name!r}")
+            logger.finfo(kwd_str=f"{suffix!r}: ", message=f"{f.name!r}")
         except AttributeError:
-            logger.info(f"{suffix!r}: No file found")
+            logger.finfo(kwd_str=f"{suffix!r}: ", message="No file found")
         return f
         # return select_named_file(
         #     path=self.resolve(), suffix="gro", searchlist=FILE_SEARCHSTR_LIST
@@ -1903,9 +1903,9 @@ class SimDir(Dir):
             else:
                 break
         try:
-            logger.info(f"{suffix!r}: {f.name!r}")
+            logger.finfo(f"{suffix!r}: {f.name!r}")
         except AttributeError:
-            logger.info(f"{suffix!r}: No file found")
+            logger.finfo(f"{suffix!r}: No file found")
         return f
         # return select_named_file(
         #     path=self.resolve(), suffix="top", searchlist=FILE_SEARCHSTR_LIST
@@ -2000,4 +2000,4 @@ class SimDir(Dir):
 def init_path(path):
     if not Dir(path).is_dir():
         os.makedirs(path)
-        logger.info(f"Creating new directory {path!r}")
+        logger.finfo(f"Creating new directory {path!r}")

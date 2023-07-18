@@ -11,8 +11,6 @@ import re
 import shutil
 import sys
 import tempfile
-import textwrap
-import warnings
 from abc import ABC, abstractmethod
 from functools import (
     cache,
@@ -31,7 +29,7 @@ from ClayCode.builder.utils import get_checked_input, select_input_option
 from ClayCode.core.classes import Dir, File, ITPFile, PathFactory, YAMLFile
 from ClayCode.core.consts import LINE_LENGTH, UCS
 from ClayCode.core.lib import get_ion_charges
-from ClayCode.core.utils import get_debugheader, get_subheader
+from ClayCode.core.utils import backup_files, get_debugheader, get_subheader
 from numpy._typing import NDArray
 from tqdm import tqdm
 
@@ -85,8 +83,8 @@ class UCData(Dir):
         self.__dimensions = None
         self.__uc_groups = None
         self.get_uc_groups()
+        logger.finfo(f"Found {self.n_groups} {self.name!r} unit cell groups:")
         self.get_uc_group_base_compositions()
-        logger.info(f"Found {self.n_groups} {self.name!r} unit cell groups:")
         self.idx_sel = (
             self.df.index.get_level_values("sheet").unique().to_list()
         )
@@ -94,12 +92,9 @@ class UCData(Dir):
     def get_uc_group_base_compositions(self):
         for n_group, group_ids in self.group_iter():
             group_id_str = f", {self.uc_stem}".join(group_ids)
-            logger.info(
-                textwrap.fill(
-                    f"\tGroup {n_group:2d}: {self.uc_stem}{group_id_str}\n",
-                    width=LINE_LENGTH,
-                    subsequent_indent="\t" + " " * 9,
-                )
+            logger.finfo(
+                kwd_str=f"\tGroup {n_group:2d}: ",
+                message=f"{self.uc_stem}{group_id_str}\n",
             )
             self.__base_ucs[n_group] = self.__get_base_ucs(group_ids)
 
@@ -257,8 +252,10 @@ class UCData(Dir):
         try:
             self.uc_idxs = self.uc_groups[group_id]
             uc_idx_str = f", {self.uc_stem}".join(self.uc_idxs)
-            logger.info(
-                f"\n{textwrap.fill(f'Selected unit cells: {self.uc_stem}{uc_idx_str}', width=LINE_LENGTH, subsequent_indent=21*' ')}"
+            logger.finfo(
+                kwd_str="Selected unit cells: ",
+                message=f"{self.uc_stem}{uc_idx_str}\n",
+                initial_linebreak=True,
             )
         except KeyError as e:
             e(f"{group_id} is an invalid group id!")
@@ -536,7 +533,7 @@ class UCData(Dir):
     @staticmethod
     @cache
     def _get_ox_dict():
-        logger.info(UCS.resolve())
+        logger.debug(f"UCS: {UCS.resolve()}")
         with open(UCS / "clay_charges.yaml", "r") as file:
             ox_dict: dict = yaml.safe_load(file)
         return ox_dict
@@ -559,6 +556,7 @@ class TargetClayComposition:
     ):
         self.name: str = name
         self.manual_setup = manual_setup
+        self.zero_threshold = zero_threshold
         self.match_file: File = File(csv_file, check=True)
         self.uc_data: UCData = uc_data
         self.uc_df: pd.DataFrame = self.uc_data.df
@@ -588,6 +586,7 @@ class TargetClayComposition:
         self._df.loc[clay_df.index] = clay_df.where(
             clay_df > zero_threshold, np.NaN
         )
+
         self.split_fe_occupancies()
         self.__ion_df: pd.DataFrame = None
         self.set_ion_numbers()
@@ -638,8 +637,10 @@ class TargetClayComposition:
                     )
                 )
             )
-            logger.info(
-                f"Removing invalid atom types:\n\n\tsheet - at-type: occupancy\n{nan_at_type_str}\n"
+            logger.finfo(
+                f"Removing invalid atom types:\n\n\tsheet - at-type: occupancy\n{nan_at_type_str}\n",
+                replace_whitespace=False,
+                expand_tabs=False,
             )
             ion_charges = get_ion_charges()
             for group, series in nan_at_types.groupby("sheet"):
@@ -673,14 +674,16 @@ class TargetClayComposition:
                     charge_adjust = None
                 charge_adjust = select_input_option(
                     self,
-                    query=f"Adjust {group} charge? [y/n] (current value: {match_df.loc[('C', group), self.name]:.2f})\n",
-                    options=["y", "n", ""],
+                    query=f"Adjust {group} charge? [y]es/[n]o/[m]anual (default y, current value: {match_df.loc[('C', group), self.name]:.2f})\n",
+                    options=["y", "n", "", "m"],
                     result=charge_adjust,
-                    result_map={"y": "y", "n": "n", "": "m"},
+                    result_map={"y": "m", "n": "n", "": "m", "m": "y"},
                 )
                 if charge_adjust == "y":
                     new_charge = get_checked_input(
-                        query="Enter new charge value:", result_type=float
+                        query="Enter new charge value:",
+                        result_type=float,
+                        check_value=r"[0-9.]+",
                     )
                     match_df = self.set_charge(
                         df=match_df, key=group, new_charge=new_charge
@@ -691,10 +694,12 @@ class TargetClayComposition:
                         )
                     except ValueError:
                         pass
-                    logger.info(
-                        f"\nSetting new {group} charge to {new_charge:.2f}\n"
+                    logger.finfo(
+                        f"Setting new {group} charge to {new_charge:.2f}\n",
+                        initial_linebreak=True,
                     )
                 elif charge_adjust == "m":
+                    logger.finfo(f"Will try to guess new charge.")
                     for idx, value in match_df.loc[
                         series.index, self.name
                     ].items():
@@ -715,7 +720,7 @@ class TargetClayComposition:
                                     check_value=r"[0-9]+?",
                                     result_type=int,
                                 )
-                                logger.info(
+                                logger.finfo(
                                     f"Assuming {at_type} charge of {at_charge}."
                                 )
                         remove_charge = (
@@ -797,7 +802,8 @@ class TargetClayComposition:
             # self._df.where(self._df.loc['O'] != 0, np.NaN, inplace=True)
             # charge_delta = dict(map(lambda x: (x, self._uc_data.oxidation_numbers[x] - ox_states[x]), ox_states.keys()))
             logger.info(
-                f"\nSplitting total iron content ({missing_o:.4f}) to match charge.\n"
+                f"Splitting total iron content ({missing_o:.4f}) to match charge.\n",
+                initial_linebreak=True,
             )
             assert np.isclose(
                 self.occupancies["O"], self.uc_data.occupancies["O"]
@@ -806,7 +812,7 @@ class TargetClayComposition:
             pass
         sheet_df = self._df.copy()
         self.print_df_composition(
-            sheet_df.loc[["T", "O"], :].dropna(), fill="\t"
+            sheet_df.loc[["T", "O"], :].dropna(), fill=""
         )
         accept = select_input_option(
             self,
@@ -821,7 +827,10 @@ class TargetClayComposition:
 
     @staticmethod
     def __abort():
-        logger.info("Composition not accepted. Aborting model construction.")
+        logger.finfo(
+            "Composition not accepted. Aborting model construction.",
+            initial_linebreak=True,
+        )
         sys.exit(0)
 
     def _get_charges(
@@ -1025,7 +1034,7 @@ class TargetClayComposition:
         )
         non_zero_charge_occ = np.greater(charged_occ_check, 0.0)
         if (non_zero_charge_occ).any():
-            logger.info(
+            logger.finfo(
                 f"Sheet charges ({charged_occ_sum.sum():2.4f}) "
                 f"do not sum to specified total charge ({self.get_total_charge():2.4f})\n"
             )
@@ -1048,7 +1057,7 @@ class TargetClayComposition:
                     result_map={"c": "occupancies", "o": "charges", "e": "e"},
                 )
             else:
-                logger.info(
+                logger.finfo(
                     f"Adjusting {non_priority_sel} to match specified "
                     f"{priority_sel}."
                 )
@@ -1060,7 +1069,7 @@ class TargetClayComposition:
                 new_charge_str = self.__deviation_string(
                     new_charges, join_str="\n\t"
                 )
-                logger.info(f"New charges: \n\t{new_charge_str}")
+                logger.finfo(f"New charges: \n\t{new_charge_str}")
             elif priority_sel == "charges":
                 new_charged_occs = (
                     charged_dict["charged"]["at-type"]
@@ -1104,13 +1113,16 @@ class TargetClayComposition:
         input_uc_occ: pd.Series = pd.Series(self.occupancies)
         check_occ: pd.Series = input_uc_occ - correct_uc_occ
         check_occ.dropna(inplace=True)
-        logger.info("\nGetting sheet occupancies:")
+        logger.finfo("Getting sheet occupancies:", initial_linebreak=True)
         if not np.isclose(check_occ.values, 0.0).all():
             for sheet, occ in check_occ.iteritems():
-                logger.info(
+                logger.finfo(
                     f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.4f}/{correct_uc_occ[sheet]:.4f} ({occ:+.4f})"
                 )
-            logger.info("\nAdjusting values to match expected occupancies:")
+            logger.finfo(
+                "Adjusting values to match expected occupancies:",
+                initial_linebreak=True,
+            )
             corrected_occupancies = self.occ_correction_df.groupby(
                 "sheet"
             ).apply(lambda x: x - check_occ.at[x.name] / x.count())
@@ -1151,36 +1163,44 @@ class TargetClayComposition:
                             result_map=exit_dict,
                         )
                     else:
-                        logger.info(
+                        logger.finfo(
                             f"Deviation ({deviation}) is within acceptance limit of {self.occ_tol:.2f}.\n\n"
                             "Correcting selected composition."
                         )
-                        corrected_occupancies = sheet_df.update(
-                            self.occ_correction_df.apply(
+                        sheet_df.update(
+                            self.occ_correction_df.groupby("sheet").apply(
                                 lambda x: x
                                 - new_check_df.at[x.name] / x.count()
                             )
                         )
-                        sheet_df.update(corrected_occupancies)
-                    continue
-                self.print_df_composition(
-                    sheet_df=sheet_df.loc[corrected_occupancies.index],
-                    old_composition=old_composition.loc[
-                        corrected_occupancies.index
-                    ],
-                    fill="\t",
-                )
+
+                    # continue
+                if accept is None:
+                    common_idx = old_composition.index.intersection(
+                        sheet_df.index
+                    )
+                    self.print_df_composition(
+                        sheet_df=sheet_df,  # .loc[corrected_occupancies.index],
+                        old_composition=old_composition,  # '.loc[
+                        # corrected_occupancies.index
+                        # ],
+                        fill="\t",
+                        print_all=True,
+                    )
                 accept = select_input_option(
                     self,
                     query="\nAccept new composition? [y]es/[n]o/[e]xit (default y)\n",
-                    options=["y", "e", ""],
+                    options=["y", "e", "n", ""],
                     result=accept,
                     result_map={"y": "y", "e": "e", "n": "n", "": "y"},
                 )
                 if accept == "n":
                     accept = None
                     sheet_df = self.__set_new_value(
-                        old_composition, self.idx_sel, check_occ
+                        old_composition,
+                        self.idx_sel,
+                        check_occ,
+                        zero_threshold=self.zero_threshold,
                     )
                 if accept == "e":
                     self.__abort()
@@ -1189,11 +1209,11 @@ class TargetClayComposition:
                 priority=self.sel_priority
             )
         else:
-            logger.info(
+            logger.finfo(
                 "\tFound correct occupancies:\n" "\t\tsheet: occupancy"
             )
             for sheet, occ in check_occ.iteritems():
-                logger.info(f"\t\t{sheet!r:^5}: {input_uc_occ[sheet]:>9.0f}")
+                logger.finfo(f"\t\t{sheet!r:^5}: {input_uc_occ[sheet]:>9.0f}")
 
     @staticmethod
     def __set_new_value(
@@ -1217,7 +1237,7 @@ class TargetClayComposition:
                             try:
                                 new_occ = float(new_occ)
                             except TypeError:
-                                logger.info(
+                                logger.finfo(
                                     f"Invalid value {new_occ} selected!"
                                 )
                             if new_occ >= 0.0:
@@ -1225,7 +1245,7 @@ class TargetClayComposition:
                                 print(f"\tSelecting {float(new_occ):2.4f}")
                                 accept_input = True
                             else:
-                                logger.info(
+                                logger.finfo(
                                     f"Invalid value {new_occ:2.4f} selected!"
                                 )
                         else:
@@ -1240,24 +1260,34 @@ class TargetClayComposition:
         )
 
     @staticmethod
-    def print_df_composition(sheet_df, old_composition=None, fill=""):
+    def print_df_composition(
+        sheet_df, old_composition=None, fill="", print_all=False
+    ):
         if old_composition is None:
-            logger.info(f"{fill}Will use the following target composition:")
+            logger.finfo(
+                f"{fill}Will use the following target composition:",
+                initial_linebreak=True,
+            )
+            logger.finfo(f"{fill}\tsheet - atom type : occupancies")
         else:
-            logger.info(
+            logger.finfo(
                 f"{fill}old occupancies -> new occupancies per unit cell:"
             )
-            logger.info(f"{fill}sheet - atom type : occupancies  (difference)")
+            logger.finfo(
+                f"{fill}\tsheet - atom type : {'occupancies':<16} (difference)"
+            )
         for idx, occ in sheet_df.iteritems():
             sheet, atom = idx
             try:
                 old_val = old_composition[idx]
                 if not np.isclose(occ, old_val):
-                    logger.info(
+                    logger.finfo(
                         f"{fill}\t{sheet!r:5} - {atom!r:^10}: {old_val:2.4f} -> {occ:2.4f} ({occ - old_val:+2.4f})"
                     )
+                elif print_all:
+                    raise TypeError
             except TypeError:
-                logger.info(f"{fill}\t{sheet!r:5} - {atom!r:^10}: {occ:2.4f}")
+                logger.finfo(f"{fill}\t{sheet!r:5} - {atom!r:^10}: {occ:2.4f}")
 
     correct_t_occupancies = partialmethod(
         correct_uncharged_occupancies, idx_sel=["T"]
@@ -1267,7 +1297,10 @@ class TargetClayComposition:
     )
 
     def _write(
-        self, outpath: Union[Dir, File, PosixPath], fmt: Optional[str] = None
+        self,
+        outpath: Union[Dir, File, PosixPath],
+        fmt: Optional[str] = None,
+        backup=False,
     ):
         if type(outpath) == str:
             outpath = PathFactory(outpath)
@@ -1294,10 +1327,14 @@ class TargetClayComposition:
             )
         if not outpath.parent.is_dir():
             os.makedirs(outpath.parent)
-        logger.info(
-            f"\nWriting new target clay composition to {outpath.name!r}\n"
+        logger.finfo(
+            f"\nWriting new target clay composition to {outpath.name!r}\n",
+            initial_linebreak=True,
         )
-        shutil.copy(tmpfile.name, outpath)
+        if backup:
+            backup_files(new_filename=outpath, old_filename=tmpfile.name)
+        else:
+            shutil.copy(tmpfile.name, outpath)
         assert outpath.is_file(), f"Error writing file {tmpfile.name!r}"
 
     write_csv = partialmethod(_write, fmt=".csv")
@@ -1402,18 +1439,18 @@ class ClayComposition(ABC):
     def print_groups(group_dict, uc_df, fill=""):
         for group_id, group_ucs in group_dict.items():
             uc_group_df = uc_df.loc[:, group_ucs]
-            logger.info(
-                f"\n{fill}Group {group_id}:"
+            logger.finfo(
+                f"{fill}Group {group_id}:", initial_linebreak=True
             )  # {uc_group_df.columns}')
-            logger.info(f'{fill}{"":10}\tUC occupancies')
+            logger.finfo(f'{fill}{"":10}\tUC occupancies')
             try:
                 uc_list = "  ".join(
                     list(map(lambda v: f"{v:>3}", uc_group_df.columns))
                 )
-                logger.info(f'{fill}{"UC index":<10}\t{uc_list}')
+                logger.finfo(f'{fill}{"UC index":<10}\t{uc_list}')
             except AttributeError:
-                logger.info(f'{fill}{"UC index":<10}\t{uc_group_df.name}')
-            logger.info(f'{fill}{"atom type":<10}')
+                logger.finfo(f'{fill}{"UC index":<10}\t{uc_group_df.name}')
+            logger.finfo(f'{fill}{"atom type":<10}')
             try:
                 for idx, values in uc_group_df.sort_index(
                     ascending=False, sort_remaining=True
@@ -1424,7 +1461,7 @@ class ClayComposition(ABC):
                         composition_string = "  ".join(
                             list(map(lambda v: f"{v:>3}", values))
                         )
-                        logger.info(
+                        logger.finfo(
                             f"{fill}{sheet!r:<3} - {atype!r:^4}\t{composition_string}"
                         )
             except AttributeError:
@@ -1435,7 +1472,7 @@ class ClayComposition(ABC):
                     if values != 0:
                         sheet, atype = idx
                         composition_string = f"{int(values):>3}"
-                        logger.info(
+                        logger.finfo(
                             f"{fill}{sheet!r:<3} - {atype!r:^4}\t{composition_string}"
                         )
 
@@ -1540,12 +1577,10 @@ class UCClayComposition(ClayComposition):
             np.round(target_atype_weights.T, 4)
         )
         match_dict["dist"] = np.round(dist, 4)
-        logger.info(
-            textwrap.fill(
-                f"\nSelected combination has {match_dict['n_ucs']} unique unit cells "
-                f'(total occupancy deviation {match_dict["dist"]:+.4f})\n',
-                width=LINE_LENGTH,
-            )
+        logger.finfo(
+            f"Selected combination has {match_dict['n_ucs']} unique unit cells "
+            f'(total occupancy deviation {match_dict["dist"]:+.4f})',
+            initial_linebreak=True,
         )
         return match_dict
 
@@ -1584,8 +1619,9 @@ class UCClayComposition(ClayComposition):
                 uc_id = f"{uc_num:02d}"
                 if uc_group is None:
                     uc_group = uc_groups_reversed[uc_id]
-                    logger.info(
-                        "\nComposition of selected unit cell group base:"
+                    logger.finfo(
+                        "Composition of selected unit cell group base:",
+                        initial_linebreak=True,
                     )
                     self.print_groups(
                         {uc_group: self._uc_data.base_ucs.get(uc_group)},
@@ -1627,9 +1663,9 @@ class MatchClayComposition(ClayComposition):
         self.drop_unused_ucs()
         accept = None
         self.match_composition, self.target_df
-        logger.info("Unit cell combination has the following composition:")
+        logger.finfo("Unit cell combination has the following composition:")
         TargetClayComposition.print_df_composition(
-            self.match_composition, self.target_df, fill="\t"
+            self.match_composition, self.target_df, fill="\t", print_all=True
         )
         accept = select_input_option(
             self,
@@ -1681,8 +1717,8 @@ class MatchClayComposition(ClayComposition):
                 # combined_mask = np.logical_and(unused_uc_atype_mask, unused_target_atype_mask)
             accept = None
             if len(accepted_group) > 1:
-                logger.info(f"Found {len(accepted_group)} unit cell groups.")
-                logger.info("Getting best group for target composition.")
+                logger.finfo(f"Found {len(accepted_group)} unit cell groups.")
+                logger.finfo("Getting best group for target composition.")
                 base_dict = dict(
                     map(
                         lambda i: (i[0], all_ucs_df.loc[:, i[1]]),
@@ -1701,7 +1737,7 @@ class MatchClayComposition(ClayComposition):
                     diff_df == diff_df.min()
                 ].index.to_list()[0]
                 # selected_group = accepted_group[selected_group_id]
-                logger.info(
+                logger.finfo(
                     f"Selected group {selected_group_id} with base composition:"
                 )
                 self.print_groups(
@@ -1744,7 +1780,10 @@ class MatchClayComposition(ClayComposition):
                     map(lambda key: f"{key}", accepted_group.keys())
                 )
                 if accept is None:
-                    logger.info("\nAvailable UC group base compositions:")
+                    logger.finfo(
+                        "Available UC group base compositions:",
+                        initial_linebreak=True,
+                    )
                     self.print_groups(accepted_base, all_ucs_df, fill="\t")
                     print_all_ucs = select_input_option(
                         self,
@@ -1772,7 +1811,9 @@ class MatchClayComposition(ClayComposition):
                 )
                 if accept in select_keys:
                     accept = int(accept)
-                    logger.info(f"\nSelected group {accept}")
+                    logger.finfo(
+                        f"Selected group {accept}", initial_linebreak=True
+                    )
                     accepted_group = {accept: accepted_group.get(accept)}
                     accepted_base = {accept: accepted_base.get(accept)}
                     # self.print_groups(accepted_group, all_ucs_df, fill="\t")
@@ -1783,7 +1824,10 @@ class MatchClayComposition(ClayComposition):
                 selected_ucs_df = all_ucs_df.loc[
                     :, accepted_group[next(iter(accepted_group.keys()))]
                 ]
-                logger.info("\nComposition of matching unit cell group base:")
+                logger.finfo(
+                    "Composition of matching unit cell group base:",
+                    initial_linebreak=True,
+                )
                 if accept is None:
                     self.print_groups(accepted_base, all_ucs_df, fill="\t")
                 print_all_ucs = select_input_option(
@@ -1823,7 +1867,7 @@ class MatchClayComposition(ClayComposition):
                         self.target_df.xs(missing_at_type, level="at-type")
                         < self.ignore_threshold
                     ).all():
-                        logger.info(
+                        logger.finfo(
                             f'{missing_at_type!r} not found in unit cells, resetting occupancy of {self.target_df.xs(missing_at_type, level="at-type").values[0]} to 0.00 (ignore threshold = {self.ignore_threshold:.2f})\n'
                         )
                         self.target_comp._df.loc[
@@ -1838,7 +1882,7 @@ class MatchClayComposition(ClayComposition):
                             f"Some of the required atom types ({missing_str}) of the target composition are missing in the unit cells!\n"
                         )
                     else:
-                        logger.info("Correcting new occupancies.")
+                        logger.finfo("Correcting new occupancies.")
                         self.target_comp.correct_uncharged_occupancies()
                         self.__target_df.update(self.target_comp.df)
                         self.__target_df.where(
@@ -1867,7 +1911,7 @@ class MatchClayComposition(ClayComposition):
             "uc": "No unit cell group accepted,",
             "comp": "Clay composition not accepted.",
         }
-        logger.info(f"{reason_dict[reason]} Aborting model construction.")
+        logger.finfo(f"{reason_dict[reason]} Aborting model construction.")
         sys.exit(0)
 
     @staticmethod
@@ -1913,8 +1957,9 @@ class MatchClayComposition(ClayComposition):
         )
 
         for n_ucs in range(2, self.max_n_uc):
-            logger.info(
-                f"\nGetting combinations for {n_ucs} unique unit cells"
+            logger.finfo(
+                f"Getting combinations for {n_ucs} unique unit cells",
+                initial_linebreak=True,
             )
             uc_id_combinations = self.get_uc_combinations(n_ucs)
             occ_combinations = self.get_sheet_uc_weights(n_ucs)
@@ -1945,9 +1990,10 @@ class MatchClayComposition(ClayComposition):
                         }
                     )
                     min_dist = dist
-        logger.info(
-            f"\nBest match found with {match_dict['n_ucs']} unique unit cells "
-            f'(total occupancy deviation {match_dict["dist"]:+.4f})\n'
+        logger.finfo(
+            f"Best match found with {match_dict['n_ucs']} unique unit cells "
+            f'(total occupancy deviation {match_dict["dist"]:+.4f})\n',
+            initial_linebreak=True,
         )
         return match_dict
 
@@ -2063,7 +2109,10 @@ class MatchClayComposition(ClayComposition):
         return itertools.combinations(self.unique_uc_array, n_ucs)
 
     def _write(
-        self, outpath: Union[Dir, File, PosixPath], fmt: Optional[str] = None
+        self,
+        outpath: Union[Dir, File, PosixPath],
+        fmt: Optional[str] = None,
+        backup=False,
     ):
         if type(outpath) == str:
             outpath = PathFactory(outpath)
@@ -2089,8 +2138,14 @@ class MatchClayComposition(ClayComposition):
             )
         if not outpath.parent.is_dir():
             os.makedirs(outpath.parent)
-        logger.info(f"Writing new match clay composition to {str(outpath)!r}")
-        shutil.copy(tmpfile.name, outpath)
+        logger.finfo(
+            f"Writing new match clay composition to {str(outpath)!r}\n",
+            initial_linebreak=True,
+        )
+        if backup:
+            backup_files(new_filename=outpath, old_filename=tmpfile.name)
+        else:
+            shutil.copy(tmpfile.name, outpath)
         assert outpath.is_file()
 
     write_csv = partialmethod(_write, fmt=".csv")

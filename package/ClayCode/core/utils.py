@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-import pathlib
 import re
 import shutil
 import subprocess as sp
@@ -214,7 +213,7 @@ def copy_final_setup(outpath: Path, tmpdir: Path, rm_tempfiles: bool = True):
         new_files.append(outpath / file.name)
     for file in [tpr, log, mdp]:
         shutil.move(file, outpath / file.with_stem(f"{file.name}_em").name)
-    logger.info(f"Done! Copied files to {outpath.name!r}")
+    logger.finfo(f"Done! Copied files to {outpath.name!r}")
     if rm_tempfiles:
         shutil.rmtree(tmpdir)
     return tuple(new_files)
@@ -276,7 +275,7 @@ def select_named_file(
                     prev_file_stat = last_file_stat
                     last_file = file
         match = last_file
-        logger.info(f"{how} file: {match.name!r}")
+        logger.finfo(f"{how} file: {match.name!r}")
     return match
 
 
@@ -357,6 +356,31 @@ def _get_header(header_str, fill, n_linechars=LINE_LENGTH):
         f"{header_str:^{n_linechars}}\n"
         f"{fill:{fill}>{n_linechars}}\n"
     )
+
+
+def backup_files(new_filename, old_filename=None):
+    already_exists = list(new_filename.parent.glob(f"{new_filename.name}"))
+    already_exists.extend(
+        list(new_filename.parent.glob(f"{new_filename.name}.*"))
+    )
+    backups = []
+    backup_str = ""
+    if already_exists:
+        suffices = [f.suffix.strip(".") for f in already_exists]
+        suffices = [
+            int(suffix) for suffix in suffices if re.match(r"[0-9]+", suffix)
+        ]
+        backup_str = f'Backing up old {new_filename.suffix.strip(".")} files.'
+        for suffix in reversed(suffices):
+            shutil.move(
+                f"{new_filename}.{suffix}", f"{new_filename}.{suffix + 1}"
+            )
+            backups.append(f"{new_filename}.{suffix + 1}")
+        shutil.copy(new_filename, f"{new_filename}.1")
+        backups.append(f"{new_filename}.1")
+    if old_filename:
+        shutil.copy(old_filename, new_filename)
+    return backup_str
 
 
 def _get_info_box(header_str, fill, n_linechars=LINE_LENGTH, n_fillchars=0):

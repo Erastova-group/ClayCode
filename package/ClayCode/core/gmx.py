@@ -6,7 +6,6 @@ import shutil
 import subprocess as sp
 import sys
 import tempfile
-import textwrap
 import warnings
 from functools import cached_property, update_wrapper, wraps
 from pathlib import Path
@@ -77,7 +76,7 @@ class GMXCommands:
         self._mdp_template = mdp_template
         self._mdp_defaults = mdp_defaults
         self.logger = logging.getLogger(self.__class__.__name__)
-        logger.info(textwrap.fill(f"\n{self.gmx_info}", width=LINE_LENGTH))
+        logger.finfo(f"{self.gmx_info}", initial_linebreak=True)
 
     @property
     def mdp_defaults(self):
@@ -124,7 +123,6 @@ class GMXCommands:
         freeze_dims: Optional[List[str]] = None,
         freeze_grps: Optional[List[str]] = None,
     ):
-        # self.logger.info(get_header(f"Getting mdp options\n"))
         mdp_temp_file = True
         if mdp_file:
             file = Path(mdp_file).with_suffix(".mdp")

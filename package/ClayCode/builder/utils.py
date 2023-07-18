@@ -77,8 +77,8 @@ def get_checked_input(
             if result_match != result_input:
                 raise AttributeError
         except AttributeError:
-            continue
-        finally:
+            print(f"\tInvalid input: {result_input!r}")
+        else:
             result = result_type(
                 result_input, *result_init_args, **result_init_kwargs
             )

@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 import logging
 import sys
-import textwrap
 
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.consts import LINE_LENGTH
 from ClayCode.core.parsing import ArgsFactory, BuildArgs, SiminpArgs, parser
 
 __all__ = ["run"]
@@ -24,7 +22,7 @@ def run():
 
         extra_il_space = {True: 1.5, False: 1}
         clay_builder = Builder(args)
-        clay_builder.write_sheet_crds()
+        clay_builder.write_sheet_crds(backup=clay_builder.args.backup)
         clay_builder.construct_solvent(
             solvate=args.il_solv,
             ion_charge=args.match_charge["tot"],
@@ -32,9 +30,12 @@ def run():
             ion_add_func=clay_builder.add_il_ions,
             solvent_remove_func=clay_builder.remove_il_solv,
             solvent_rename_func=clay_builder.rename_il_solv,
+            backup=clay_builder.args.backup,
         )
-        clay_builder.stack_sheets(extra=extra_il_space[args.il_solv])
-        clay_builder.extend_box()
+        clay_builder.stack_sheets(
+            extra=extra_il_space[args.il_solv], backup=clay_builder.args.backup
+        )
+        clay_builder.extend_box(backup=clay_builder.args.backup)
         completed = False
         while completed is False:
             if clay_builder.extended_box:
@@ -44,9 +45,10 @@ def run():
                     solvate_add_func=clay_builder.solvate_box,
                     ion_add_func=clay_builder.add_bulk_ions,
                     solvent_remove_func=clay_builder.remove_SOL,
+                    backup=clay_builder.args.backup,
                 )
                 clay_builder.center_clay_in_box()
-            completed = clay_builder.run_em()
+            completed = clay_builder.run_em(backup=clay_builder.args.backup)
             if completed is None:
                 if clay_builder.extended_box and (
                     args.bulk_solv or args.bulk_ion_conc != 0.0
@@ -60,19 +62,29 @@ def run():
                     )
                     # if repeat == "y":
                     #     completed = False
-                    #     logger.info(get_subheader("Repeating solvation"))
+                    #     logger.finfo(get_subheader("Repeating solvation"))
                 if completed is False:
-                    logger.info("\nRepeating bulk setup.\n")
+                    logger.finfo(
+                        "Repeating bulk setup.\n", initial_linebreak=True
+                    )
                 else:
-                    logger.info(
-                        "\nFinishing setup without energy minimisation.\n"
+                    logger.finfo(
+                        "Finishing setup without energy minimisation.\n",
+                        initial_linebreak=True,
                     )
             else:
-                logger.info(f"\n{textwrap.fill(completed, width=LINE_LENGTH)}")
+                logger.finfo(
+                    completed,
+                    initial_linebreak=True,
+                    fix_sentence_endings=False,
+                    expand_tabs=False,
+                    replace_whitespace=False,
+                )
                 logger.debug("\nFinished setup!")
         clay_builder.conclude()
         if isinstance(args, SiminpArgs):
             print("siminp")
+    return 0
 
 
 if __name__ == "__main__":

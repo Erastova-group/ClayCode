@@ -173,4 +173,4 @@ KWD_DICT = set_globals()
 with open(MDP / "defaults.yaml", "r") as yaml_file:
     MDP_DEFAULTS = yaml.safe_load(yaml_file)
 
-LINE_LENGTH = 80
+LINE_LENGTH = 100
