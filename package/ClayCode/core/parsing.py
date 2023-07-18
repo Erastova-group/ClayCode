@@ -39,9 +39,8 @@ parser: ArgumentParser = ArgumentParser(
 parser.add_argument(
     "--debug",
     help="Debug run",
-    action="store_const",
-    const=logging.DEBUG,
-    default=logging.INFO,
+    action="store_true",
+    default=False,
     dest="DEBUG",
 )
 
