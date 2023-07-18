@@ -82,7 +82,7 @@ IL_SOLV: False
 # ION_WATERS: 12
 
 # 3. OR per unit cell
-UC_WATERS: 20
+# UC_WATERS: 20
 
 # 4. OR for a target d-spacing value in A
 # SPACING_WATERS: 10.0
@@ -92,22 +92,20 @@ UC_WATERS: 20
 # =============================================================================
 
 # full simulation box height in A (Default 150.0)
-BOX_HEIGHT: 50 # 150.0
+BOX_HEIGHT: 30 # 150.0
 
 # =============================================================================
 # Optional: Solvation and Bulk Ions Specifications
 # =============================================================================
 
 # Bulk solvent added or not (Default: True)
-BULK_SOLV: True
+BULK_SOLV: false
 
 # Ion species and concentration in mol/L name to add in bulk solvent
 # (Default: BULK_IONS:
 #  Na: 0.1)
 
-BULK_IONS:
-  Na: 0
-  Cl: 0
+#BULK_IONS:
 #  Na: 0.1
 #  Cl: 0.05
 
