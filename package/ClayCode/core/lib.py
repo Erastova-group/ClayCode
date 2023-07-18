@@ -6,6 +6,7 @@ import pickle as pkl
 import re
 import shutil
 import tempfile
+import textwrap
 from functools import partial, update_wrapper, wraps
 from pathlib import Path, PosixPath
 from typing import (
@@ -29,7 +30,17 @@ import numpy as np
 import pandas as pd
 from ClayCode.analysis.analysisbase import analysis_class
 from ClayCode.core.classes import GROFile
-from ClayCode.core.consts import AA, DATA, FF, IONS, MDP, SOL, SOL_DENSITY, UCS
+from ClayCode.core.consts import (
+    AA,
+    DATA,
+    FF,
+    IONS,
+    LINE_LENGTH,
+    MDP,
+    SOL,
+    SOL_DENSITY,
+    UCS,
+)
 from ClayCode.core.gmx import gmx_command_wrapper
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import minimize_vectors
@@ -1539,17 +1550,30 @@ def run_em(
         )
         if conv is None:
             logger.error("Energy minimisation run not converged!\n")
-            logger.info(error)
-            logger.info(em)
-            logger.info(out)
+            logger.info(textwrap.fill(error, width=LINE_LENGTH))
+            logger.info(textwrap.fill(em, width=LINE_LENGTH))
+            logger.info(textwrap.fill(out, width=LINE_LENGTH))
         else:
             fmax, n_steps = conv.groups()
-            logger.info(f"Fmax: {fmax}, reached in {n_steps} steps")
+            final_str = (
+                re.search(
+                    r"(?<=writing lowest energy coordinates.\n).*(?=GROMACS reminds you)",
+                    em,
+                    flags=re.DOTALL | re.MULTILINE,
+                )
+                .group(0)
+                .strip("\n")
+            )
+            # logger.info(f"Fmax: {fmax}, reached in {n_steps} steps")
+            logger.info(f"{final_str}\n")
             logger.debug(f"Output written to {outname.name!r}")
             conv = (
                 f"Fmax: {fmax}, reached in {n_steps} steps."
                 f"Output written to {outname!r}\n"
             )
+            conv = re.search(
+                r"GROMACS reminds you.*?(?=\n)", em, re.MULTILINE
+            ).group(0)
         if otop_copy is True:
             shutil.copy(topout, topin)
     else:

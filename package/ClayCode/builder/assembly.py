@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import tempfile
+import textwrap
 from functools import cached_property
 from pathlib import Path
 from typing import Callable, List, Literal, Optional, Union
@@ -14,7 +15,7 @@ import pandas as pd
 from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.topology import TopologyConstructor
 from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
-from ClayCode.core.consts import FF, GRO_FMT, MDP, MDP_DEFAULTS
+from ClayCode.core.consts import FF, GRO_FMT, LINE_LENGTH, MDP, MDP_DEFAULTS
 from ClayCode.core.gmx import GMXCommands, add_gmx_args, gmx_command_wrapper
 from ClayCode.core.lib import (
     add_ions_n_mols,
@@ -181,17 +182,18 @@ class Builder:
         )
         outpath = Dir(self.args.outpath)
         crd_top_files = [
+            *outpath.gro_filelist,
             *outpath.itp_filelist,
             *outpath._get_filelist(ext=".top"),
-            *outpath.gro_filelist,
             *outpath._get_filelist(ext=".csv"),
             *outpath._get_filelist(ext=".mdp"),
             *outpath._get_filelist(ext=".edr"),
             *outpath._get_filelist(ext=".trr"),
             *outpath._get_filelist(ext=".log"),
         ]
+        em_files = []
         for file in outpath.iterdir():
-            if file not in crd_top_files:
+            if file not in crd_top_files and not file.is_dir():
                 file.unlink(missing_ok=True)
             else:
                 if file.stem.split("_")[-1] == "em":
@@ -199,17 +201,32 @@ class Builder:
                         em_path = outpath / "EM"
                         os.makedirs(em_path, exist_ok=True)
                         shutil.move(file, em_path / file.name)
+                        file = em_path / file.name
+                    if file.suffix == ".gro":
+                        self.stack = file
+                        logger.info(
+                            f"Wrote final output from energy minimisation to {str(file.parent)!r}:"
+                        )
+                    em_files.append(file.name)
+        em_files = "'\n\t - '".join(sorted(em_files))
+        logger.info(f"\t - '{em_files}'")
         return result
 
     def conclude(self):
         logger.info(get_subheader("Finishing up"))
         self.stack: GROFile = self.args.outpath / self.stack.name
         self.__tmp_outpath.cleanup()
-        logger.info(
+        logger.debug(
             f"Wrote final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
         )
-        logger.info(get_header(f"{self.args.name} model setup complete"))
         logger.set_file_name(final="builder")
+        logger.info(
+            textwrap.fill(
+                f"Log for this setup written to {str(logger.logfilename)!r}",
+                width=LINE_LENGTH,
+            )
+        )
+        logger.info(get_header(f"{self.args.name} model setup complete"))
 
     def remove_il_solv(self) -> None:
         logger.info("Removing interlayer solvent")
@@ -966,7 +983,7 @@ class Solvent:
                 )
 
             logger.info(
-                f"Attempting solvation with interlayer height = {self.z_dim:.2f} \u212B\n"
+                f"Attempting solvation with interlayer height = {self.z_dim:.2f} \u212B"
             )
             solv, out = self.gmx_commands.run_gmx_solvate(
                 cs="spc216",
@@ -983,7 +1000,11 @@ class Solvent:
             try:
                 self.check_solvent_nummols(solv)
             except Exception as e:
-                logger.info(f"\t{e}")
+                logger.info(
+                    textwrap.fill(
+                        f"\t{e}", width=LINE_LENGTH, subsequent_indent="\t"
+                    )
+                )
                 self._z_padding += self._z_padding_increment
                 logger.info(
                     f"Increasing box size by {self._z_padding} \u212B\n"

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import logging
 import sys
+import textwrap
 
 from ClayCode.builder.utils import select_input_option
+from ClayCode.core.consts import LINE_LENGTH
 from ClayCode.core.parsing import ArgsFactory, BuildArgs, SiminpArgs, parser
 
 __all__ = ["run"]
@@ -12,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def run():
     args = parser.parse_args(sys.argv[1:])
-    logger.setLevel(args.DEBUG)
+    # logger.setLevel(args.DEBUG)
     args_factory = ArgsFactory()
     args = args_factory.init_subclass(args)
     # file_handler = logging.FileHandler(filename=args.)
@@ -66,7 +68,8 @@ def run():
                         "\nFinishing setup without energy minimisation.\n"
                     )
             else:
-                logger.debug("\nFinished setup!\n")
+                logger.info(f"\n{textwrap.fill(completed, width=LINE_LENGTH)}")
+                logger.debug("\nFinished setup!")
         clay_builder.conclude()
         if isinstance(args, SiminpArgs):
             print("siminp")

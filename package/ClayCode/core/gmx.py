@@ -6,6 +6,7 @@ import shutil
 import subprocess as sp
 import sys
 import tempfile
+import textwrap
 import warnings
 from functools import cached_property, update_wrapper, wraps
 from pathlib import Path
@@ -13,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ClayCode.builder.utils import select_input_option
 from ClayCode.core.classes import MDPFile
-from ClayCode.core.consts import MDP, MDP_DEFAULTS
+from ClayCode.core.consts import LINE_LENGTH, MDP, MDP_DEFAULTS
 from ClayCode.core.utils import (
     execute_shell_command,
     get_header,
@@ -76,7 +77,7 @@ class GMXCommands:
         self._mdp_template = mdp_template
         self._mdp_defaults = mdp_defaults
         self.logger = logging.getLogger(self.__class__.__name__)
-        logger.info(f"\n{self.gmx_info}")
+        logger.info(textwrap.fill(f"\n{self.gmx_info}", width=LINE_LENGTH))
 
     @property
     def mdp_defaults(self):

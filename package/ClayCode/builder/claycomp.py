@@ -11,6 +11,7 @@ import re
 import shutil
 import sys
 import tempfile
+import textwrap
 import warnings
 from abc import ABC, abstractmethod
 from functools import (
@@ -28,7 +29,7 @@ import pandas as pd
 import yaml
 from ClayCode.builder.utils import get_checked_input, select_input_option
 from ClayCode.core.classes import Dir, File, ITPFile, PathFactory, YAMLFile
-from ClayCode.core.consts import UCS
+from ClayCode.core.consts import LINE_LENGTH, UCS
 from ClayCode.core.lib import get_ion_charges
 from ClayCode.core.utils import get_debugheader, get_subheader
 from numpy._typing import NDArray
@@ -93,7 +94,13 @@ class UCData(Dir):
     def get_uc_group_base_compositions(self):
         for n_group, group_ids in self.group_iter():
             group_id_str = f", {self.uc_stem}".join(group_ids)
-            logger.info(f"\tGroup {n_group}: {self.uc_stem}{group_id_str}\n")
+            logger.info(
+                textwrap.fill(
+                    f"\tGroup {n_group:2d}: {self.uc_stem}{group_id_str}\n",
+                    width=LINE_LENGTH,
+                    subsequent_indent="\t" + " " * 9,
+                )
+            )
             self.__base_ucs[n_group] = self.__get_base_ucs(group_ids)
 
     def get_uc_groups(self):
@@ -250,7 +257,9 @@ class UCData(Dir):
         try:
             self.uc_idxs = self.uc_groups[group_id]
             uc_idx_str = f", {self.uc_stem}".join(self.uc_idxs)
-            logger.info(f"\nSelected unit cells: {self.uc_stem}{uc_idx_str}")
+            logger.info(
+                f"\n{textwrap.fill(f'Selected unit cells: {self.uc_stem}{uc_idx_str}', width=LINE_LENGTH, subsequent_indent=21*' ')}"
+            )
         except KeyError as e:
             e(f"{group_id} is an invalid group id!")
 
@@ -1473,13 +1482,10 @@ class UCClayComposition(ClayComposition):
         logger.info(get_subheader("Manually specified unit cells"))
         self.__uc_index_ratios = uc_index_ratios
         self.get_uc_group()
-        print(self.uc_weights)
-        print(self.target_df)
-        print(self.match_composition)
 
         # self.df = pd.DataFrame.from_dict(uc_index_ratios)
-        for k, v in uc_index_ratios.items():
-            logger.info(f"\t{k}")
+        # for k, v in uc_index_ratios.items():
+        #     logger.info(f"\t{k}")
 
     @cached_property
     def _uc_match_dict(self) -> dict:
@@ -1535,8 +1541,11 @@ class UCClayComposition(ClayComposition):
         )
         match_dict["dist"] = np.round(dist, 4)
         logger.info(
-            f"\nSelected combination has {match_dict['n_ucs']} unique unit cells "
-            f'(total occupancy deviation {match_dict["dist"]:+.4f})\n'
+            textwrap.fill(
+                f"\nSelected combination has {match_dict['n_ucs']} unique unit cells "
+                f'(total occupancy deviation {match_dict["dist"]:+.4f})\n',
+                width=LINE_LENGTH,
+            )
         )
         return match_dict
 
@@ -1570,9 +1579,9 @@ class UCClayComposition(ClayComposition):
         uc_groups_reversed = {}
         for group_id, uc_ids in uc_groups.items():
             uc_groups_reversed.update({uc_id: group_id for uc_id in uc_ids})
-        for uc_num, uc_ratio in self.__uc_index_ratios.items():
-            uc_id = f"{uc_num:02d}"
-            try:
+        try:
+            for uc_num, uc_ratio in self.__uc_index_ratios.items():
+                uc_id = f"{uc_num:02d}"
                 if uc_group is None:
                     uc_group = uc_groups_reversed[uc_id]
                     logger.info(
@@ -1588,11 +1597,11 @@ class UCClayComposition(ClayComposition):
                         pass
                     else:
                         raise KeyError(f"Invalid unit cell index {uc_id}")
-            except KeyError:
-                logger.error(f"Invalid unit cell id {uc_id!r}!")
-                self._abort()
-            else:
-                self._uc_data.select_group(uc_group)
+        except KeyError:
+            logger.error(f"Invalid unit cell id {uc_id!r}!")
+            self._abort()
+        else:
+            self._uc_data.select_group(uc_group)
 
 
 class MatchClayComposition(ClayComposition):

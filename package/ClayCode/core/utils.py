@@ -17,7 +17,7 @@ import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 import yaml
-from ClayCode.core.consts import exec_date, exec_time
+from ClayCode.core.consts import LINE_LENGTH, exec_date, exec_time
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -351,7 +351,7 @@ def get_u_files(path: Union[str, Path], suffices=["gro", "top"]):
     return files["gro"], files["trr"]
 
 
-def _get_header(header_str, fill, n_linechars=100):
+def _get_header(header_str, fill, n_linechars=LINE_LENGTH):
     return (
         f"\n{fill:{fill}>{n_linechars}}\n"
         f"{header_str:^{n_linechars}}\n"
@@ -359,7 +359,7 @@ def _get_header(header_str, fill, n_linechars=100):
     )
 
 
-def _get_info_box(header_str, fill, n_linechars=100, n_fillchars=0):
+def _get_info_box(header_str, fill, n_linechars=LINE_LENGTH, n_fillchars=0):
     fill_len = n_fillchars // 2
     n_linechars -= 2 * fill_len
     return (
