@@ -532,7 +532,7 @@ class Builder:
         logger.info(get_subheader("1. Generating clay sheets."))
         for sheet_id in range(self.args.n_sheets):
             self.sheet.n_sheet: int = sheet_id
-            self.sheet.write_gro(backup=backup)
+            self.sheet.write_gro()
         self.sheet.n_sheet = None
 
     def write_sheet_top(self) -> None:
@@ -786,7 +786,7 @@ class Sheet:
         filename.description = (
             f'{self.filename.stem.split("_")[0]} sheet {self.n_sheet}'
         )
-        if filename.is_file():
+        if filename.is_file() and backup:
             logger.debug(
                 f"\n{filename.parent}/{filename.name} already exists, creating backup.",
             )
