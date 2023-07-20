@@ -10,12 +10,11 @@ import warnings
 from functools import partial, singledispatch, wraps
 from itertools import chain
 from pathlib import Path
-from typing import List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-import yaml
 from ClayCode.core.consts import LINE_LENGTH, exec_date, exec_time
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -506,5 +505,4 @@ def mdp_to_yaml(input_string: str) -> Dict[str, str]:
     # mdp_yaml = re.sub(r':', ': !mdp ', flags=re.MULTILINE)
     mdp_yaml = dict(line.split("=") for line in mdp_yaml.splitlines())
     # mdp_yaml = re.sub(r'\n\n+', '\n', mdp_yaml, flags=re.MULTILINE)
-    print(yaml.dump(mdp_yaml))
     return mdp_yaml
