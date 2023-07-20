@@ -11,8 +11,9 @@ from functools import cached_property, update_wrapper, wraps
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import numpy as np
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.classes import MDPFile
+from ClayCode.core.classes import GROFile, MDPFile
 from ClayCode.core.consts import LINE_LENGTH, MDP, MDP_DEFAULTS
 from ClayCode.core.utils import (
     execute_shell_command,
@@ -233,6 +234,24 @@ class GMXCommands:
                         )
                     )
                 )
+                if command == "grompp":
+                    mdp_prms = MDPFile(gmx_args["f"]).to_yaml()
+                    cutoffs = []
+                    for cutoff in ["rlist", "rvdw", "rcoulomb"]:
+                        try:
+                            cutoffs.append(float(mdp_prms[cutoff]))
+                        except KeyError:
+                            pass
+                    max_cutoff = np.max(cutoffs) * 10  # in A
+                    crd_file = GROFile(gmx_args["c"])
+                    min_box_length = np.min(crd_file.universe.dimensions[:3])
+                    if max_cutoff >= (0.5 * min_box_length):
+                        logger.finfo(
+                            f"Shortest box vector ({min_box_length:.1f} \u212B) needs to be at least twice as long as "
+                            f"the selected GROMACS cutoff ({max_cutoff:.1f} \u212B).\n\n"
+                            f"Aborting model construction."
+                        )
+                        sys.exit(2)
                 with tempfile.TemporaryDirectory() as odir:
                     try:
                         output = execute_shell_command(

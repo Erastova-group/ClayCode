@@ -73,10 +73,13 @@ class Builder:
             message=f"{self.sheet.x_cells * self.sheet.uc_dimensions[0]:.2f} \u212B X {self.sheet.y_cells * self.sheet.uc_dimensions[1]:.2f} \u212B "
             f"({self.sheet.x_cells} unit cells X {self.sheet.y_cells} unit cells)",
         )
-        logger.finfo(
-            kwd_str="Box height: ",
-            message=f"{self.args.box_height:.1f} \u212B",
-        )
+        if self.args.box_height > 3 * self.sheet.uc_dimensions[2]:
+            logger.finfo(
+                kwd_str="Box height: ",
+                message=f"{self.args.box_height:.1f} \u212B",
+            )
+        else:
+            logger.finfo("Will set box height to clay height")
         self.gmx_commands = GMXCommands(gmx_alias=self.args.gmx_alias)
 
     @property
@@ -99,6 +102,7 @@ class Builder:
             backup_files(self.args.outpath / spc_file.top.name)
         solvent.write(spc_name=spc_file, topology=self.top)
         self.il_solv: GROFile = spc_file
+        # self.il_solv = self.il_solv
         logger.finfo(f"Writing interlayer sheet to {self.il_solv.name!r}\n")
 
     @staticmethod
@@ -219,7 +223,10 @@ class Builder:
                         )
                     em_files.append(file.name)
         if backups:
-            logger.finfo("\t" + "\n\t".join(backups), initial_linebreak=True)
+            logger.finfo(
+                "\t" + "\n\t".join([backup for backup in backups if backup]),
+                initial_linebreak=True,
+            )
         em_files = "'\n\t - '".join(sorted(em_files))
         logger.info(f"\t - '{em_files}'")
         return result
@@ -508,9 +515,15 @@ class Builder:
             backup_files(self.args.outpath / crdout.name)
             backup_files(self.args.outpath / crdout.top.name)
         crdout.universe: Universe = combined
+        logger.finfo(
+            kwd_str=f"Clay stack height: ",
+            message=f"{combined.dimensions[2]:2.2f} \u212B\n",
+            initial_linebreak=True,
+        )
         crdout.write(self.top)
         add_resnum(crdin=crdout, crdout=crdout)
         self.stack: GROFile = crdout
+        # self.stack = self.stack
         logger.finfo(f"Saving sheet stack as {self.stack.stem!r}\n")
 
     def __path_getter(self, property_name) -> GROFile:
@@ -603,6 +616,8 @@ class Builder:
         self, property_name: str, file: Union[Path, str, GROFile], backup=False
     ) -> None:
         path: GROFile = getattr(self, property_name, None)
+        if path is None:
+            path = file
         if path is not None:
             shutil.copy(path, self.args.outpath / path.name)
             logger.debug(
@@ -615,9 +630,7 @@ class Builder:
                 shutil.copy(path.top, self.args.outpath / path.top.name)
             finally:
                 logger.debug(
-                    logger.debug(
-                        f"Copied {path.top.name} to {self.args.outpath.name}"
-                    )
+                    f"Copied {path.top.name} to {self.args.outpath.name}\n"
                 )
         file = FileFactory(Path(file).with_suffix(".gro"))
         file.description = f"{file.stem.split('_')[0]} " + " ".join(
@@ -700,9 +713,9 @@ class Builder:
             self.il_solv: GROFile = infile
 
     def center_clay_in_box(self) -> None:
-        if self.__box_ext is True:
-            logger.finfo("Centering clay in box", initial_linebreak=True)
-            center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
+        # if self.__box_ext is True:
+        logger.finfo("Centering clay in box", initial_linebreak=True)
+        center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
 
 
 class Sheet:
@@ -826,9 +839,11 @@ class Sheet:
         add_resnum(crdin=filename, crdout=filename)
         uc_array = self.uc_array.copy()
         self.random_generator.shuffle(uc_array)
-        uc_n_atoms: NDArray = np.array(
-            [self.uc_data.n_atoms[uc_id] for uc_id in uc_array]
-        ).reshape(self.x_cells, self.y_cells)
+        uc_n_atoms: NDArray = (
+            np.array([self.uc_data.n_atoms[uc_id] for uc_id in uc_array])
+            .reshape(self.x_cells, self.y_cells)
+            .astype(np.int32)
+        )
         x_repeats: Callable = lambda n_atoms: self.__cells_shift(
             n_atoms=n_atoms, n_cells=self.x_cells
         )
