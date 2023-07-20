@@ -19,8 +19,8 @@ D216,,,,,,,,,,,,,,Reserved number for Nontronite
 D217,,,,,,,,,,,,,,Reserved number for Nontronite
 D218,,,,,,,,,,,,,,Reserved number for Nontronite
 D219,,,,,,,,,,,,,,Reserved number for Nontronite
-D220,,,,,,,,,,,,,,Smectite UC basic - D221
-D221,8,0,0,4,0,0,0,0,0,0,0,0,0,Smectite UC neutral
+D220,8,0,0,4,0,0,0,0,0,0,0,0,0,Smectite UC basic
+D221,8,0,0,2,2,0,0,0,0,0,0,0,0,Smectite UC neutral 2 Oct Fe3
 D222,8,0,0,3,0,0,1,0,0,0,0,0,-1,Smectite UC Oct Mg
 D223,7,1,0,4,0,0,0,0,0,0,0,-1,0,Smectite UC Td Al
 D224,7,1,0,4,0,0,0,0,0,0,0,-1,0,Smectite UC Td Al
@@ -28,10 +28,16 @@ D225,7,1,0,3,0,0,1,0,0,0,0,-1,-1,Smectite UC Td Al Oct Mg
 D226,7,1,0,3,0,0,1,0,0,0,0,-1,-1,Smectite UC Td Al Oct Mg
 D227,6,2,0,4,0,0,0,0,0,0,0,-2,0,Smectite UC 2 Td Al
 D228,8,0,0,3,1,0,0,0,0,0,0,0,0,Smectite UC neutral Oct Fe3
-D229,,,,,,,,,,,,,,Reserved for Smectite
-D230,,,,,,,,,,,,,,Reserved for Smectite
-D231,,,,,,,,,,,,,,Reserved for Smectite
+D229,6,2,0,3,1,0,0,0,0,0,0,-2,0,Smectite UC 2 Td Al Oct Fe3
+D230,7,1,0,3,1,0,0,0,0,0,0,-1,0,Smectite UC Td Al Oct Fe3
+D231,7,1,0,3,1,0,0,0,0,0,0,-1,0,Smectite UC Td Al Oct Fe3
 D232,,,,,,,,,,,,,,Reserved for Smectite
 D233,,,,,,,,,,,,,,Reserved for Smectite
 D234,,,,,,,,,,,,,,Reserved for Smectite
 D235,,,,,,,,,,,,,,Reserved for Smectite
+D236,8,0,0,3,0,1,0,0,0,0,0,0,-1,Smectite UC Oct Fe2
+D237,7,1,0,3,0,1,0,0,0,0,0,-1,-1,Smectite UC Td Al Oct Fe2
+D238,7,1,0,3,0,1,0,0,0,0,0,-1,-1,Smectite UC Td Al Oct Fe2
+D239,,,,,,,,,,,,,,Reserved for Smectite
+D240,,,,,,,,,,,,,,
+D241,,,,,,,,,,,,,,

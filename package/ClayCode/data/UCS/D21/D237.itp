@@ -20,7 +20,7 @@
     11         ob      1    D237   OB3     11      -1.05         16   
     12         ob      1    D237   OB4     12      -1.05         16   
     13       obos      1    D237  OBS5     13    -1.1808         16   ; Ob on Fe2
-    14       obss      1    D237  OBX6     14    -1.2995         16   ; Ob on Fe2 and Td Al
+    14       obss      1    D237  OBX6     14   -1.29955         16   ; Ob on Fe2 and Td Al
     15         ob      1    D237   OB7     15      -1.05         16   
     16       obos      1    D237  OBS8     16    -1.1808         16   ; Ob on Fe2
     17         ob      1    D237   OB9     17      -1.05         16   
@@ -37,7 +37,7 @@
     28         ob      1    D237  OB20     28      -1.05         16   
     29         ao      1    D237   AO1     29      1.575      26.98   
     30         ao      1    D237   AO2     30      1.575      26.98   
-    31        fe2      1    D237  FE23     31     1.3600      55.85   ; subst Fe2
+    31        fe2      1    D237  FE23     31     1.3598      55.85   ; subst Fe2
     32         ao      1    D237   AO4     32      1.575      26.98   
     33         st      1    D237   ST1     33        2.1      28.09   
     34         st      1    D237   ST2     34        2.1      28.09   
