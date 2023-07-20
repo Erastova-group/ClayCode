@@ -1223,6 +1223,9 @@ class ITPFile(File):
         elif parameter.__class__ in self._sys_types:
             self._sys[definition_id] += parameter
 
+    def get_df(self, section):
+        ...
+
 
 class GROFile(File):
     """Container for .gro file contents."""

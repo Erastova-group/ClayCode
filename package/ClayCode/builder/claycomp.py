@@ -51,9 +51,14 @@ class UnitCell(ITPFile):
     def uc_stem(self):
         return self.stem[:2]
 
-    @property
-    def atoms(self):
-        return self.data
+    @cached_property
+    def atom_df(self):
+        atoms = self.get_parameter("atoms")
+        return atoms.df
+
+    @cached_property
+    def charge(self):
+        return self.atom_df["charge"].sum().round(6)
 
 
 class UCData(Dir):
@@ -76,6 +81,7 @@ class UCData(Dir):
         self.__df: pd.DataFrame = None
         self.__get_full_df()
         self.__get_df()
+        self.__check_ucs()
         self.__atomic_charges = None
         self.group_id = None
         self.__gro_groups = None
@@ -88,6 +94,31 @@ class UCData(Dir):
         self.idx_sel = (
             self.df.index.get_level_values("sheet").unique().to_list()
         )
+
+    def __check_ucs(self):
+        uc_error_charges = {}
+        for uc in sorted(self.uc_list):
+            if not (np.isclose(uc.charge, np.rint(uc.charge))):
+                uc_error_charges[uc.idx] = uc.charge
+        if uc_error_charges:
+            error_str = "\n\t".join(
+                [
+                    f"{idx:5}: {uc_error_charges[idx]:2.5f}"
+                    for idx in sorted(uc_error_charges.keys())
+                ]
+            )
+            logger.error(
+                f"Found unit cells with non-integer charge:\n\n\tuc-id: charge\n\t{error_str}"
+            )
+            self.__abort()
+
+    @staticmethod
+    def __abort():
+        logger.finfo(
+            "Aborting model construction.",
+            initial_linebreak=True,
+        )
+        sys.exit(0)
 
     def get_uc_group_base_compositions(self):
         for n_group, group_ids in self.group_iter():
@@ -296,7 +327,9 @@ class UCData(Dir):
     def __get_full_df(self):
         idx = self.atomtypes.iloc[:, 0]
         cols = [*self.uc_idxs, "charge", "sheet"]
-        self.__full_df = pd.DataFrame(index=idx, columns=cols)
+        self.__full_df = pd.DataFrame(
+            index=idx, columns=cols, dtype=np.float64
+        )
         self.__full_df["charge"].update(
             self.atomtypes.set_index("at-type")["charge"]
         )
@@ -354,7 +387,7 @@ class UCData(Dir):
             lambda x: x * self.full_df["charge"], raw=True
         )
         total_charge = (
-            charge.loc[:, self.uc_idxs].sum().astype(np.float32).round(2)
+            charge.loc[:, self.uc_idxs].sum().astype(np.float64).round(2)
         )
         total_charge.name = "charge"
         return total_charge
@@ -590,6 +623,13 @@ class TargetClayComposition:
         self.split_fe_occupancies()
         self.__ion_df: pd.DataFrame = None
         self.set_ion_numbers()
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.name!r})"
+
+    def __str__(self):
+        def __repr__(self):
+            return f"{self.__class__.__name__}({self.name!r})"
 
     def update_charges(
         self, df: Union[pd.DataFrame, pd.Series]
@@ -1393,6 +1433,12 @@ class ClayComposition(ABC):
         self._uc_data = uc_data
         self.sheet_n_ucs = int(sheet_n_ucs)
         self.name = name
+
+    def __str__(self):
+        return f"{self.__class__.__name__}({self.name!r})"
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.name!r})"
 
     @cached_property
     def match_charge(self):
