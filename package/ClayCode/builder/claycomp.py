@@ -81,7 +81,6 @@ class UCData(Dir):
         self.__df: pd.DataFrame = None
         self.__get_full_df()
         self.__get_df()
-        self.__check_ucs()
         self.__atomic_charges = None
         self.group_id = None
         self.__gro_groups = None
@@ -95,11 +94,12 @@ class UCData(Dir):
             self.df.index.get_level_values("sheet").unique().to_list()
         )
 
-    def __check_ucs(self):
+    def check_ucs(self):
         uc_error_charges = {}
         for uc in sorted(self.uc_list):
-            if not (np.isclose(uc.charge, np.rint(uc.charge))):
-                uc_error_charges[uc.idx] = uc.charge
+            if uc.idx in self.uc_idxs:
+                if not (np.isclose(uc.charge, np.rint(uc.charge))):
+                    uc_error_charges[uc.idx] = uc.charge
         if uc_error_charges:
             error_str = "\n\t".join(
                 [
@@ -1660,9 +1660,11 @@ class UCClayComposition(ClayComposition):
         uc_groups_reversed = {}
         for group_id, uc_ids in uc_groups.items():
             uc_groups_reversed.update({uc_id: group_id for uc_id in uc_ids})
+        uc_ids = []
         try:
             for uc_num, uc_ratio in self.__uc_index_ratios.items():
                 uc_id = f"{uc_num:02d}"
+                uc_ids.append(uc_id)
                 if uc_group is None:
                     uc_group = uc_groups_reversed[uc_id]
                     logger.finfo(
@@ -1681,9 +1683,11 @@ class UCClayComposition(ClayComposition):
                         raise KeyError(f"Invalid unit cell index {uc_id}")
         except KeyError:
             logger.error(f"Invalid unit cell id {uc_id!r}!")
-            self._abort()
+            self._abort(1)
         else:
             self._uc_data.select_group(uc_group)
+            self._uc_data.select_ucs(uc_ids)
+            self._uc_data.check_ucs()
 
 
 class MatchClayComposition(ClayComposition):
@@ -1950,6 +1954,7 @@ class MatchClayComposition(ClayComposition):
             assert self.target_df.index.equals(
                 self.uc_df.index
             ), "Target composition and unit cell data must share index"
+            self._uc_data.check_ucs()
 
     @staticmethod
     def __abort(reason: Literal[Union[Literal["uc"], Literal["comp"]]]):

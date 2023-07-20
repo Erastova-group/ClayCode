@@ -1573,7 +1573,7 @@ def run_em(
                 .strip("\n")
             )
             # logger.finfo(f"Fmax: {fmax}, reached in {n_steps} steps")
-            logger.info(textwrap.fill(f"{final_str}\n", width=LINE_LENGTH))
+            logger.info(f"{final_str}\n")
             logger.debug(f"Output written to {outname.name!r}")
             conv = (
                 f"Fmax: {fmax}, reached in {n_steps} steps."
