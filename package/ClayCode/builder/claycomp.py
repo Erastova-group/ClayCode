@@ -841,7 +841,7 @@ class TargetClayComposition:
             self._df.drop(("O", "fe_tot"), inplace=True)
             # self._df.where(self._df.loc['O'] != 0, np.NaN, inplace=True)
             # charge_delta = dict(map(lambda x: (x, self._uc_data.oxidation_numbers[x] - ox_states[x]), ox_states.keys()))
-            logger.info(
+            logger.finfo(
                 f"Splitting total iron content ({missing_o:.4f}) to match charge.\n",
                 initial_linebreak=True,
             )
