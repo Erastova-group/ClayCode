@@ -499,7 +499,7 @@ class Builder:
                 # )
                 # sheet_u.dimensions[2]: float = sheet_u.dimensions[2] + extra
             else:
-                sheet_u.dimensions[2] = sheet_u.dimensions[2] + extra
+                sheet_u.dimensions[2] = sheet_u.dimensions[2] + (2 * extra)
             sheet_u.atoms.translate([0, 0, sheet_id * sheet_u.dimensions[2]])
             sheet_universes.append(sheet_u.atoms.copy())
             sheet_heights.append(sheet_u.dimensions[2])
