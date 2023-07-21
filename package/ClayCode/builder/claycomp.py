@@ -2213,13 +2213,16 @@ class InterlayerIons:
     ):
         self.clay_charge = np.rint(tot_charge * n_ucs)
         ion_charges = get_ion_charges()
-        monovalent, charge = tuple(
-            *[
-                (ion, ion_charges[ion])
-                for ion in monovalent
-                if np.sign(ion_charges[ion]) != np.sign(self.clay_charge)
-            ]
-        )
+        if np.isclose(self.clay_charge, 0.0):
+            monovalent, charge = monovalent[0], ion_charges[monovalent[0]]
+        else:
+            monovalent, charge = tuple(
+                *[
+                    (ion, ion_charges[ion])
+                    for ion in monovalent
+                    if np.sign(ion_charges[ion]) != np.sign(self.clay_charge)
+                ]
+            )
         self.__df = ion_ratios.copy()
         if monovalent not in self.__df.index:
             mono_df = pd.DataFrame(
