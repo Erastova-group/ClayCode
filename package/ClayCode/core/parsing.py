@@ -456,6 +456,7 @@ class BuildArgs(_Args):
         "MDP_PRMS",
         "ZERO_THRESHOLD",
         "Z_PADDING",
+        "MIN_IL_HEIGHT",
     ]
 
     def __init__(self, data, debug_run=False) -> None:
@@ -595,6 +596,7 @@ class BuildArgs(_Args):
             "CHARGE_PRIORITY",
             "ZERO_THRESHOLD",
             "Z_PADDING",
+            "MIN_IL_HEIGHT",
         ]:
             try:
                 prm_value = self.data[prm]

@@ -35,7 +35,7 @@ from ClayCode.core.utils import (
 )
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.lib._cutil import make_whole
-from MDAnalysis.transformations import unwrap
+from MDAnalysis.transformations import center_in_box, unwrap, wrap
 from MDAnalysis.units import constants
 from numpy._typing import NDArray
 from pyparsing import unicode_string
@@ -100,9 +100,11 @@ class Builder:
         if backup:
             backup_files(self.args.outpath / spc_file.name)
             backup_files(self.args.outpath / spc_file.top.name)
-        solvent.write(spc_name=spc_file, topology=self.top)
+        solvent.write(
+            spc_name=spc_file,
+            topology=self.top,
+        )
         self.il_solv: GROFile = spc_file
-        # self.il_solv = self.il_solv
         logger.finfo(f"Writing interlayer sheet to {self.il_solv.name!r}\n")
 
     @staticmethod
@@ -244,7 +246,7 @@ class Builder:
         )
         logger.info(get_header(f"{self.args.name} model setup complete"))
 
-    def remove_il_solv(self) -> None:
+    def remove_il_solv(self, min_height=1.0) -> None:
         logger.finfo("Removing interlayer solvent", initial_linebreak=True)
         il_u: Universe = Universe(str(self.il_solv))
         il_atoms: AtomGroup = il_u.select_atoms("not resname SOL iSL")
@@ -713,10 +715,22 @@ class Builder:
             infile.write(topology=self.top)
             self.il_solv: GROFile = infile
 
-    def center_clay_in_box(self) -> None:
+    def center_clay_in_box(self, make_solvent_whole=False) -> None:
         # if self.__box_ext is True:
         logger.finfo("Centering clay in box", initial_linebreak=True)
         center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
+        if make_solvent_whole:
+            stack_u = self.stack.universe
+            if (
+                "SOL" in stack_u.residues.resnames
+                or "iSL" in stack_u.residues.resnames
+            ):
+                for residue in stack_u.residues:
+                    if residue.resname in ["SOL", "iSL"]:
+                        residue.atoms.guess_bonds()
+                        assert len(residue.atoms.bonds) == 2
+                sol = stack_u.select_atoms("resname iSL SOL")
+                sol.positions = sol.unwrap(compound="residues")
 
 
 class Sheet:
@@ -914,9 +928,11 @@ class Solvent:
         n_mols: Optional[Union[int]] = None,
         n_ions: Optional[Union[int]] = None,
         z_padding: float = 0.4,
+        min_height: float = 1.5,
     ):
         self.x_dim = float(x_dim)
         self.y_dim = float(y_dim)
+        self.min_height = float(min_height)
         if z_dim is None and n_mols is not None:
             self.n_mols = int(n_mols)
             self._z_dim = self.get_solvent_sheet_height(self.n_mols)
@@ -1023,6 +1039,8 @@ class Solvent:
             logger.finfo(
                 f"Attempting solvation with interlayer height = {self.z_dim:.2f} \u212B"
             )
+            if self._z_dim < self.min_height:
+                self._z_dim = self.min_height
             solv, out = self.gmx_commands.run_gmx_solvate(
                 cs="spc216",
                 maxsol=self.n_mols,
