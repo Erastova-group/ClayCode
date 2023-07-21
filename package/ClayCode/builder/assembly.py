@@ -498,7 +498,8 @@ class Builder:
                 #     [0, 0, sheet_id * (sheet_u.dimensions[2])]
                 # )
                 # sheet_u.dimensions[2]: float = sheet_u.dimensions[2] + extra
-            # else:
+            else:
+                sheet_u.dimensions[2] = sheet_u.dimensions[2] + extra
             sheet_u.atoms.translate([0, 0, sheet_id * sheet_u.dimensions[2]])
             sheet_universes.append(sheet_u.atoms.copy())
             sheet_heights.append(sheet_u.dimensions[2])
@@ -805,10 +806,12 @@ class Sheet:
             )
             backup_files(filename)
         gro_df: pd.DataFrame = self.uc_data.gro_df
+        uc_array = self.uc_array.copy()
+        self.random_generator.shuffle(uc_array)
         sheet_df = pd.concat(
             [
                 gro_df.filter(regex=f"[A-Z][0-9]{uc_id}", axis=0)
-                for uc_id in self.uc_array
+                for uc_id in uc_array
             ]
         )
         sheet_df.reset_index(["atom-id"], inplace=True)
