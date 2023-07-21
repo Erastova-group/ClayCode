@@ -11,6 +11,7 @@ OUTPATH: '.'
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
 # compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
+# if not using CSV, give a name to create a directory
 SYSNAME: Pyr-1
 
 # specify whether new clay model should be constructed:
@@ -22,7 +23,7 @@ SYSNAME: Pyr-1
 BUILD: new
 
 # name of .csv file with target stoichiometry
-# CLAY_COMP: ./exp_clay.csv
+CLAY_COMP: ./exp_clay.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
@@ -47,19 +48,17 @@ X_CELLS: 6 #7
 Y_CELLS: 4 # 5
 
 # number of unit cells in z direction (Default 3)
-N_SHEETS: 2 # 3
+N_SHEETS: 5 # 3
 
 # ----------------------------------------------------------------------------
 # Optional: Unit Cell Composition and Ratios input
 # if not given, these will be calculated from data in the CLAY_COMP .csv file
-# (Default UC_INDEX_LIST: [], UC_RATIOS_LIST: [])
 # -----------------------------------------------------------------------------
 
 # required UCs to builder system as list
-UC_INDEX_LIST: [D221 D228]
-
-# probability list of unit cells in system
-UC_RATIOS_LIST: [0.9 0.1]
+UC_INDEX_RATIOS: 
+  20: 0.9
+  28: 0.1
 
 # -----------------------------------------------------------------------------
 
@@ -73,9 +72,10 @@ IL_SOLV: False
 
 # 1. Number of water molecules that should be added per ion (ION_WATERS)
 # a. as ion species dictionary for hydration number
-# ION_WATERS: {'Ca': 12,
-#               'Na': 12
-#               }
+# ION_WATERS: 
+#  Ca: 12
+#  Na: 12               
+
 
 # b. as ion species int for hydration number
 # ION_WATERS: 12
@@ -107,8 +107,7 @@ BULK_SOLV: True
 BULK_IONS:
   Na: 0.3
   Cl: 0.3
-#  Na: 0.1
-#  Cl: 0.05
+
 
 # =============================================================================
 # Optional: Simulation Runs Specifications

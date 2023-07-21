@@ -7,11 +7,11 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: '.'
+OUTPATH: './'
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
 # compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
-SYSNAME: IMt-2
+SYSNAME: STx-1
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
@@ -41,31 +41,34 @@ CLAY_TYPE: D21
 # =============================================================================
 
 # number of unit cells in x direction (Default 7)
-X_CELLS: 6 #7
+X_CELLS: 7
 
 # number of unit cells in y direction (Default 5)
-Y_CELLS: 4 # 5
+Y_CELLS: 5
 
 # number of unit cells in z direction (Default 3)
-N_SHEETS: 3 # 3
+N_SHEETS: 3
 
 # ----------------------------------------------------------------------------
 # Optional: Unit Cell Composition and Ratios input
 # if not given, these will be calculated from data in the CLAY_COMP .csv file
-# (Default UC_INDEX_LIST: [], UC_RATIOS_LIST: [])
 # -----------------------------------------------------------------------------
 
 # required UCs to builder system as list
-# UC_INDEX_LIST: [1]
+UC_INDEX_RATIOS: 
+  20: 0.75
+  22: 0.2
+  28: 0.05
 
-# probability list of unit cells in system
-# p(tot): 1.00
-# UC_RATIOS_LIST: [1]
+IL_ION_RATIOS:
+  Na: 0.15
+  Ca: 0.8
+  K: 0.05
 
 # -----------------------------------------------------------------------------
 
 # interlayer solvent present or not (Default True)
-IL_SOLV: False
+IL_SOLV: True
 
 # -----------------------------------------------------------------------------
 # Optional: Interlayer Ion Specification Options (comment the other options!)
@@ -74,42 +77,40 @@ IL_SOLV: False
 
 # 1. Number of water molecules that should be added per ion (ION_WATERS)
 # a. as ion species dictionary for hydration number
-# ION_WATERS: {'Ca': 12,
-#               'Na': 12
-#               }
+# ION_WATERS: 
+#  Ca: 12
+#  Na: 12               
 
 # b. as ion species int for hydration number
 # ION_WATERS: 12
 
 # 3. OR per unit cell
-# UC_WATERS: 20
+UC_WATERS: 20
 
 # 4. OR for a target d-spacing value in A
-# SPACING_WATERS: 10.0
+#SPACING_WATERS: 10.0
 
 # =============================================================================
 # Optional: Simulation Box Specifications
 # =============================================================================
 
 # full simulation box height in A (Default 150.0)
-BOX_HEIGHT: 50 # 150.0
+BOX_HEIGHT: 120.0
 
 # =============================================================================
 # Optional: Solvation and Bulk Ions Specifications
 # =============================================================================
 
 # Bulk solvent added or not (Default: True)
-BULK_SOLV: false
+BULK_SOLV: True
 
 # Ion species and concentration in mol/L name to add in bulk solvent
 # (Default: BULK_IONS:
 #  Na: 0.1)
 
 BULK_IONS:
-  Na: 0
-  Cl: 0
-#  Na: 0.1
-#  Cl: 0.05
+  Na: 0.1
+  Cl: 0.05
 
 # =============================================================================
 # Optional: Simulation Runs Specifications
@@ -149,4 +150,4 @@ BULK_IONS:
 # bash alias for used GROMACS version
 # -----------------------------------------------------------------------------
 
-GMX: gmx 
+GMX: gmx

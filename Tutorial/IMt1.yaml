@@ -47,20 +47,17 @@ X_CELLS: 6 #7
 Y_CELLS: 4 # 5
 
 # number of unit cells in z direction (Default 3)
-N_SHEETS: 2 # 3
+N_SHEETS: 4 # 3
 
 # ----------------------------------------------------------------------------
 # Optional: Unit Cell Composition and Ratios input
 # if not given, these will be calculated from data in the CLAY_COMP .csv file
-# (Default UC_INDEX_LIST: [], UC_RATIOS_LIST: [])
 # -----------------------------------------------------------------------------
 
 # required UCs to builder system as list
-# UC_INDEX_LIST: [1]
-
-# probability list of unit cells in system
-# p(tot): 1.00
-# UC_RATIOS_LIST: [1]
+# UC_INDEX_RATIOS: 
+#   20: 0.9
+#   28: 0.1
 
 # -----------------------------------------------------------------------------
 
@@ -74,9 +71,10 @@ IL_SOLV: False
 
 # 1. Number of water molecules that should be added per ion (ION_WATERS)
 # a. as ion species dictionary for hydration number
-# ION_WATERS: {'Ca': 12,
-#               'Na': 12
-#               }
+# ION_WATERS: 
+#  Ca: 12
+#  Na: 12               
+
 
 # b. as ion species int for hydration number
 # ION_WATERS: 12
@@ -92,7 +90,7 @@ IL_SOLV: False
 # =============================================================================
 
 # full simulation box height in A (Default 150.0)
-BOX_HEIGHT: 30 # 150.0
+BOX_HEIGHT: 0 # 150.0
 
 # =============================================================================
 # Optional: Solvation and Bulk Ions Specifications

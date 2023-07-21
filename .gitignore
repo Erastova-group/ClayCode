@@ -156,4 +156,4 @@ site/
 Tutorial/.DS_Store
 *.numbers
 Tutorial/exp_clay.numbers
-Tutorial
+Tutorial/*/
