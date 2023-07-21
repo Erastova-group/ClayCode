@@ -139,7 +139,7 @@ def execute_shell_command(command):
     except sp.CalledProcessError:
         shell = sp.run(
             ["echo $SHELL"],
-            shell=True,
+            # shell=True,
             text=True,
             check=True,
             capture_output=True,
