@@ -4,7 +4,7 @@
 
 # ClayCode
 
-<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/ClayCode_Logo1.png"  width="200" height="200">
+<img src="https://github.com/Erastova-group/ClayCode/blob/b30acce3f0c85371355118c34c8fff92ce7226a5/Logo.png"  width="300" height="300">
 
 Hannah Pollak, Matteo Degiacomi, Valentina Erastova
 

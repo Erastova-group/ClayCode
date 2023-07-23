@@ -29,6 +29,7 @@ MANIFEST
 
 .DS_Store
 */.DS_Store
+*/*/.DS_Store
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -153,7 +154,6 @@ dask-worker-space
 
 # the website goes into the gh-pages branch 
 site/
-Tutorial/.DS_Store
 *.numbers
 Tutorial/exp_clay.numbers
-Tutorial
+Tutorial/*/
