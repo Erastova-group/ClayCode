@@ -121,15 +121,15 @@ simple wrappers that make it even easier to create fully-featured analysis
 tools if only the single-frame analysis function needs to be written.
 
 """
+import inspect
+import itertools
+import logging
 import os
+import pickle as pkl
 import re
 from collections import UserDict
 from pathlib import Path
-from typing import TypeVar, Union, Literal, Sequence, Optional
-import pickle as pkl
-import inspect
-import logging
-import itertools
+from typing import Literal, Optional, Sequence, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -187,7 +187,9 @@ class Results(UserDict):
 
     def _validate_key(self, key):
         if key in dir(self):
-            raise AttributeError(f"'{key}' is a protected dictionary " "attribute")
+            raise AttributeError(
+                f"'{key}' is a protected dictionary " "attribute"
+            )
         elif isinstance(key, str) and not key.isidentifier():
             raise ValueError(f"'{key}' is not a valid attribute")
 
@@ -282,7 +284,9 @@ class AnalysisData(UserDict):
 
     # __slots__ = ['name', 'bins', 'timeseries', 'hist', 'edges', '_n_bins', 'n_bins', 'cutoff', 'bin_step']
 
-    def __init__(self, name: str, cutoff=None, bin_step=None, n_bins=None, min=0.0):
+    def __init__(
+        self, name: str, cutoff=None, bin_step=None, n_bins=None, min=0.0
+    ):
         self.name = name
         assert (
             len([a for a in [cutoff, bin_step, n_bins] if a is not None]) > 1
@@ -362,7 +366,9 @@ class AnalysisData(UserDict):
         #     ll = np.min(data)
         # else:
         #     ll = self._min
-        hist, _ = np.histogram(data, self.edges, range=(self._min, self.cutoff))
+        hist, _ = np.histogram(
+            data, self.edges, range=(self._min, self.cutoff)
+        )
         hist = hist / len(self.timeseries)
         self.hist[:] = hist
 
@@ -632,7 +638,9 @@ class ClayAnalysisBase(object):
                 args = kwargs
             self.data[item] = AnalysisData(item, **args)
 
-    def _setup_frames(self, trajectory, start=None, stop=None, step=None, frames=None):
+    def _setup_frames(
+        self, trajectory, start=None, stop=None, step=None, frames=None
+    ):
         """Pass a Reader object and define the desired iteration pattern
         through the trajectory
 
@@ -670,10 +678,14 @@ class ClayAnalysisBase(object):
         self._trajectory = trajectory
         if frames is not None:
             if not all(opt is None for opt in [start, stop, step]):
-                raise ValueError("start/stop/step cannot be combined with frames")
+                raise ValueError(
+                    "start/stop/step cannot be combined with frames"
+                )
             slicer = frames
         else:
-            start, stop, step = trajectory.check_slice_indices(start, stop, step)
+            start, stop, step = trajectory.check_slice_indices(
+                start, stop, step
+            )
             slicer = slice(start, stop, step)
         self._sliced_trajectory = trajectory[slicer]
         self.start = start
@@ -768,15 +780,21 @@ class ClayAnalysisBase(object):
         """
         logger.info("Choosing frames to analyze")
         # if verbose unchanged, use class default
-        verbose = getattr(self, "_verbose", False) if verbose is None else verbose
+        verbose = (
+            getattr(self, "_verbose", False) if verbose is None else verbose
+        )
 
         self._setup_frames(
             self._trajectory, start=start, stop=stop, step=step, frames=frames
         )
         logger.info("Starting preparation")
         self._prepare()
-        logger.info("Starting analysis loop over %d trajectory frames", self.n_frames)
-        for i, ts in enumerate(ProgressBar(self._sliced_trajectory, verbose=verbose)):
+        logger.info(
+            "Starting analysis loop over %d trajectory frames", self.n_frames
+        )
+        for i, ts in enumerate(
+            ProgressBar(self._sliced_trajectory, verbose=verbose)
+        ):
             self._frame_index = i
             self._ts = ts
             self.frames[i] = ts.frame
@@ -878,7 +896,9 @@ class AnalysisFromFunction(ClayAnalysisBase):
         self.results.timeseries = []
 
     def _single_frame(self):
-        self.results.timeseries.append(self.function(*self.args, **self.kwargs))
+        self.results.timeseries.append(
+            self.function(*self.args, **self.kwargs)
+        )
 
     def _conclude(self):
         self.results.frames = self.frames
@@ -939,7 +959,9 @@ def analysis_class(function):
 
     class WrapperClass(AnalysisFromFunction):
         def __init__(self, trajectory=None, *args, **kwargs):
-            super(WrapperClass, self).__init__(function, trajectory, *args, **kwargs)
+            super(WrapperClass, self).__init__(
+                function, trajectory, *args, **kwargs
+            )
 
     return WrapperClass
 
