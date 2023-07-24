@@ -11,8 +11,9 @@ Hannah Pollak, Matteo Degiacomi, Valentina Erastova
 
 University of Edinburgh, 2023
 
+----
  
-### Quick start:
+## Quick start:
 
 This package requires [python version](https://docs.python.org/3/using/index.html) >=3.9 and [pipx](https://pypa.github.io/pipx/installation/), and it also uses some of the functionality of [Gromacs](https://manual.gromacs.org/current/install-guide/index.html).
 
@@ -24,14 +25,23 @@ cd ClayCode
 bash install.sh
 ````
 
-### Example usage:
+## Example usage:
 
 ```shell
 ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
 
-### Documentation and Examples:
-Please see ClayCode website [erastova-group.github.io/ClayCode](https://erastova-group.github.io/ClayCode) for the Manual and Examples.
+## Documentation and Examples:
+Please see ClayCode website [erastova-group.github.io/ClayCode](https://erastova-group.github.io/ClayCode) for the Manual, Tutorials and Examples.
 
-### Cite as:
-XXX
+
+## Future development and Contribution:
+**Found a bug?** Report through the [issues](https://github.com/Erastova-group/ClayCode/issues).
+
+**Dreaming of a new functionality?** Let us know via [issues](https://github.com/Erastova-group/ClayCode/issues).
+
+**Have you added new functionality to the code, or assigned new clay unit cells?** Please share with the wider community by [forking this project](https://github.com/Erastova-group/ClayCode/fork) and submitting a [pull request](https://github.com/Erastova-group/ClayCode/pulls). Learn more how to contribute [here](https://docs.github.com/en/get-started/quickstart/contributing-to-projects). We can only make this together! 
+
+
+## Cite as:
+XXX coming soon... XXX
