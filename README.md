@@ -5,13 +5,10 @@
 
 [//]:<img src="https://github.com/Erastova-group/ClayCode/blob/b30acce3f0c85371355118c34c8fff92ce7226a5/Logo.png"  width="300" height="300">
 
-<img src="https://github.com/Erastova-group/ClayCode/blob/ca58f5369238aa7ce668343d0af9275df20a21c1/Logo.png"  width="150" height="100">
+# <img src="https://github.com/Erastova-group/ClayCode/blob/ca58f5369238aa7ce668343d0af9275df20a21c1/Logo.png"  width="150" height="100">
 
-Hannah Pollak, Matteo Degiacomi, Valentina Erastova
+by Hannah Pollak, Matteo Degiacomi, Valentina Erastova, University of Edinburgh, 2023
 
-University of Edinburgh, 2023
-
-----
  
 ## Quick start:
 
@@ -31,14 +28,15 @@ bash install.sh
 ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
 
-## Documentation and Examples:
-Please see ClayCode website [erastova-group.github.io/ClayCode](https://erastova-group.github.io/ClayCode) for the Manual, Tutorials and Examples.
+## Docs and Examples:
+Please see ClayCode website [erastova-group.github.io/ClayCode](https://erastova-group.github.io/ClayCode) for the Manual and Tutorials.
 
 
-## Future development and Contribution:
-**Found a bug?** Report through the [issues](https://github.com/Erastova-group/ClayCode/issues).
+## Future Development and Contribution:
 
-**Dreaming of a new functionality?** Let us know via [issues](https://github.com/Erastova-group/ClayCode/issues).
+**Found a bug? or have a question?** Rise an [issue](https://github.com/Erastova-group/ClayCode/issues).
+
+**Dreaming of a new functionality?** Let us know via [issues, label:enhancement](https://github.com/Erastova-group/ClayCode/labels/enhancement).
 
 **Have you added new functionality to the code, or assigned new clay unit cells?** Please share with the wider community by [forking this project](https://github.com/Erastova-group/ClayCode/fork) and submitting a [pull request](https://github.com/Erastova-group/ClayCode/pulls). Learn more how to contribute [here](https://docs.github.com/en/get-started/quickstart/contributing-to-projects). We can only make this together! 
 
