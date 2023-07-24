@@ -5,7 +5,9 @@
 # ClayCode
 
 [//]:<img src="https://github.com/Erastova-group/ClayCode/blob/b30acce3f0c85371355118c34c8fff92ce7226a5/Logo.png"  width="300" height="300">
+
 <img src="https://github.com/Erastova-group/ClayCode/blob/ca58f5369238aa7ce668343d0af9275df20a21c1/Logo.png"  width="100" height="100">
+
 Hannah Pollak, Matteo Degiacomi, Valentina Erastova
 
 University of Edinburgh, 2023
