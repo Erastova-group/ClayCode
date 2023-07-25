@@ -1,13 +1,14 @@
-[![Project Status: Active](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 
 
 [//]:<img src="https://github.com/Erastova-group/ClayCode/blob/b30acce3f0c85371355118c34c8fff92ce7226a5/Logo.png"  width="300" height="300">
+[//]: <img src="https://github.com/Erastova-group/ClayCode/blob/ca58f5369238aa7ce668343d0af9275df20a21c1/Logo.png"  width="150" height="100">
 
-# <img src="https://github.com/Erastova-group/ClayCode/blob/ca58f5369238aa7ce668343d0af9275df20a21c1/Logo.png"  width="150" height="100">
+<img src="https://github.com/Erastova-group/ClayCode/blob/091227a2cbcf9350afb8d70d429c9a65d4cb29a1/ClayCode_logo_vertical.png" width="300" >
 
 by Hannah Pollak, Matteo Degiacomi, Valentina Erastova, University of Edinburgh, 2023
+
+[![Project Status: Active](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
  
 ## Quick start:
