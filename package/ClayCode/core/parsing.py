@@ -528,9 +528,12 @@ class BuildArgs(_Args):
                 self.data.pop(cmdline_dest)
             elif yaml_kwd in self.data.keys():
                 self.data[yaml_kwd] = yaml_csv_file
-            elif cmdline_dest == "csv_file":
+            elif (
+                cmdline_dest == "csv_file"
+                and "UC_INDEX_RATIOS" not in self.data.keys()
+            ):
                 raise ValueError(
-                    "No csv file with clay composition specified!"
+                    "No CSV file with clay composition ('CLAY_COMP') or unit cell ratios ('UC_INDEX_RATIOS') specified!"
                 )
             else:
                 logger.debug("No mdp parameters specified")
