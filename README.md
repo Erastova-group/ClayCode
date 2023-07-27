@@ -1,17 +1,19 @@
+
 [![Project Status: Active](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+</br>
 
-# ClayCode
+[//]:<img src="https://github.com/Erastova-group/ClayCode/blob/b30acce3f0c85371355118c34c8fff92ce7226a5/Logo.png"  width="300" height="300">
+[//]: <img src="https://github.com/Erastova-group/ClayCode/blob/ca58f5369238aa7ce668343d0af9275df20a21c1/Logo.png"  width="150" height="100">
 
-<img src="https://github.com/Erastova-group/ClayCode/blob/b30acce3f0c85371355118c34c8fff92ce7226a5/Logo.png"  width="300" height="300">
+<img src="https://github.com/Erastova-group/ClayCode/blob/b4849ac053ba219f893c069477691a2bf2c196ec/ClayCode_logo_vertical.png" width="250" >
 
-Hannah Pollak, Matteo Degiacomi, Valentina Erastova
+by Hannah Pollak, Matteo Degiacomi, Valentina Erastova, University of Edinburgh, 2023
 
-University of Edinburgh, 2023
+</br>
 
- 
-### Quick start:
+## Quick start:
 
 This package requires [python version](https://docs.python.org/3/using/index.html) >=3.9 and [pipx](https://pypa.github.io/pipx/installation/), and it also uses some of the functionality of [Gromacs](https://manual.gromacs.org/current/install-guide/index.html).
 
@@ -23,14 +25,24 @@ cd ClayCode
 bash install.sh
 ````
 
-### Example usage:
+## Example usage:
 
 ```shell
 ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
 
-### Documentation and Examples:
-Please see ClayCode website [erastova-group.github.io/ClayCode](https://erastova-group.github.io/ClayCode) for manual and examples.
+## Docs and Examples:
+Please see ClayCode website [erastova-group.github.io/ClayCode](https://erastova-group.github.io/ClayCode) for the Manual and Tutorials.
 
-### Cite as:
-XXX
+
+## Future Development and Contribution:
+
+**Found a bug? or have a question?** Rise an [issue](https://github.com/Erastova-group/ClayCode/issues).
+
+**Dreaming of a new functionality?** Let us know via [issues, label:enhancement](https://github.com/Erastova-group/ClayCode/labels/enhancement).
+
+**Have you added new functionality to the code, or assigned new clay unit cells?** Please share with the wider community by [forking this project](https://github.com/Erastova-group/ClayCode/fork) and submitting a [pull request](https://github.com/Erastova-group/ClayCode/pulls). Learn more how to contribute [here](https://docs.github.com/en/get-started/quickstart/contributing-to-projects). We can only make this together! 
+
+
+## Cite as:
+XXX coming soon... XXX
