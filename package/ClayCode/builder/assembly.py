@@ -498,6 +498,8 @@ class Builder:
             sheet_u.dimensions[2] = sheet_u.dimensions[2] + extra
             if il_solv is not False:
                 il_u_copy = il_u.copy()
+                il_ions = il_u_copy.select_atoms("not resname SOL iSL")
+                il_ions.positions = np.roll(il_ions.positions, 3, axis=0)
                 if sheet_id == self.args.n_sheets - 1:
                     il_u_copy.residues.resnames = list(
                         map(
