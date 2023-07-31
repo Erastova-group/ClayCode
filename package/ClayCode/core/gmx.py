@@ -236,22 +236,9 @@ class GMXCommands:
                 )
                 if command == "grompp":
                     mdp_prms = MDPFile(gmx_args["f"]).to_yaml()
-                    cutoffs = []
-                    for cutoff in ["rlist", "rvdw", "rcoulomb"]:
-                        try:
-                            cutoffs.append(float(mdp_prms[cutoff]))
-                        except KeyError:
-                            pass
-                    max_cutoff = np.max(cutoffs) * 10  # in A
                     crd_file = GROFile(gmx_args["c"])
-                    min_box_length = np.min(crd_file.universe.dimensions[:3])
-                    if max_cutoff >= (0.5 * min_box_length):
-                        logger.finfo(
-                            f"Shortest box vector ({min_box_length:.1f} \u212B) needs to be at least twice as long as "
-                            f"the selected GROMACS cutoff ({max_cutoff:.1f} \u212B).\n\n"
-                            f"Aborting model construction."
-                        )
-                        sys.exit(2)
+                    box_dims = crd_file.universe.dimensions[:3]
+                    check_box_lengths(mdp_prms, box_dims)
                 with tempfile.TemporaryDirectory() as odir:
                     try:
                         output = execute_shell_command(
@@ -734,3 +721,21 @@ class GMXCommands:
                 )
             else:
                 raise RuntimeError(f"{out}\nGROMACS raised an error!")
+
+
+def check_box_lengths(mdp_prms, box_dims):
+    cutoffs = []
+    for cutoff in ["rlist", "rvdw", "rcoulomb"]:
+        try:
+            cutoffs.append(float(mdp_prms[cutoff]))
+        except KeyError:
+            pass
+    max_cutoff = np.max(cutoffs) * 10  # in A
+    min_box_length = np.min(box_dims)
+    if max_cutoff >= (0.5 * min_box_length):
+        logger.finfo(
+            f"Shortest box vector ({min_box_length:.1f} \u212B) needs to be at least twice as long as "
+            f"the selected GROMACS cutoff ({max_cutoff:.1f} \u212B).\n\n"
+            f"Aborting model construction."
+        )
+        sys.exit(2)

@@ -35,7 +35,10 @@ def run():
         clay_builder.stack_sheets(
             extra=extra_il_space[args.il_solv], backup=clay_builder.args.backup
         )
-        clay_builder.center_clay_in_box(make_solvent_whole=True)
+        if clay_builder.args.bulk_solv:
+            clay_builder.center_clay_in_box(
+                make_solvent_whole=not clay_builder.args.bulk_solv
+            )
         clay_builder.extend_box(backup=clay_builder.args.backup)
         completed = False
         while completed is False:

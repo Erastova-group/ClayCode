@@ -445,6 +445,7 @@ class UCData(Dir):
                 .groupby("sheet")
                 .sum()
             )
+        occ = occ[occ != 0].dropna()
         idx = (
             df.sort_index(level="sheet", sort_remaining=True)
             .index.get_level_values("sheet")
@@ -487,7 +488,11 @@ class UCData(Dir):
         except ValueError:
             ox_df = ox_df.loc[~(ox_df == 0)]
         if tot_charge is not None:
-            ox_df = ox_df.loc[:, tot_charge == 0]
+            _ox_df = ox_df.loc[:, tot_charge == 0]
+            if _ox_df.empty:
+                _ox_df = ox_df[ox_df == ox_df.max()].dropna()
+                _ox_df[:] = ox_df.groupby("sheet", group_keys=True).sum()
+            ox_df = _ox_df
         at_types: pd.DataFrame = ox_df.index.get_level_values(
             "at-type"
         ).to_frame()
@@ -2223,6 +2228,11 @@ class InterlayerIons:
                     if np.sign(ion_charges[ion]) != np.sign(self.clay_charge)
                 ]
             )
+        ion_ratios = ion_ratios[
+            np.sign(ion_ratios["charges"]) != tot_charge
+        ].dropna(how="all")
+        if ion_ratios["probs"].dropna().empty:
+            ion_ratios["probs"].fillna(1.0, inplace=True)
         self.__df = ion_ratios.copy()
         if monovalent not in self.__df.index:
             mono_df = pd.DataFrame(

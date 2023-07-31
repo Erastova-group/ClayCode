@@ -15,7 +15,12 @@ from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.topology import TopologyConstructor
 from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
 from ClayCode.core.consts import FF, GRO_FMT, LINE_LENGTH, MDP, MDP_DEFAULTS
-from ClayCode.core.gmx import GMXCommands, add_gmx_args, gmx_command_wrapper
+from ClayCode.core.gmx import (
+    GMXCommands,
+    add_gmx_args,
+    check_box_lengths,
+    gmx_command_wrapper,
+)
 from ClayCode.core.lib import (
     add_ions_n_mols,
     add_ions_neutral,
@@ -62,18 +67,26 @@ class Builder:
             fstem=self.args.filestem,
             outpath=self.args.outpath,
         )
+        check_box_lengths(
+            self.args.mdp_parameters["EM"],
+            [self.sheet.dimensions[0], self.sheet.dimensions[1]],
+        )
         self.top = TopologyConstructor(self.args._uc_data, self.args.ff)
         self.__il_solv = None
         self.__stack = None
         self.__box_ext = False
         logger.info(get_header(f"Building {self.args.name} model"))
         logger.finfo(f"{self.args.n_sheets} sheets")
+        x_dim, y_dim = (
+            self.sheet.x_cells * self.sheet.uc_dimensions[0],
+            self.sheet.y_cells * self.sheet.uc_dimensions[1],
+        )
         logger.finfo(
             kwd_str="Sheet dimensions: ",
-            message=f"{self.sheet.x_cells * self.sheet.uc_dimensions[0]:.2f} \u212B X {self.sheet.y_cells * self.sheet.uc_dimensions[1]:.2f} \u212B "
+            message=f"{x_dim:.2f} \u212B X {y_dim:.2f} \u212B "
             f"({self.sheet.x_cells} unit cells X {self.sheet.y_cells} unit cells)",
         )
-        if self.args.box_height > 3 * self.sheet.uc_dimensions[2]:
+        if self.args.box_height > self.sheet.uc_dimensions[2]:
             logger.finfo(
                 kwd_str="Box height: ",
                 message=f"{self.args.box_height:.1f} \u212B",
@@ -273,6 +286,9 @@ class Builder:
                 logger.finfo(f"Saving extended box as {self.stack.stem!r}\n")
             else:
                 self.__box_ext: bool = False
+        check_box_lengths(
+            self.args.mdp_parameters["EM"], self.stack.universe.dimensions[:3]
+        )
 
     def remove_SOL(self) -> None:
         self.stack.reset_universe()
@@ -725,11 +741,13 @@ class Builder:
                 "SOL" in stack_u.residues.resnames
                 or "iSL" in stack_u.residues.resnames
             ):
-                for residue in stack_u.residues:
+                ext_sol = stack_u.select_atoms("resname SOl iSL")
+                ext_sol = select_outside_clay_stack(ext_sol, self.clay)
+                for residue in ext_sol.residues:
                     if residue.resname in ["SOL", "iSL"]:
                         residue.atoms.guess_bonds()
                         assert len(residue.atoms.bonds) == 2
-                sol = stack_u.select_atoms("resname iSL SOL")
+                sol = ext_sol.select_atoms("resname iSL SOL")
                 sol.positions = sol.unwrap(compound="residues")
 
 
