@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import re
@@ -49,7 +50,7 @@ from ClayCode.core.types import (
     StrListOrStrDict,
     StrOrListOfStr,
 )
-from ClayCode.core.utils import file_or_str, mdp_to_yaml, select_named_file
+from ClayCode.core.utils import get_file_or_str, mdp_to_yaml, select_named_file
 from MDAnalysis import AtomGroup, ResidueGroup, Universe
 from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
@@ -134,11 +135,16 @@ def match_str(searchstr: str, pattern: str) -> Union[None, str]:
 @singledispatch
 def get_match_pattern(pattern: StrOrListOfStr):
     """Generate search pattern from list, str, dict, int or float"""
-    raise TypeError(f"Unexpected type {type(pattern)!r}!")
+    if hasattr(pattern, "parent"):
+        return str(pattern.resolve())
+    else:
+        raise TypeError(f"Unexpected type {type(pattern)!r}!")
 
 
-@get_match_pattern.register
-def _(pattern: list) -> str:
+@get_match_pattern.register(list)
+@get_match_pattern.register(set)
+@get_match_pattern.register(tuple)
+def _(pattern) -> str:
     """Get match pattern from list items.
     ['a', 'b'] -> 'a|b'
     """
@@ -262,6 +268,7 @@ class KwdList(UserList):
         keep_dims: bool = False,
     ) -> List[Union[Kwd, None]]:
         """Match keywords against a search pattern and return matching items"""
+        pattern = get_match_pattern(pattern)
         match_list = [obj.match(pattern, mode) for obj in self.data]
         if not keep_dims:
             match_list = [obj for obj in match_list if obj is not None]
@@ -331,6 +338,7 @@ class BasicPath(_Path):
             pattern: Union[str, List[str], int, float, Dict[str, Any]],
             mode: FileNameMatchSelector = "full",
         ) -> Union[BasicPath, None]:
+            pattern = get_match_pattern(pattern)
             if mode == "full":
                 check = match_str(self.name, pattern)
             else:
@@ -588,12 +596,12 @@ class ParameterBase:
         return wrapper
 
     def __init__(self, kwd, data, path=None):
-        self.__string: str = data
-        self.__kwd: Kwd = Kwd(kwd)
+        self._string: str = data
+        self._kwd: Kwd = Kwd(kwd)
         self._df: pd.DataFrame = pd.DataFrame()
         self.init_df()
         self.update_df()
-        self.__path: ITPFile = path
+        self._path: ITPFile = path
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.kwd!r})\n\n{self._df}\n"
@@ -611,8 +619,8 @@ class ParameterBase:
         if other.__class__ == self.collection:
             new = other + self
         elif other.kwd == self.kwd:
-            new_str = self.__string + f"\n{other.__string}"
-            new = self.__class__(self.kwd, new_str, self.__path)
+            new_str = self._string + f"\n{other._string}"
+            new = self.__class__(self.kwd, new_str, self._path)
         else:
             new = self.collection(self, other)
         return new
@@ -624,13 +632,13 @@ class ParameterBase:
         elif other.kwd == self.kwd:
             new_str = re.search(
                 f"(.*){other.string}(.*)",
-                self.__string,
+                self._string,
                 flags=re.MULTILINE | re.DOTALL,
             )
             new_str = "".join([new_str.group(1), new_str.group(2)])
-            new = self.__class__(self.kwd, new_str, self.__path)
+            new = self.__class__(self.kwd, new_str, self._path)
         else:
-            new = self.__string
+            new = self._string
         return new
 
     def __mul__(self, other: int):
@@ -643,7 +651,7 @@ class ParameterBase:
     def update_df(self) -> None:
         try:
             df = pd.read_csv(
-                StringIO(self.__string), sep="\s+", comment=";", header=None
+                StringIO(self._string), sep="\s+", comment=";", header=None
             )
             column_names = list(_KWD_DICT[self.suffix][self.kwd].keys())
             if len(column_names) > len(df.columns):
@@ -664,7 +672,7 @@ class ParameterBase:
     def init_df(self) -> None:
         try:
             df = pd.DataFrame(
-                columns=list(_KWD_DICT[self.suffix][self.__kwd].keys())
+                columns=list(_KWD_DICT[self.suffix][self._kwd].keys())
             )
             df = df.astype(dtype=_KWD_DICT[self.suffix][self.kwd])
             self._df = df
@@ -673,24 +681,24 @@ class ParameterBase:
 
     @property
     def ff(self):
-        if self.__path is not None and self.__path.parent.suffix == ".ff":
-            return self.__path.parent
+        if self._path is not None and self._path.parent.suffix == ".ff":
+            return self._path.parent
         else:
             return None
 
     def itp(self):
-        if self.__path is not None and self.suffix == ".itp":
-            return self.__path.name
+        if self._path is not None and self.suffix == ".itp":
+            return self._path.name
         else:
             return None
 
     @property
     def kwd(self):
-        return self.__kwd
+        return self._kwd
 
     @property
     def string(self):
-        return self.__string
+        return self._string
 
     @cached_property
     def ptype(self):
@@ -710,6 +718,21 @@ class Parameter(ParameterBase):
         "constrainttypes",
     ]
     collection = Parameters
+
+    def __init__(self, kwd, data, path=None):
+        if data is not None:
+            data = re.sub(
+                r"^\s*?#\s*?[a-zA-Z0-9_\-().,\s]+?\n",
+                "",
+                data,
+                flags=re.MULTILINE,
+            )
+        self._string: str = data
+        self._kwd: Kwd = Kwd(kwd)
+        self._df: pd.DataFrame = pd.DataFrame()
+        self.init_df()
+        self.update_df()
+        self._path: ITPFile = path
 
 
 class MoleculeParameter(ParameterBase):
@@ -1002,15 +1025,10 @@ class ITPFile(File):
     def __init__(self, *args, **kwargs):
         # check if file exists
         super(ITPFile, self).__init__(*args, **kwargs)
-        self.string = self.process_string(self.read_text())
-        self._prm_str_dict = {}
+        self._string = self.process_string(self.read_text())
         if self.parent.suffix == ".ff":
             self.ff = self.parent.name
-        self.__kwds = []
-        self._definitions = {}
-        self._prms = [Parameter(None, None), []]
-        self._mols = [MoleculeParameter(None, None), []]
-        self._sys = SystemParameter(None, None)
+        self.__reset()
 
     @staticmethod
     def process_string(string):
@@ -1023,6 +1041,23 @@ class ITPFile(File):
         )
         new_str = re.sub(r"\n+", "\n", new_str, flags=re.MULTILINE)
         return new_str
+
+    @property
+    def string(self):
+        return self._string
+
+    @string.setter
+    def string(self, string):
+        self._string = self.process_string(string)
+        self.__reset()
+
+    def __reset(self):
+        self._prm_str_dict = {}
+        self.__kwds = []
+        self._definitions = {}
+        self._prms = [Parameter(None, None), []]
+        self._mols = [MoleculeParameter(None, None), []]
+        self._sys = SystemParameter(None, None)
 
     def _split_str(
         self, section: Literal["system", "molecules", "parameters"]
@@ -1157,6 +1192,25 @@ class ITPFile(File):
     def __getitem__(self, item: str):
         if item in self.kwds:
             return self.__parse_str(self.string, item)
+
+    def __setitem__(self, key: str, value: Union[pd.DataFrame, str]):
+        header = "\t".join(list(_KWD_DICT[".itp"][key].keys()))
+        assert type(value) in [
+            str,
+            pd.DataFrame,
+        ], f"Unexpected datatype ({type(value)}) for {key} value"
+        if not isinstance(value, str):
+            new_str = value.reset_index().to_string(index=False)
+            new_str = f"{key} ]\n; {header}\n{new_str}\n\n"
+        else:
+            new_str = f"{key} ]\n; {header}\n{value}\n\n"
+        new_str = re.sub(
+            rf"({key} ]\s*\n)[\sa-zA-Z\d#_.-]*",
+            f"\1{new_str}",
+            self.string,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        self.string = new_str
 
     def __contains__(self, item: str):
         return item in self.kwds
@@ -1334,7 +1388,7 @@ class GROFile(File):
     @property
     def n_atoms(self):
         return int(
-            self.string.splitlines[1]
+            self.string.splitlines()[1]
         )  # get_system_n_atoms(crds=self.universe, write=False)
 
     @property
@@ -1390,9 +1444,10 @@ class YAMLFile(File):
     def _write_data(self):
         with open(self, "w") as file:
             yaml.dump(self._data, file)
+        self._data = None
 
     @data.setter
-    @file_or_str
+    @get_file_or_str
     def data(self, input_string: FileOrStr):
         self._data = input_string
 
@@ -1473,9 +1528,9 @@ class FFDir(Dir):
         ), f"{prm_name!r} is not a recognised parameter."
         # full_df = pd.DataFrame(columns=  )
         for itp in self.itp_filelist:
-            if "atomtypes" in itp.kwds:
+            if prm_name in itp.kwds:
                 # split_str = itp.get_parameter("atomtypes")
-                split_str = itp["atomtypes"]
+                split_str = itp[prm_name]
         return split_str
 
     # def atomtypes(self):
@@ -1536,7 +1591,7 @@ class BasicPathList(UserList):
     def _extract_parts(
         self, part="name", pre_reset=True, post_reset=True
     ) -> List[Tuple[str, str]]:
-        data_list = self._data
+        data_list = self.data
         data_list = [getattr(obj, part) for obj in data_list]
         self.data = data_list
         return self
@@ -1559,6 +1614,17 @@ class BasicPathList(UserList):
     extract_fstems = partialmethod(_extract_parts, part="stem")
     extract_fnames = partialmethod(_extract_parts, part="name")
     extract_fsuffices = partialmethod(_extract_parts, part="suffix")
+
+    def __sub__(self, other):
+        remove_list = deepcopy(self)
+        remove_list.filter(other, pre_reset=False, post_reset=False)
+        subtracted_data = [
+            item for item in self.data if item not in remove_list
+        ]
+        return remove_list.filter(subtracted_data)
+
+    def __copy__(self: Self) -> Self:
+        return _copy(self)
 
 
 class FileList(BasicPathList):

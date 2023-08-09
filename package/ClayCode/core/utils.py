@@ -10,7 +10,7 @@ import warnings
 from functools import partial, singledispatch, wraps
 from itertools import chain
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import MDAnalysis as mda
 import numpy as np
@@ -77,7 +77,7 @@ def convert_num_to_int(f):
 
 
 def get_sequence_element(f):
-    def wrapper(seq, id=0):
+    def wrapper(seq, element_id=0):
         try:
             if len(list(seq)) < 2:
                 pass
@@ -94,10 +94,10 @@ def get_sequence_element(f):
         #         raise TypeError(f"Expected numeric values, found {seq}")
         if type(seq) not in [list, tuple, np.array]:
             raise TypeError(f"Expected sequence, found {type(seq)}")
-        if not isinstance(id, int):
-            raise TypeError(f"Expected int index, found {type(id)}")
+        if not isinstance(element_id, int):
+            raise TypeError(f"Expected int index, found {type(element_id)}")
         else:
-            result = f(seq[id])
+            result = f(seq[element_id])
             logger.debug(4, result)
             return result
 
@@ -158,7 +158,7 @@ def get_file_diff(file_1, file_2):
     return diff.stdout
 
 
-def grep_file(file, regex: str):
+def grep_file(file, regex: str) -> str:
     diff = execute_shell_command(f'grep -E "{regex}" {file}')
     return diff.stdout
 
@@ -168,7 +168,7 @@ def get_logfname(
     run_name=None,
     time: Union[Literal[exec_time], Literal[exec_date]] = exec_date,
     logpath=None,
-):
+) -> str:
     if logpath is None:
         logpath = Path().cwd() / "logs"
         if not logpath.is_dir():
@@ -180,7 +180,7 @@ def get_logfname(
     return f"{logpath}/{logname}-{run_name}{time}.log"
 
 
-def get_search_str(match_dict: dict):
+def get_search_str(match_dict: dict[str, Any]) -> str:
     return "|".join(match_dict.keys())
 
 
@@ -224,7 +224,7 @@ def select_named_file(
     suffix=None,
     searchlist: List[str] = ["*"],
     how: Literal["latest", "largest"] = "latest",
-):
+) -> Union[None, Path]:
     path = Path(path)
     if suffix is None:
         suffix = ""
@@ -283,7 +283,7 @@ def select_file(
     searchstr: Optional[str] = None,
     suffix=None,
     how: Literal["latest", "largest"] = "latest",
-):
+) -> Union[None, Path]:
     check_func_dict = {
         "latest": lambda x: x.st_mtime,
         "largest": lambda x: x.st_size,
@@ -322,7 +322,7 @@ def select_file(
     return last_file
 
 
-def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]):
+def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]) -> np.array:
     idx_names = idx.names
     idx_values = [
         idx.get_level_values(level=name)
@@ -336,7 +336,9 @@ def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]):
     return idx_product
 
 
-def get_u_files(path: Union[str, Path], suffices=["gro", "top"]):
+def get_u_files(
+    path: Union[str, Path], suffices=["gro", "top"]
+) -> Tuple[Path, Path]:
     files = {}
     path = Path(path)
     largest_files = ["trr"]
@@ -349,7 +351,9 @@ def get_u_files(path: Union[str, Path], suffices=["gro", "top"]):
     return files["gro"], files["trr"]
 
 
-def _get_header(header_str, fill, n_linechars=LINE_LENGTH):
+def _get_header(
+    header_str: str, fill: str, n_linechars: int = LINE_LENGTH
+) -> str:
     return (
         f"\n{fill:{fill}>{n_linechars}}\n"
         f"{header_str:^{n_linechars}}\n"
@@ -357,7 +361,10 @@ def _get_header(header_str, fill, n_linechars=LINE_LENGTH):
     )
 
 
-def backup_files(new_filename, old_filename=None):
+def backup_files(
+    new_filename: Union[str, Path],
+    old_filename: Optional[Union[str, Path]] = None,
+) -> str:
     already_exists = list(new_filename.parent.glob(f"{new_filename.name}"))
     already_exists.extend(
         list(new_filename.parent.glob(f"{new_filename.name}.*"))
@@ -428,7 +435,9 @@ def set_mdp_parameter(
     return new_str
 
 
-def add_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"):
+def add_mdp_parameter(
+    parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"
+) -> str:
     new_str = re.sub(
         rf"(?<={parameter})(\s*)(=\s*)\s?({searchex})\s*?((\s?;[a-z0-9 ._,\-])?)(\n)",
         r"\1= \3" + f" {value} " + r"\4\n",
@@ -438,7 +447,7 @@ def add_mdp_parameter(parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"):
     return new_str
 
 
-def file_or_str(f):
+def get_file_or_str(f):
     @wraps(f)
     def wrapper(file_or_str, *args, **kwargs):
         import json
@@ -457,24 +466,24 @@ def file_or_str(f):
                 with open(file_or_str, "r") as file:
                     file_str = read_func(file)
         # except FileNotFoundError:
-        #     file_str = file_or_str
+        #     file_str = get_file_or_str
         # except OSError:
-        #     file_str = file_or_str
+        #     file_str = get_file_or_str
         # except TypeError:
-        #     file_str = file_or_str
+        #     file_str = get_file_or_str
         # else:
-        #     file_str = file_or_str
+        #     file_str = get_file_or_str
         return f(*args, input_string=file_str, **kwargs)
 
     return wrapper
 
 
-@file_or_str
+@get_file_or_str
 def set_mdp_freeze_clay(
     uc_names: List[str],
     input_string,
     freeze_dims: List[Union[Literal["Y"], Literal["N"]]] = ["Y", "Y", "Y"],
-):
+) -> str:
     freezegrpstr = " ".join(uc_names)
     if len(freeze_dims) != 3:
         raise ValueError("Freeze dimensions must have 3 elements")
@@ -490,7 +499,7 @@ def set_mdp_freeze_clay(
     return input_string
 
 
-@file_or_str
+@get_file_or_str
 def mdp_to_yaml(input_string: str) -> Dict[str, str]:
     mdp_options: list = re.findall(
         r"^[a-z0-9\-_]+\s*=.*?(?=[\n;^])",

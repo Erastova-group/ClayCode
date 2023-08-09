@@ -67,7 +67,7 @@ ITP_KWDS = TOP_KWDS = {
         "sigma",
         "epsilon",
     ],
-    "bondtypes": ["ai", "aj", "b0", "kb"],
+    "bondtypes": ["ai", "aj", "func", "b0", "kb"],
     "pairtypes": ["ai", "aj", "V", "W"],
     "angletypes": ["ai", "aj", "ak", "theta0", "ktheta"],
     "dihedraltypes": ["ai", "aj", "ak", "al", "phi0", "phitheta"],

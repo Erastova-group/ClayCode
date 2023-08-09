@@ -1,0 +1,15 @@
+;
+;
+[ moleculetype ]
+; name		nrexcl
+  NAME		1
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   1 NAMErtp NAMEq  0.0
+    NR      TYPE    RESNR   RESIDUE ATOM    CGNR    CHARGE  MASS    TYPEB   CHARGEB MASSB
+
+
+[ bonds ]
+; i	j	funct	length	force.c.
+  I  J  FUNCT   LENGTH  FORCEC

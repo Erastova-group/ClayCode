@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def add_gmx_args(f):
+    @wraps(f)
     def wrapper(
         instance, *args, gmx_commands=None, gmx_alias=DEFAULT_GMX, **kwargs
     ):

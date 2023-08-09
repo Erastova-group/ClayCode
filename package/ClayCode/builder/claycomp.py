@@ -1461,15 +1461,23 @@ class ClayComposition(ABC):
         return match_charge
 
     def get_atype_weights(self, uc_df, uc_ids, uc_weights):
-        atype_combinations = uc_df[[*list(uc_ids)]].astype(float).T.values
+        atype_combinations = (
+            uc_df[[*list(uc_ids)]].astype(np.float128).T.values
+        )
         combinations_iter = np.nditer(
-            [np.atleast_2d(uc_weights), atype_combinations, None],
+            [
+                np.atleast_2d(uc_weights.astype(int)),
+                atype_combinations.astype(int),
+                None,
+            ],
             flags=["external_loop"],
             op_axes=[[1, -1, 0], [0, 1, -1], None],
         )
         for cell, element, weight in combinations_iter:
             weight[...] = cell * element
-        atype_weights = combinations_iter.operands[2] / self.sheet_n_ucs
+        atype_weights = np.divide(
+            combinations_iter.operands[2], self.sheet_n_ucs
+        )
         atype_weights = np.add.reduce(atype_weights, axis=0)
         return atype_weights
 
@@ -1703,6 +1711,7 @@ class MatchClayComposition(ClayComposition):
         ignore_threshold: float = 0.0,
         manual_setup: bool = True,
         debug_run: bool = False,
+        max_ucs: Optional[int] = None,
     ):
         super().__init__(
             sheet_n_ucs=sheet_n_ucs,
@@ -1715,6 +1724,7 @@ class MatchClayComposition(ClayComposition):
         self.ignore_threshold = ignore_threshold
         self.target_comp: TargetClayComposition = target_composition
         self.__target_df: pd.DataFrame = target_composition.clay_df
+        self.max_ucs = max_ucs
         self.drop_unused_ucs()
         accept = None
         self.match_composition, self.target_df
@@ -1755,7 +1765,8 @@ class MatchClayComposition(ClayComposition):
                 uc_group_df = all_ucs_df[group_uc_ids]
                 # discard all unit cells with non-zero values where target composition has zeros
                 uc_group_df = uc_group_df.loc[
-                    :, (uc_group_df[unused_target_atype_mask] == 0).any(axis=0)
+                    :,
+                    (uc_group_df[unused_target_atype_mask] == 0).all(),
                 ]
                 # check that the group has non-zero values for all atom types in the target composition
                 unused_uc_atype_mask = (
@@ -1781,7 +1792,11 @@ class MatchClayComposition(ClayComposition):
                     )
                 )
                 base_df = pd.DataFrame({"target": target_df, **base_dict})
-                base_df = base_df.where(base_df != 0, np.NaN).dropna(how="all")
+                base_df = (
+                    base_df.where(base_df != 0, np.NaN)
+                    .dropna(how="all")
+                    .fillna(0)
+                )
                 # base_df.append(base_df[[1,2]].apply()
                 diff_df = (
                     base_df[[0, 1]]
@@ -1988,11 +2003,17 @@ class MatchClayComposition(ClayComposition):
 
     @property
     def max_n_uc(self) -> int:
-        if not self.debug_run:
-            n_uc_max = len(self.unique_uc_array) + 1
+        n_all_ucs = len(self.unique_uc_array) + 1
+        if not self.debug_run and not self.max_ucs:
+            n_uc_max = n_all_ucs
+        elif self.max_ucs:
+            n_uc_max = min(int(self.max_ucs) + 1, n_all_ucs)
+            logger.finfo(
+                f"Maximum number of unique unit cells in sheet set to {n_uc_max - 1}"
+            )
         else:
-            n_uc_max = 3
-            logger.info(get_debugheader(f"max n_ucs = {n_uc_max - 1}"))
+            n_uc_max = min(3, n_all_ucs)
+            logger.finfo(get_debugheader(f"max n_ucs = {n_uc_max - 1}"))
         return n_uc_max
 
     @cached_property
@@ -2048,7 +2069,15 @@ class MatchClayComposition(ClayComposition):
                     min_dist = dist
         logger.finfo(
             f"Best match found with {match_dict['n_ucs']} unique unit cells "
-            f'(total occupancy deviation {match_dict["dist"]:+.4f})\n',
+            # + ", ".join(
+            #     list(
+            #         map(
+            #             lambda uc_id: f"'{uc_id:02d}'",
+            #             sorted(match_dict["uc_ids"]),
+            #         )
+            #     )
+            # )
+            + f"(total occupancy deviation {match_dict['dist']:+.4f})\n",
             initial_linebreak=True,
         )
         return match_dict
@@ -2157,7 +2186,10 @@ class MatchClayComposition(ClayComposition):
             / (math.factorial(k - 1) * math.factorial(N - k))
         )
         for q in tqdm(
-            itertools.combinations(range(N - 1), k - 1), total=n_combs
+            itertools.combinations(range(N - 1), k - 1),
+            total=n_combs,
+            dynamic_ncols=True,
+            bar_format="\t{l_bar}{bar}| {n_fmt}/{total_fmt} combinations",
         ):
             yield [j - i for i, j in zip((-1,) + q, q + (N - 1,))]
 

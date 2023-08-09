@@ -177,7 +177,7 @@ class Builder:
             freeze_grps = None
             freeze_dims = None
         # em_filestr = set_mdp_freeze_clay(
-        #     uc_names=uc_names, file_or_str=em_inp, freeze_dims=["Y", "Y", "Y"]
+        #     uc_names=uc_names, get_file_or_str=em_inp, freeze_dims=["Y", "Y", "Y"]
         # )
         # for em_prm, prm_value in self.args.mdp_parameters["EM"].items():
         #     em_filestr = set_mdp_parameter(em_prm, prm_value, em_filestr)
@@ -273,16 +273,20 @@ class Builder:
                 logger.finfo(
                     f"Extending simulation box to {self.args.box_height:.1f} \u212B"
                 )
+                self.remove_SOL()
+                self.center_clay_in_box()
                 self.__box_ext: bool = True
                 ext_boxname: GROFile = self.get_filename("ext", suffix=".gro")
                 if backup:
                     backup_files(self.args.outpath / ext_boxname.name)
                     backup_files(self.args.outpath / ext_boxname.top.name)
+                self.stack.reset_universe()
                 box_u: Universe = self.stack.universe
                 box_u.universe.dimensions[2] = self.args.box_height
                 self.stack: GROFile = ext_boxname
                 self.stack.universe = box_u
                 self.stack.write(topology=self.top)
+                self.center_clay_in_box()
                 logger.finfo(f"Saving extended box as {self.stack.stem!r}\n")
             else:
                 self.__box_ext: bool = False
@@ -291,12 +295,11 @@ class Builder:
         )
 
     def remove_SOL(self) -> None:
-        self.stack.reset_universe()
         box_u: Universe = self.stack.universe
         box_u: AtomGroup = box_u.select_atoms("not resname SOL")
         self.stack.universe = box_u
+        self.stack.write(topology=self.top)
         add_resnum(crdin=self.stack, crdout=self.stack)
-        self.stack.reset_universe()
         self.stack.write(topology=self.top)
 
     def solvate_box(self, extra=1.5, backup=False) -> None:
@@ -443,6 +446,7 @@ class Builder:
                 )
                 self.stack.reset_universe()
                 self.stack.write(self.top)
+
             logger.finfo(f"\tNeutralising with {pion} and {nion}")
             replaced: int = add_ions_neutral(
                 odir=self.__tmp_outpath.name,
@@ -733,24 +737,24 @@ class Builder:
             infile.write(topology=self.top)
             self.il_solv: GROFile = infile
 
-    def center_clay_in_box(self, make_solvent_whole=False) -> None:
+    def center_clay_in_box(self) -> None:
         # if self.__box_ext is True:
         logger.finfo("Centering clay in box", initial_linebreak=True)
         center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
-        if make_solvent_whole:
-            stack_u = self.stack.universe
-            if (
-                "SOL" in stack_u.residues.resnames
-                or "iSL" in stack_u.residues.resnames
-            ):
-                ext_sol = stack_u.select_atoms("resname SOl iSL")
-                ext_sol = select_outside_clay_stack(ext_sol, self.clay)
-                for residue in ext_sol.residues:
-                    if residue.resname in ["SOL", "iSL"]:
-                        residue.atoms.guess_bonds()
-                        assert len(residue.atoms.bonds) == 2
-                sol = ext_sol.select_atoms("resname iSL SOL")
-                sol.positions = sol.unwrap(compound="residues")
+        self.stack.reset_universe()
+        # if make_solvent_whole:
+        #     stack_u = self.stack.universe
+        #     if (
+        #         "SOL" in stack_u.residues.resnames
+        #         or "iSL" in stack_u.residues.resnames
+        #     ):
+        #         ext_sol = stack_u.select_atoms("resname SOL")
+        #         ext_sol = select_outside_clay_stack(ext_sol, self.clay)
+        #         for residue in ext_sol.residues:
+        #             residue.atoms.guess_bonds()
+        #             assert len(residue.atoms.bonds) == 2
+        #         sol = ext_sol
+        #         sol.positions = sol.unwrap(compound="residues")
 
 
 class Sheet:
