@@ -2,7 +2,7 @@
 ; i    j func        b0          kb
 oh   ho    1   0.1     463532.8
 ohs  ho    1   0.1     463532.8
-oht  ho    1   0.1     463532.8
+ohx  ho    1   0.1     463532.8
 
 ; Bond type code
 ;
