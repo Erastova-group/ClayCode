@@ -2188,7 +2188,6 @@ class MatchClayComposition(ClayComposition):
         for q in tqdm(
             itertools.combinations(range(N - 1), k - 1),
             total=n_combs,
-            dynamic_ncols=True,
             bar_format="\t{l_bar}{bar}| {n_fmt}/{total_fmt} combinations",
         ):
             yield [j - i for i, j in zip((-1,) + q, q + (N - 1,))]
