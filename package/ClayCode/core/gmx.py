@@ -256,7 +256,7 @@ class GMXCommands:
                             f"GROMACS raised error code {e.returncode}!\n"
                         )
                         print_error = select_input_option(
-                            query="Print error message? [y]es/[n]o (default no)\n",
+                            query="Print error message? [y]es/[n]o (default yes)\n",
                             instance_or_manual_setup=True,
                             options=["y", "n", ""],
                             result=None,
@@ -270,7 +270,7 @@ class GMXCommands:
                                         r"-o ([\w/.\-]+) ", kwd_str
                                     ).group(1)
                                     odir = pathlib.Path(odir)
-                                    shutil.copy(
+                                    shutil.copy2(
                                         temp_file, odir.parent / temp_file.name
                                     )
                                     temp_file.unlink()

@@ -208,10 +208,14 @@ def copy_final_setup(outpath: Path, tmpdir: Path, rm_tempfiles: bool = True):
     mdp = select_file(tmpdir, suffix="mdp", how="latest")
     new_files = []
     for file in [gro, top]:
-        shutil.move(file, outpath / file.name)
+        shutil.move(file, outpath / file.name, copy_function=shutil.copy2)
         new_files.append(outpath / file.name)
     for file in [tpr, log, mdp]:
-        shutil.move(file, outpath / file.with_stem(f"{file.name}_em").name)
+        shutil.move(
+            file,
+            outpath / file.with_stem(f"{file.name}_em").name,
+            copy_function=shutil.copy2,
+        )
     logger.finfo(f"Done! Copied files to {outpath.name!r}")
     if rm_tempfiles:
         shutil.rmtree(tmpdir)
@@ -379,13 +383,15 @@ def backup_files(
         backup_str = f'Backing up old {new_filename.suffix.strip(".")} files.'
         for suffix in reversed(suffices):
             shutil.move(
-                f"{new_filename}.{suffix}", f"{new_filename}.{suffix + 1}"
+                f"{new_filename}.{suffix}",
+                f"{new_filename}.{suffix + 1}",
+                copy_function=shutil.copy2,
             )
             backups.append(f"{new_filename}.{suffix + 1}")
-        shutil.copy(new_filename, f"{new_filename}.1")
+        shutil.copy2(new_filename, f"{new_filename}.1")
         backups.append(f"{new_filename}.1")
     if old_filename:
-        shutil.copy(old_filename, new_filename)
+        shutil.copy2(old_filename, new_filename)
     return backup_str
 
 
