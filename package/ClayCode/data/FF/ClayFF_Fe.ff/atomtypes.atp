@@ -2,11 +2,14 @@ hw      1.008        ; water hydrogen
 ho      1.008        ; hydroxyl hydrogen
 ow      16.00        ; water hydrogen
 oh      16.00        ; hydroxyl oxygen
-ob      16.00        ; bridging oxygen
+ob      16.00        ; dioctahedral bridging oxygen
+ox      16.00        ; trioctahedral bridging oxygen
 obos    16.00        ; bridging oxygen with octahedral substitution
+oxos    16.00        ; dioctahedral bridging oxygen with octahedral substitution
 obts    16.00        ; bridging oxygen with tetrahedral substitution
 obss    16.00        ; bridging oxygen with double substitution 
-ohs     16.00        ; hydroxyl oxygen with substitution
+ohs     16.00        ; dioctahedral hydroxyl oxygen with substitution
+oxs     16.00        ; trioctahedral hydroxyl oxygen with substitution
 st      28.09        ; tetrahedral silicon
 ao      26.98        ; octahedral aluminum
 at      26.98        ; tetrahedral aluminum

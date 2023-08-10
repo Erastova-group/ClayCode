@@ -26,6 +26,7 @@ __all__ = [
     "USER_UCS",
     "USER_CLAYS",
     "MDP_DEFAULTS",
+    "ITP_KWDS",
 ]
 
 DATA = files("ClayCode.data")
@@ -163,7 +164,7 @@ def set_globals() -> Dict[str, Dict[str, str]]:
             for val in vals:
                 new_dict[key][val] = global_dict("DTYPES")[val]
         combined_dict[f".{kwd.lower()}"] = new_dict
-        del_global(kwd_dict)
+        # del_global(kwd_dict)
     del_global("DTYPES")
     return combined_dict
 

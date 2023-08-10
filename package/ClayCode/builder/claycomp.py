@@ -69,7 +69,7 @@ class UCData(Dir):
         from ClayCode.core.classes import ForceField
 
         if uc_stem is None:
-            self.uc_stem: str = self.name[-2:]
+            self.uc_stem = self.itp_filelist[0].stem[:-2]
         else:
             self.uc_stem: str = uc_stem
         logger.info(get_subheader("Getting unit cell data"))
