@@ -16,4 +16,6 @@ AnyDirType = Union["Dir", "FFDir"]
 BasicPathType = "BasicPath"
 FileOrStr = Union[AnyFileType, BasicPathType]
 FileListType = List[AnyFileType]
-AnyPathType = Union[AnyFileType, BasicPathType, AnyDirType, "Path"]
+AnyPathType = Union[
+    AnyFileType, BasicPathType, AnyDirType, "Path", "PosixPath"
+]

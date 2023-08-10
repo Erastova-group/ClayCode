@@ -38,7 +38,7 @@ from typing import (
 import numpy as np
 import pandas as pd
 import yaml
-from ClayCode.core.consts import FF
+from ClayCode.core.consts import FF, ITP_KWDS
 from ClayCode.core.consts import KWD_DICT as _KWD_DICT
 from ClayCode.core.types import (
     AnyFileType,
@@ -1026,6 +1026,7 @@ class ITPFile(File):
         # check if file exists
         super(ITPFile, self).__init__(*args, **kwargs)
         self._string = self.process_string(self.read_text())
+        self.__string = self.read_text()
         if self.parent.suffix == ".ff":
             self.ff = self.parent.name
         self.__reset()
@@ -1048,6 +1049,7 @@ class ITPFile(File):
 
     @string.setter
     def string(self, string):
+        self.__string = string
         self._string = self.process_string(string)
         self.__reset()
 
@@ -1194,23 +1196,31 @@ class ITPFile(File):
             return self.__parse_str(self.string, item)
 
     def __setitem__(self, key: str, value: Union[pd.DataFrame, str]):
-        header = "\t".join(list(_KWD_DICT[".itp"][key].keys()))
         assert type(value) in [
             str,
             pd.DataFrame,
         ], f"Unexpected datatype ({type(value)}) for {key} value"
         if not isinstance(value, str):
             new_str = value.reset_index().to_string(index=False)
-            new_str = f"{key} ]\n; {header}\n{new_str}\n\n"
+            new_str = f"; {new_str}\n\n"
         else:
-            new_str = f"{key} ]\n; {header}\n{value}\n\n"
-        new_str = re.sub(
-            rf"({key} ]\s*\n)[\sa-zA-Z\d#_.-]*",
-            f"\1{new_str}",
-            self.string,
-            flags=re.MULTILINE | re.DOTALL,
-        )
-        self.string = new_str
+            kwd_list = ITP_KWDS[key]
+            max_kwd_len = max([len(kwd) for kwd in kwd_list])
+            header = "\t".join([f"{kwd:{max_kwd_len}}" for kwd in kwd_list])
+            new_str = f"; {header}\n{value}\n\n"
+        if self.string != "":
+            repl_str = re.sub(
+                rf"({key} ]\s*\n)[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*",
+                f"\1{new_str}",
+                self.raw_string,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            if re.search(key, repl_str, flags=re.MULTILINE) is None:
+                repl_str = f"{self.raw_string}\n[ {key} ]\n{new_str}"
+        else:
+            repl_str = f"[ {key} ]\n{new_str}"
+        repl_str = re.sub(r"\n\{2,}", "\n" * 2, repl_str, flags=re.MULTILINE)
+        self.string = repl_str
 
     def __contains__(self, item: str):
         return item in self.kwds
@@ -1279,6 +1289,14 @@ class ITPFile(File):
 
     def get_df(self, section):
         ...
+
+    def write(self):
+        with open(self, "w") as outfile:
+            outfile.write(self.__string)
+
+    @property
+    def raw_string(self):
+        return self.__string
 
 
 class GROFile(File):

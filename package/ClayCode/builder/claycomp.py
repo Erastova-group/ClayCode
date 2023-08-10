@@ -2250,6 +2250,14 @@ class InterlayerIons:
     ):
         self.clay_charge = np.rint(tot_charge * n_ucs)
         ion_charges = get_ion_charges()
+        if type(ion_ratios) == dict:
+            ion_ratios = pd.DataFrame.from_dict(
+                ion_ratios, orient="index", columns=["probs"]
+            )
+            ion_ratios["charges"] = np.NAN
+            ion_ratios["charges"] = ion_ratios.index.to_series().apply(
+                lambda x: ion_charges[x]
+            )
         if np.isclose(self.clay_charge, 0.0):
             monovalent, charge = monovalent[0], ion_charges[monovalent[0]]
         else:
