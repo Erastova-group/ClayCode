@@ -2273,14 +2273,15 @@ class InterlayerIons:
         if ion_ratios["probs"].dropna().empty:
             ion_ratios["probs"].fillna(1.0, inplace=True)
         self.__df = ion_ratios.copy()
-        if monovalent not in self.__df.index:
+        if charge not in self.__df["charges"].values:
             mono_df = pd.DataFrame(
                 [[0, charge]],
                 columns=self.__df.columns,
                 index=pd.Index([monovalent], name=self.__df.index.name),
             )
-
             self.__df = pd.concat([self.__df, mono_df])
+        elif monovalent not in self.__df.index:
+            monovalent = self.__df[self.__df["charges"] == charge].index[0]
         if not np.isclose(self.__df["probs"].sum(), 1.00):
             self.__df["probs"] = self.__df["probs"].divide(
                 np.sum(self.__df["probs"])
@@ -2295,10 +2296,17 @@ class InterlayerIons:
         df = self.__df[~np.isclose(self.__df["charges"], 0.00)]
         avg_charge = df.loc[:, ["probs", "charges"]].prod(axis=1).sum()
         multiplication_factor = np.abs(np.divide(self.clay_charge, avg_charge))
-        df["numbers"] = np.rint(
-            np.multiply(df["probs"], multiplication_factor)
+        ion_charge = -np.sign(self.clay_charge) * (
+            np.abs(self.clay_charge) + 1
         )
-        ion_charge = (df["numbers"] * df["charges"]).sum()
+        multiplication_factor_mod = 0
+        while np.abs(ion_charge) > np.abs(self.clay_charge):
+            multiplication_factor -= multiplication_factor_mod
+            df["numbers"] = np.rint(
+                np.multiply(df["probs"], multiplication_factor)
+            )
+            ion_charge = (df["numbers"] * df["charges"]).sum()
+            multiplication_factor_mod += 0.05
         if not np.isclose(-ion_charge, self.clay_charge):
             df.loc[monovalent, "numbers"] += np.abs(self.clay_charge) - np.abs(
                 ion_charge

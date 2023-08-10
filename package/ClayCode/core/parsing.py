@@ -3,6 +3,7 @@ import copy
 import logging
 import os
 import re
+import sys
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserDict
@@ -94,6 +95,14 @@ buildparser.add_argument(
     dest="backup",
     action="store_true",
     default=False,
+    required=False,
+)
+
+buildparser.add_argument(
+    "-max_ucs",
+    help="Set maximum number of unit cells used in model.",
+    dest="MAX_UCS",
+    default=None,
     required=False,
 )
 
@@ -457,6 +466,7 @@ class BuildArgs(_Args):
         "ZERO_THRESHOLD",
         "Z_PADDING",
         "MIN_IL_HEIGHT",
+        "MAX_UCS",
     ]
 
     def __init__(self, data, debug_run=False) -> None:
@@ -555,10 +565,20 @@ class BuildArgs(_Args):
                 in self._charge_occ_df.index.get_level_values("value").unique()
             ) and (UCS / uc_type).is_dir():
                 self._uc_name = uc_type
+                self._tbc = None
+                tbc_match = re.search(
+                    "[A-Z]+[0-9]+", uc_type, flags=re.IGNORECASE
+                )
+                if tbc_match:
+                    pass
                 self.uc_stem = self._uc_name[:2]
                 logger.debug(f"Setting unit cell type: {self._uc_name!r}")
+            else:
+                logger.error(f"Unknown unit cell type {uc_type!r}!")
+                sys.exit(2)
         except KeyError:
-            raise KeyError(f"Unknown unit cell type {uc_type!r}")
+            logger.error("No unit cell type specified!")
+            sys.exit(2)
         il_solv = self._charge_occ_df.loc[
             pd.IndexSlice["T", self._uc_name], ["solv"]
         ].values[0]
@@ -609,6 +629,7 @@ class BuildArgs(_Args):
         if self.z_padding <= 0:
             raise ValueError(f"Interlayer padding must be > 0 \u212B")
         setattr(self, "mdp_parameters", MDP_DEFAULTS)
+        setattr(self, "max_ucs", self.data["MAX_UCS"])
         try:
             mdp_prm_file = self.data["MDP_PRMS"]
             with open(mdp_prm_file, "r") as mdp_file:
@@ -783,6 +804,7 @@ class BuildArgs(_Args):
                 manual_setup=self.manual_setup,
                 ignore_threshold=self.zero_threshold,
                 debug_run=self.debug_run,
+                max_ucs=self.max_ucs,
             )
             self.match_comp.write_csv(self.outpath, backup=self.backup)
         else:
@@ -840,11 +862,16 @@ class BuildArgs(_Args):
             )
 
     def get_bulk_ions(self):
-        from ClayCode.builder.claycomp import BulkIons
+        from ClayCode.builder.claycomp import BulkIons, InterlayerIons
 
         self._bulk_ions = BulkIons(
             self.bulk_ions, self._build_defaults["BULK_IONS"]
         )
+        tot_charge = self.match_charge["tot"]
+        if not np.isclose(tot_charge, 0.0):
+            self._neutral_bulk_ions = InterlayerIons(
+                tot_charge, ion_ratios=self.bulk_ions, n_ucs=self.sheet_n_cells
+            )
 
     @property
     def bulk_ion_conc(self):
