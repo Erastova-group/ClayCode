@@ -11,6 +11,7 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
 from abc import ABC, abstractmethod
 from functools import (
     cache,
@@ -27,11 +28,16 @@ import pandas as pd
 import yaml
 from ClayCode.builder.utils import get_checked_input, select_input_option
 from ClayCode.core.classes import Dir, File, ITPFile, PathFactory, YAMLFile
-from ClayCode.core.consts import LINE_LENGTH, UCS
+from ClayCode.core.consts import CLAYFF_AT_TYPES, LINE_LENGTH, UCS
 from ClayCode.core.lib import get_ion_charges
-from ClayCode.core.utils import backup_files, get_debugheader, get_subheader
+from ClayCode.core.utils import (
+    SubprocessProgressBar,
+    backup_files,
+    get_debugheader,
+    get_subheader,
+)
 from numpy._typing import NDArray
-from tqdm import tqdm
+from tqdm import tqdm, trange
 
 __all__ = ["TargetClayComposition"]
 
@@ -646,7 +652,7 @@ class TargetClayComposition:
 
     @cached_property
     def clayff_at_types(self):
-        clayff_at_types = YAMLFile(UCS / "clay_at_types.yaml")
+        clayff_at_types = YAMLFile(CLAYFF_AT_TYPES)
         return clayff_at_types.data
 
     @cached_property
@@ -1460,26 +1466,43 @@ class ClayComposition(ABC):
         match_charge.name = "match_charge"
         return match_charge
 
-    def get_atype_weights(self, uc_df, uc_ids, uc_weights):
-        atype_combinations = (
-            uc_df[[*list(uc_ids)]].astype(np.float128).T.values
-        )
+    def get_atype_weights(
+        self, uc_df, uc_ids, uc_weights, out=None, iter_array=None
+    ):
+        atype_combinations = uc_df[[*list(uc_ids)]].astype(np.float32).values
+        uc_weights = np.atleast_2d(uc_weights.astype(np.float32))
         combinations_iter = np.nditer(
             [
-                np.atleast_2d(uc_weights.astype(int)),
-                atype_combinations.astype(int),
-                None,
+                uc_weights,
+                atype_combinations,
+                iter_array,
             ],
-            flags=["external_loop"],
-            op_axes=[[1, -1, 0], [0, 1, -1], None],
+            op_flags=[
+                ["readonly"],
+                ["readonly"],
+                ["writeonly", "allocate"],
+            ],
+            op_dtypes=np.float32,
+            flags=["external_loop", "common_dtype", "buffered"],
+            op_axes=[[1, -1, 0], [1, 0, -1], None],
         )
         for cell, element, weight in combinations_iter:
-            weight[...] = cell * element
-        atype_weights = np.divide(
-            combinations_iter.operands[2], self.sheet_n_ucs
+            weight[...] = np.multiply(cell, element)
+            # weight[...] = np.divide(weight, self.sheet_n_ucs)
+        np.divide(
+            combinations_iter.operands[2],
+            self.sheet_n_ucs,
+            dtype=np.float32,
+            out=combinations_iter.operands[2],
         )
-        atype_weights = np.add.reduce(atype_weights, axis=0)
-        return atype_weights
+        out = np.add.reduce(combinations_iter.operands[2], axis=0, out=out)
+        # a = uc_df[[*list(uc_ids)]].astype(np.float32).values
+        # b = np.atleast_2d(uc_weights.astype(np.float32))
+        # a, b = np.broadcast_arrays(a[np.newaxis, :], b[:, np.newaxis])
+        # c = np.multiply(a, b)
+        # atype_weights = np.divide(c, self.sheet_n_ucs, dtype=np.float32)
+        # atype_weights = np.add.reduce(atype_weights.T, axis=0, out=out)
+        return out
 
     @cached_property
     @abstractmethod
@@ -2032,54 +2055,79 @@ class MatchClayComposition(ClayComposition):
                 "Getting matching unit cell combination for target composition"
             )
         )
-
+        uc_id_sel = []
         for n_ucs in range(2, self.max_n_uc):
+            better_choice_than_prev = False
             logger.finfo(
-                f"Getting combinations for {n_ucs} unique unit cells",
+                f"Getting combinations for {n_ucs}/{self.max_n_uc} unique unit cells",
                 initial_linebreak=True,
             )
-            uc_id_combinations = self.get_uc_combinations(n_ucs)
+            uc_id_combinations = self.get_restrained_uc_combinations(
+                n_ucs, uc_id_sel
+            )
             occ_combinations = self.get_sheet_uc_weights(n_ucs)
+            atype_weights = np.empty(
+                (uc_df.shape[0], occ_combinations.shape[0]), dtype=np.float32
+            )
+            iter_array = np.empty(
+                (n_ucs, uc_df.shape[0], occ_combinations.shape[0]),
+                dtype=np.float32,
+            )
+            pbar = SubprocessProgressBar(
+                label="\tComparing compositions with target composition"
+            )
+            pbar.start()
             for uc_ids in uc_id_combinations:
-                atype_weights = self.get_atype_weights(
-                    uc_df=uc_df, uc_ids=uc_ids, uc_weights=occ_combinations
+                self.get_atype_weights(
+                    uc_df=uc_df,
+                    uc_ids=uc_ids,
+                    uc_weights=occ_combinations,
+                    out=atype_weights,
+                    iter_array=iter_array,
+                )
+                target_values = np.squeeze(
+                    self.target_df.astype(np.float32).values
                 )
                 diff_array = np.subtract(
-                    atype_weights.T, np.squeeze(self.target_df.values)
+                    atype_weights.T,
+                    target_values,
                 )
-                diff_array = np.linalg.norm(
-                    diff_array.astype(np.float128), axis=1
-                )
+                diff_array = np.linalg.norm(diff_array, axis=1)
                 dist = np.amin(diff_array)
-                match_idx = np.argwhere(np.equal(diff_array, dist))
+                match_idx = np.argwhere(np.equal(diff_array, dist))[0]
                 if min_dist > dist:
                     match_dict.update(
                         {
                             "n_ucs": n_ucs,
                             "uc_ids": uc_ids,
-                            "uc_weights": np.squeeze(
-                                occ_combinations[match_idx]
-                            ),
-                            "composition": np.squeeze(
-                                np.round(atype_weights.T[match_idx], 4)
-                            ),
-                            "dist": np.round(dist, 4),
+                            "uc_weights": occ_combinations[match_idx],
+                            "composition": atype_weights.T[match_idx],
+                            "dist": dist,
                         }
                     )
-                    min_dist = dist
+                    better_choice_than_prev = True
+            pbar.stop()
+            if better_choice_than_prev:
+                match_dict["uc_weights"] = np.squeeze(match_dict["uc_weights"])
+                uc_id_sel = np.extract(
+                    match_dict["uc_weights"] != 1, match_dict["uc_ids"]
+                )
+            else:
+                logger.finfo(
+                    f"Found better match with fewer unit cells.\nStopping here.\n"
+                )
+                break
+            print(match_dict["uc_ids"], match_dict["uc_weights"])
         logger.finfo(
             f"Best match found with {match_dict['n_ucs']} unique unit cells "
-            # + ", ".join(
-            #     list(
-            #         map(
-            #             lambda uc_id: f"'{uc_id:02d}'",
-            #             sorted(match_dict["uc_ids"]),
-            #         )
-            #     )
-            # )
             + f"(total occupancy deviation {match_dict['dist']:+.4f})\n",
             initial_linebreak=True,
         )
+        match_dict["composition"] = np.squeeze(
+            np.round(match_dict["composition"], 4)
+        )
+
+        match_dict["dist"] = np.round(match_dict["dist"], 4)
         return match_dict
 
     @property
@@ -2116,8 +2164,8 @@ class MatchClayComposition(ClayComposition):
         return duplicate_ucs
 
     @staticmethod
-    def __select_duplicate_ucs(id_sel, duplicate_ids) -> List[str]:
-        return list(id_sel[0] + i for i in range(1, len(duplicate_ids)))
+    def _select_duplicate_ucs(id_sel, duplicate_ids) -> List[str]:
+        return id_sel[0] + 1  # for i in range(1, len(duplicate_ids)))
 
     @cached_property
     def _uc_match_dict(self) -> dict:
@@ -2143,12 +2191,12 @@ class MatchClayComposition(ClayComposition):
                 else:
                     unique_uc_match_ids = np.insert(
                         unique_uc_match_ids,
-                        self.__select_duplicate_ucs(sel_ids, duplicate_ids),
+                        self._select_duplicate_ucs(sel_ids, duplicate_ids),
                         duplicate_ids[duplicate_ids != unique_id],
                     )
                     unique_uc_occs = np.insert(
                         unique_uc_occs,
-                        self.__select_duplicate_ucs(sel_ids, duplicate_ids),
+                        self._select_duplicate_ucs(sel_ids, duplicate_ids),
                         new_occs[1:],
                     )
 
@@ -2166,18 +2214,19 @@ class MatchClayComposition(ClayComposition):
 
     @cached_property
     def unique_uc_array(self) -> NDArray[int]:
-        unique_uc_ids = self.uc_df.T.drop_duplicates().index.values.astype(int)
-        return unique_uc_ids
+        return self.uc_df.T.drop_duplicates().index.values.astype(int)
 
     def get_sheet_uc_weights(self, n_ucs: int):
         """
         Returns a list of lists with the combinations of 2, 3, sheet_n_ucs given the
         columns.
         """
-        sheet_uc_combinations = np.asarray(
-            [x for x in self.get_uc_combination_list(self.sheet_n_ucs, n_ucs)]
-        )
-        return sheet_uc_combinations
+        return self.get_uc_combination_list(self.sheet_n_ucs, n_ucs)
+        # yield uc_comb
+        # sheet_uc_combinations = np.asarray(
+        #     [x for x in ]
+        # )
+        # return sheet_uc_combinations
 
     @staticmethod
     def get_uc_combination_list(N, k):
@@ -2188,12 +2237,31 @@ class MatchClayComposition(ClayComposition):
         for q in tqdm(
             itertools.combinations(range(N - 1), k - 1),
             total=n_combs,
+            # leave=True,
+            ncols=50,
             bar_format="\t{l_bar}{bar}| {n_fmt}/{total_fmt} combinations",
         ):
             yield [j - i for i, j in zip((-1,) + q, q + (N - 1,))]
 
     def get_uc_combinations(self, n_ucs):
         return itertools.combinations(self.unique_uc_array, n_ucs)
+
+    def get_restrained_uc_combinations(self, n_ucs, fixed_uc_idxs):
+        uc_array = self.unique_uc_array
+        remaining_uc_ids = np.extract(
+            np.alltrue(
+                np.not_equal(
+                    *np.broadcast_arrays(
+                        uc_array[:, np.newaxis], np.atleast_2d(fixed_uc_idxs)
+                    )
+                ),
+                axis=1,
+            ),
+            uc_array,
+        )
+        n_remaining = n_ucs - len(fixed_uc_idxs)
+        for uc_ids in itertools.combinations(remaining_uc_ids, n_remaining):
+            yield sorted([*fixed_uc_idxs, *uc_ids])
 
     def _write(
         self,
@@ -2239,7 +2307,13 @@ class MatchClayComposition(ClayComposition):
     write_pkl = partialmethod(_write, fmt=".csv")
 
 
-class InterlayerIons:
+class Ions(ABC):
+    @abstractmethod
+    def __init__(self):
+        pass
+
+
+class InterlayerIons(Ions):
     def __init__(
         self,
         tot_charge: int,
@@ -2324,7 +2398,7 @@ class InterlayerIons:
         return self.df["numbers"].dropna().apply(np.rint).astype(int).to_dict()
 
 
-class BulkIons:
+class BulkIons(Ions):
     def __init__(self, ion_con_dict, default_ions):
         ion_charges = get_ion_charges()
         ion_idx = pd.Index(
