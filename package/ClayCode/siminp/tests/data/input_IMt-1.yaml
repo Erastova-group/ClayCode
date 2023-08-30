@@ -7,124 +7,73 @@
 # Required Parameters
 # =============================================================================
 
+# Absolute or relative location of coordinate and topology files
+INPATH: '/storage/clay_models'
+
+# Simulation run sequence:
+
+# Available default run specifications:
+# EM - energy minimisation
+# EQ_NVT1 - equilibration in NVT ensemble and fixed clay positions
+# EQ_NpT1 - equilibration in NpT ensemble and fixed clay positions
+# EQ_NVT2 - equilibration in NpT ensemble and restrained clay positions
+# EQ_NpT2 - equilibration in NpT ensemble and restrained clay positions
+# EQ_NVT3 - equilibration in NVT ensemble
+# EQ_NpT3 - equilibration in NpT ensemble
+# D-SPACE - d-spacing equilibration
+# (any other name) - production run
+
+# Select run type and required specifications:
+# SIMINP:
+#  - EM:
+#  - EQ_NVT_1 or EQ_NpT_1:
+#      - NSTEPS: 1000 # number of steps
+#  - EQ_NVT_2 or EQ_NpT_2:
+#      - NSTEPS: 1000 # number of steps
+#      - RESTRAINT_K: 2000 # restraint force constant in kJ mol-1 nm-1
+#  - EQ_NVT_3 or EQ_NpT_3:
+#      - NSTEPS: 1000 # number of steps
+#  - D-SPACE:
+#      - D_SPACE: 15.0 # target d-spacing in angstrom
+#      - REMOVE_STEPS: 1000 # timesteps between interlayer water removal
+#      Options for specifying number of removed waters (select ONE!):
+#      1. Absolute number of water molecules per interlayer space
+#      - SHEET_WAT = 2
+#      2. Number of water molecules per unit cell
+#      - UC_WAT = 0.1
+#      3. Percentage of water molecules per interlayer
+#      - PERCENT_WAT = 5
+#  - P:
+#      - NSTEPS: 100000 # number of steps
+#  - P_1:
+#      - NSTEPS: 100000 # number of steps
+
+SIMINP:
+
+
+# =============================================================================
+# Optional: Path specifications
+# =============================================================================
+
+# if given, the input and output directory paths will be extended by SYSNAME
+# (INPATH -> INPATH/SYSNAME)
+SYSNAME: 'IMt-1'
+
+# if not given, OUTPATH will be set to INPATH
 OUTPATH: '/storage/clay_models'
 
-# name of system
-SYSNAME: IMt-1
-
-# specify whether new clay model should be constructed:
-# new - a new clay model is constructed
-# load - sheet coordinates or unit cell sequences are loaded from existent .gro or .npy files
-# load: [X, Y]
-# with X - 'np' or 'gro', Y - '.npy' or '.gro' filename
-# False - no clay model is constructed
-
-BUILD: new
-
-# name of .csv file with target stoichiometry
-CLAY_COMP: package/ClayCode/builder/tests/data/exp_non.csv
-
-# clay type available options in 'clay_units' directory:
-# Dioctahedral 2:1 - D21
-# Trioctahedral 2:1 - T21
-# Dioctahedral 1:1 - D11
-# Trioctahedral 1:1 - T11
-# layered double hydroxide 3:1 - L31
-# layered double hydroxide 2:1 - L21
-# Sepiolite - SEP
-
-CLAY_TYPE: D21
-
-
-# =============================================================================
-# Optional: Clay Sheet and Interlayer Specifications
-# =============================================================================
-
-# number of unit cells in x direction (Default 7)
-X_CELLS: 6 #7
-
-# number of unit cells in y direction (Default 5)
-Y_CELLS: 4 # 5
-
-# number of unit cells in z direction (Default 3)
-N_SHEETS: 2 # 3
-
-# ----------------------------------------------------------------------------
-# Optional: Unit Cell Composition and Ratios input
-# if not given, these will be calculated from data in the CLAY_COMP .csv file
-# (Default UC_INDEX_LIST: [], UC_RATIOS_LIST: [])
-# -----------------------------------------------------------------------------
-
-# required UCs to builder system as list
-# UC_INDEX_LIST: [1]
-
-# probability list of unit cells in system
-# p(tot) = 1.00
-# UC_RATIOS_LIST: [1]
-
-# -----------------------------------------------------------------------------
-
-# interlayer solvent present or not (Default True)
-IL_SOLV: False
-
-# -----------------------------------------------------------------------------
-# Optional: Interlayer Ion Specification Options (comment the other options!)
-# (Default UC_WATERS: 20)
-# -----------------------------------------------------------------------------
-
-# 1. Number of water molecules that should be added per ion (ION_WATERS)
-# a. as ion species dictionary for hydration number
-# ION_WATERS = {'Ca': 12,
-#               'Na': 12
-#               }
-
-# b. as ion species int for hydration number
-# ION_WATERS = 12
-
-# 3. OR per unit cell
-UC_WATERS: 20
-
-# 4. OR for a target d-spacing value in A
-# SPACING_WATERS = 10.0
-
-# =============================================================================
-# Optional: Simulation Box Specifications
-# =============================================================================
-
-# full simulation box height in A (Default 150.0)
-BOX_HEIGHT: 50 # 150.0
-
-# =============================================================================
-# Optional: Solvation and Bulk Ions Specifications
-# =============================================================================
-
-# Bulk solvent added or not (Default: True)
-BULK_SOLV: True
-
-# Ion species and concentration in mol/L name to add in bulk solvent
-# (Default: BULK_IONS:
-#  Na: 0.1)
-
-BULK_IONS:
-  Na: 0
-  Cl: 0
-#  Na: 0.1
-#  Cl: 0.05
+# manually specify absolute or relative paths of input GRO and TOP files
+#INGRO: 'em.gro'
+#INTOP: 'em.top'
 
 # =============================================================================
 # Optional: Simulation Runs Specifications
 # =============================================================================
 
-# Generate scripts and '.mdp' files for simulation runs.
-# Available options:
-# EM - energy minimisation
-# EQ - equilibration
-# D-SPACE - d-spacing equilibration
-# P - production
-# SIMINP: [EM, D-SPACE]
-
-# select where EM and EQ should be run (Default: False)
-# MDRUNS_REMOTE: False
+# Manually override default MDP options for all or specific run types
+# MDP_DEFAULTS: '/path/to/mdp/file'
+# MDP_EQ_NVT_2: '/path/to/new/EQ_NVT_2/mdp/file'
+# P_1: '/path/to/new/P_1/mdp/file'
 
 # -----------------------------------------------------------------------------
 # d-spacing equilibration options
