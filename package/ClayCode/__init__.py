@@ -1,4 +1,5 @@
 import logging
+import sys
 import warnings
 
 from Bio import BiopythonDeprecationWarning

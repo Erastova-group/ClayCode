@@ -118,7 +118,6 @@ class Builder:
             topology=self.top,
         )
         self.il_solv: GROFile = spc_file
-        logger.finfo(f"Writing interlayer sheet to {self.il_solv.name!r}\n")
 
     @staticmethod
     def construct_solvent(
@@ -151,6 +150,7 @@ class Builder:
         self.il_solv.universe: Universe = il_u
         self.il_solv.write(topology=self.top)
         self.il_solv = self.il_solv
+
         # self.top.reset_molecules()
         # self.top.add_molecules(il_u)
         # self.top.write(self.il_solv.top)
@@ -286,8 +286,12 @@ class Builder:
                 self.stack: GROFile = ext_boxname
                 self.stack.universe = box_u
                 self.stack.write(topology=self.top)
+                logger.finfo("Centering clay in box", initial_linebreak=False)
                 self.center_clay_in_box()
-                logger.finfo(f"Saving extended box as {self.stack.stem!r}\n")
+                logger.finfo(
+                    f"Saving extended box as {self.stack.stem!r}\n",
+                    initial_linebreak=False,
+                )
             else:
                 self.__box_ext: bool = False
         check_box_lengths(
@@ -401,7 +405,7 @@ class Builder:
             )
             self.remove_bulk_ions()
             logger.debug(f"after n_atoms: {self.stack.universe.atoms.n_atoms}")
-
+            # TODO: use monovalent bulk ion from Ions class
             ion_df: pd.DataFrame = self.args.bulk_ion_df
             pion: str = self.args.default_bulk_pion[0]
             # pq = int(self.args.default_bulk_pion[1])
@@ -409,6 +413,7 @@ class Builder:
             # nq = int(self.args.default_bulk_nion[1])
             bulk_x, bulk_y, bulk_z = self.stack.universe.dimensions[:3]
             bulk_z -= np.abs(self.clay_max - self.clay_min)
+            replaced: int = 0
             for ion, values in ion_df.iterrows():
                 charge, conc = values
                 n_ions: int = np.rint(
@@ -422,12 +427,13 @@ class Builder:
                     int
                 )  # 1 mol/L = 10^-27 mol/A
                 logger.finfo(
-                    f"\tAdding {conc} mol/L ({n_ions} atoms) {ion} to bulk"
+                    f"\tAdding {conc} mol/L ({n_ions} atoms) {ion} ions to bulk"
                 )
                 logger.debug(
                     f"before n_atoms: {self.stack.universe.atoms.n_atoms}"
                 )
-                replaced: int = add_ions_n_mols(
+                # TODO: use ion df with actual numbers that consider charge
+                replaced += add_ions_n_mols(
                     odir=self.__tmp_outpath.name,
                     crdin=self.stack,
                     # crdout=self.stack,
@@ -441,25 +447,42 @@ class Builder:
                 logger.debug(
                     f"after n_atoms: {self.stack.universe.atoms.n_atoms}"
                 )
-                logger.finfo(
-                    f"\t\tReplaced {replaced} SOL molecules with {ion}"
-                )
                 self.stack.reset_universe()
                 self.stack.write(self.top)
 
-            logger.finfo(f"\tNeutralising with {pion} and {nion}")
-            replaced: int = add_ions_neutral(
-                odir=self.__tmp_outpath.name,
-                crdin=self.stack,
-                # crdout=self.stack,
-                topin=self.stack.top,
-                # topout=self.stack.top,
-                nion=nion,
-                # nq=nq,
-                pion=pion,
-                gmx_commands=self.gmx_commands
-                # pq=pq)
-            )
+            if self.args.neutral_bulk_ions is not None:
+                logger.finfo(f"\tNeutralising charge:")
+                for ion, values in self.args.neutral_bulk_ions.iterrows():
+                    charge, n_ions = values
+                    replaced += add_ions_n_mols(
+                        odir=self.__tmp_outpath.name,
+                        crdin=self.stack,
+                        # crdout=self.stack,
+                        topin=self.stack.top,
+                        # topout=self.stack.top,
+                        ion=ion,
+                        charge=int(charge),
+                        n_atoms=n_ions,
+                        gmx_commands=self.gmx_commands,
+                    )
+                    logger.debug(
+                        f"after n_atoms: {self.stack.universe.atoms.n_atoms}"
+                    )
+                    logger.finfo(f"\t\tAdded {n_ions} {ion} ions to bulk")
+                    self.stack.reset_universe()
+                    self.stack.write(self.top)
+            # replaced: int = add_ions_neutral(
+            #     odir=self.__tmp_outpath.name,
+            #     crdin=self.stack,
+            #     # crdout=self.stack,
+            #     topin=self.stack.top,
+            #     # topout=self.stack.top,
+            #     nion=nion,
+            #     # nq=nq,
+            #     pion=pion,
+            #     gmx_commands=self.gmx_commands
+            #     # pq=pq)
+            # )
             logger.debug(f"n_atoms: {self.stack.universe.atoms.n_atoms}")
             logger.finfo(f"\t\tReplaced {replaced} SOL molecules")
             logger.finfo(
@@ -495,7 +518,7 @@ class Builder:
             logger.info(get_subheader("3. Assembling box"))
             logger.finfo("Combining clay sheets and interlayer")
         else:
-            logger.finfo("Combining clay sheets\n")
+            logger.finfo("Combining clay sheets")
         for sheet_id in range(self.args.n_sheets):
             self.sheet.n_sheet = sheet_id
             sheet_u = self.sheet.universe.copy()
@@ -541,15 +564,14 @@ class Builder:
             backup_files(self.args.outpath / crdout.top.name)
         crdout.universe: Universe = combined
         logger.finfo(
-            kwd_str=f"Clay stack height: ",
-            message=f"{combined.dimensions[2]:2.2f} \u212B\n",
-            initial_linebreak=True,
+            kwd_str=f"\tClay stack height: ",
+            message=f"{combined.dimensions[2]:2.2f} \u212B",
         )
         crdout.write(self.top)
         add_resnum(crdin=crdout, crdout=crdout)
         self.stack: GROFile = crdout
         # self.stack = self.stack
-        logger.finfo(f"Saving sheet stack as {self.stack.stem!r}\n")
+        logger.finfo(f"Saved sheet stack as {self.stack.stem!r}\n")
 
     def __path_getter(self, property_name) -> GROFile:
         path = getattr(self, f"__{property_name}")
@@ -666,7 +688,9 @@ class Builder:
     def add_il_ions(self) -> None:
         # if self.il_solv is None:
         #     self.solvate_clay_sheets()
-        logger.finfo("Adding interlayer ions:")  # to {self.il_solv.name!r}')
+        logger.finfo(
+            "Adding interlayer ions:", initial_linebreak=True
+        )  # to {self.il_solv.name!r}')
         infile: GROFile = self.il_solv
         # outfile = self.get_filename('solv', 'ions', suffix='gro')
         # import tempfile
@@ -739,7 +763,6 @@ class Builder:
 
     def center_clay_in_box(self) -> None:
         # if self.__box_ext is True:
-        logger.finfo("Centering clay in box", initial_linebreak=True)
         center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
         self.stack.reset_universe()
         # if make_solvent_whole:
@@ -848,7 +871,7 @@ class Sheet:
         self.random_generator.shuffle(uc_array)
         sheet_df = pd.concat(
             [
-                gro_df.filter(regex=f"[A-Z][0-9]{uc_id}", axis=0)
+                gro_df.filter(regex=f"[A-Z]([A-Z]|[0-9]){uc_id}", axis=0)
                 for uc_id in uc_array
             ]
         )
@@ -1053,15 +1076,15 @@ class Solvent:
         #     dr="{} {} {}".format(*dr),
         #     box=f"{self.x_dim / 10} {self.y_dim / 10} {self._z_dim / 10}"
         # )
-
+        logger.finfo(f"Adding interlayer solvent:")
         while True:
             if self._z_padding > 5:
                 raise Exception(
-                    f"Usuccessful solvation after expanding interlayer by {self._z_padding} \u212B.\nSomething odd is going on..."
+                    f"\nUnsuccessful solvation after expanding interlayer by {self._z_padding} \u212B.\nSomething odd is going on..."
                 )
 
             logger.finfo(
-                f"Attempting solvation with interlayer height = {self.z_dim:.2f} \u212B"
+                f"\tAttempting solvation with interlayer height = {self.z_dim:.2f} \u212B"
             )
             if self._z_dim < self.min_height:
                 self._z_dim = self.min_height
@@ -1080,10 +1103,10 @@ class Solvent:
             try:
                 self.check_solvent_nummols(solv)
             except Exception as e:
-                logger.finfo(kwd_str="\t", message=f"{e}")
+                logger.finfo(kwd_str="\t\t", message=f"{e}")
                 self._z_padding += self._z_padding_increment
                 logger.finfo(
-                    f"Increasing box size by {self._z_padding} \u212B\n"
+                    f"\t\tIncreasing box size by {self._z_padding} \u212B"
                 )
                 continue
             else:

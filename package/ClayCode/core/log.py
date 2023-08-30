@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 from ClayCode.core.consts import (
     LINE_LENGTH,
+    TABSIZE,
     exec_date,
     exec_datetime,
     exec_time,
@@ -148,7 +149,7 @@ class ClayCodeLogger(logging.Logger):
         else:
             initial_chars = ""
         message_str = textwrap.fill(
-            f"{kwd_str}{message}",
+            f"{kwd_str.expandtabs(TABSIZE)}{message.expandtabs(TABSIZE)}",
             initial_indent=indent,
             width=line_width,
             fix_sentence_endings=fix_sentence_endings,

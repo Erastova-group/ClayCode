@@ -16,6 +16,7 @@ from ClayCode.builder.utils import select_input_option
 from ClayCode.core.classes import GROFile, MDPFile
 from ClayCode.core.consts import LINE_LENGTH, MDP, MDP_DEFAULTS
 from ClayCode.core.utils import (
+    SubprocessProgressBar,
     execute_shell_command,
     get_header,
     get_subheader,
@@ -180,10 +181,7 @@ class GMXCommands:
         commandargs_dict: Dict[str, Any], opt_args_list: List[Any]
     ):
         def func_decorator(func: Callable):
-            def wrapper(
-                self,
-                **kwdargs,
-            ):
+            def wrapper(self, debug_mode=False, **kwdargs):
                 gmx_args = copy.copy(commandargs_dict)
                 for arg in kwdargs.keys():
                     if arg in gmx_args.keys():
@@ -242,10 +240,21 @@ class GMXCommands:
                     check_box_lengths(mdp_prms, box_dims)
                 with tempfile.TemporaryDirectory() as odir:
                     try:
-                        output = execute_shell_command(
-                            f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
+                        arrow = "\u279E"
+                        label = (
+                            f"\t{arrow} Running {self.gmx_alias} {command!r}"
                         )
-                        temp_file.unlink()
+                        if debug_mode:
+                            self.label += f" {kwd_str} - nobackup"
+                        progress_bar = SubprocessProgressBar(label=label)
+                        output = progress_bar.run_with_progress(
+                            execute_shell_command,
+                            f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup",
+                        )
+                        # else:
+                        #     output = execute_shell_command(
+                        #         f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
+                        #     )
                     except FileNotFoundError as e:
                         logger.error("This point should not be reached!")
                         sys.exit()

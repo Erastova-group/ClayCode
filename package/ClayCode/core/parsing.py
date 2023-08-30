@@ -13,6 +13,7 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import yaml
+from ClayCode.builder.consts import BUILDER_DATA
 from ClayCode.core.classes import BasicPath, Dir, File, init_path
 from ClayCode.core.consts import FF, MDP_DEFAULTS, UCS
 from ClayCode.core.utils import get_debugheader, get_header, get_subheader
@@ -651,6 +652,11 @@ class BuildArgs(_Args):
             )
         setattr(self, "gmx_alias", GMX)
 
+    def _get_zarr_storage(self, name, **kwargs):
+        import zarr
+
+        return zarr.storage.DirectoryStore(BUILDER_DATA / f"{name}", **kwargs)
+
     def process(self):
         logger.info(get_header("Getting build parameters"))
         self.read_yaml()
@@ -870,7 +876,10 @@ class BuildArgs(_Args):
         tot_charge = self.match_charge["tot"]
         if not np.isclose(tot_charge, 0.0):
             self._neutral_bulk_ions = InterlayerIons(
-                tot_charge, ion_ratios=self.bulk_ions, n_ucs=self.sheet_n_cells
+                tot_charge,
+                ion_ratios=self.bulk_ions,
+                n_ucs=self.sheet_n_cells,
+                neutral=True,
             )
 
     @property
@@ -898,6 +907,15 @@ class BuildArgs(_Args):
             .reset_index()
             .values
         )
+
+    @cached_property
+    def neutral_bulk_ions(self):
+        try:
+            neutral_df = self._neutral_bulk_ions.df
+        except AttributeError:
+            neutral_df = None
+        finally:
+            return neutral_df
 
     @property
     def n_il_ions(self):
@@ -967,7 +985,7 @@ class SiminpArgs(_Args):
     ]
 
     def __init__(self, data):
-        from ClayCode.siminp.consts import SIMINP_DEFAULTS as _siminp_defaults
+        # from ClayCode.siminp.consts import SIMINP_DEFAULTS as _siminp_defaults
 
         super().__init__(self, data)
         self.process()

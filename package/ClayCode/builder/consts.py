@@ -6,12 +6,12 @@ Adds:
 - Charge and occupation information for different unit cell types from ``data/UCS/charge_occ.csv``
 
 """
-
 from pathlib import Path
 
 import pandas as pd
 import yaml
 from ClayCode.core.consts import UCS
+from importlib_resources import files
 
 __all__ = ["BUILD_DEFAULTS", "UC_CHARGE_OCC"]
 
@@ -27,3 +27,5 @@ UC_CHARGE_OCC = (
     .fillna(method="ffill")
     .set_index(["sheet", "value"])
 )
+
+BUILDER_DATA = files("ClayCode.builder.data")

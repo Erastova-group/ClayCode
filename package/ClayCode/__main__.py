@@ -32,6 +32,10 @@ def run():
             solvent_rename_func=clay_builder.rename_il_solv,
             backup=clay_builder.args.backup,
         )
+        logger.finfo(
+            f"Wrote interlayer sheet to {clay_builder.il_solv.name!r}",
+            initial_linebreak=True,
+        )
         clay_builder.stack_sheets(
             extra=extra_il_space[args.il_solv], backup=clay_builder.args.backup
         )

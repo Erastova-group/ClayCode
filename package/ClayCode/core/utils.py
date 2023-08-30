@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import shutil
 import subprocess as sp
+import sys
+import threading
+import time
 import warnings
 from functools import partial, singledispatch, wraps
 from itertools import chain
@@ -15,11 +20,13 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
-from ClayCode.core.consts import LINE_LENGTH, exec_date, exec_time
+from ClayCode.core.consts import LINE_LENGTH as line_length
+from ClayCode.core.consts import TABSIZE, exec_date, exec_time
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.simplefilter("ignore")
+sys.stdout.reconfigure(encoding="utf-8")
 
 __all__ = [
     "remove_files",
@@ -222,6 +229,50 @@ def copy_final_setup(outpath: Path, tmpdir: Path, rm_tempfiles: bool = True):
     return tuple(new_files)
 
 
+class SubprocessProgressBar:
+    def __init__(self, label=None, delay=1):
+        self.thread = threading.Thread(target=self.run)
+        if label is None:
+            self.label = ""
+        else:
+            self.label = f"{label}".expandtabs(TABSIZE)
+        self.delay = float(delay)
+        self.running = True
+
+    def start(self) -> None:
+        self.running = True
+        self.t1 = time.time()
+        self.thread.start()
+
+    def run(self) -> None:
+        while self.running:
+            for item in ("-", "\\", "|", "/"):
+                time.sleep(self.delay)
+                print(
+                    f"{self.label}  {item} {time.time() - self.t1:3.2f} s elapsed",
+                    end="\r",
+                )
+                # sys.stdout.flush()
+
+    def stop(self):
+        self.running = False
+        self.thread.join()
+        print(f"{(len(self.label) + 12) * ' '}\r", end="\r")
+
+    @property
+    def time(self):
+        return time.process_time()
+
+    def run_with_progress(self, f, *args, **kwargs):
+        self.start()
+        try:
+            result = f(*args, **kwargs)
+        except BaseException as e:
+            return e
+        self.stop()
+        return result
+
+
 def select_named_file(
     path: Union[Path, str],
     searchstr: Optional[str] = None,
@@ -356,7 +407,7 @@ def get_u_files(
 
 
 def _get_header(
-    header_str: str, fill: str, n_linechars: int = LINE_LENGTH
+    header_str: str, fill: str, n_linechars: int = line_length
 ) -> str:
     return (
         f"\n{fill:{fill}>{n_linechars}}\n"
@@ -395,7 +446,7 @@ def backup_files(
     return backup_str
 
 
-def _get_info_box(header_str, fill, n_linechars=LINE_LENGTH, n_fillchars=0):
+def _get_info_box(header_str, fill, n_linechars=line_length, n_fillchars=0):
     fill_len = n_fillchars // 2
     n_linechars -= 2 * fill_len
     return (
@@ -521,3 +572,13 @@ def mdp_to_yaml(input_string: str) -> Dict[str, str]:
     mdp_yaml = dict(line.split("=") for line in mdp_yaml.splitlines())
     # mdp_yaml = re.sub(r'\n\n+', '\n', mdp_yaml, flags=re.MULTILINE)
     return mdp_yaml
+
+
+def get_arr_bytes(shape: Tuple[int, int], arr_dtype):
+    return np.prod(shape) * np.empty(shape=(1,), dtype=arr_dtype).itemsize
+
+
+def get_n_combs(N, k):
+    return int(
+        math.factorial(N - 1) / (math.factorial(k - 1) * math.factorial(N - k))
+    )

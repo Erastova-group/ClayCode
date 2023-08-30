@@ -174,4 +174,10 @@ KWD_DICT = set_globals()
 with open(MDP / "defaults.yaml", "r") as yaml_file:
     MDP_DEFAULTS = yaml.safe_load(yaml_file)
 
-LINE_LENGTH = 100
+LINE_LENGTH: int = 100
+
+CLAYFF_AT_TYPES = UCS / "clay_at_types.yaml"
+CLAYFF_AT_CHARGES = UCS / "clay_charges.yaml"
+
+
+TABSIZE = 4
