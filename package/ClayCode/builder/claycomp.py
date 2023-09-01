@@ -12,7 +12,7 @@ import shutil
 import sys
 import tempfile
 import time
-from abc import ABC, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
 from functools import (
     cache,
     cached_property,
@@ -42,7 +42,7 @@ from ClayCode.core.utils import (
 )
 from numba import njit, prange
 from numpy._typing import NDArray
-from tqdm.auto import tqdm, trange
+from tqdm.auto import tqdm
 from zarr.errors import PathNotFoundError
 
 __all__ = ["TargetClayComposition"]
@@ -260,13 +260,7 @@ class UCData(Dir):
                     skip_blank_lines=True,
                 )
             )
-        # gro_df.reset_index(level='uc-id', inplace=True)
-        # gro_df['uc-id'] = gro_df['uc-id'].apply(lambda uc_id: uc_id[-2:])
-        # gro_df.set_index('uc-id', inplace=True, append=True)
-        # gro_df.index = gro_df.index.reorder_levels(['uc-id', 'atom-id'])
         return gro_df
-        # gro_data.index.names = gro_df.index.names
-        # gro_df.update(gro_data)
 
     @property
     def gro_df(self):
@@ -548,7 +542,6 @@ class UCData(Dir):
         sum_dict: bool = True,
     ) -> int:
         """Get oxidation numbers from unit cell composition and occupancies"""
-        # df = df.loc[['T','O']]
         ox_dict = UCData._get_ox_dict()
         ox_df: pd.DataFrame = df.copy()
         ox_df.sort_index(level="sheet", sort_remaining=True, inplace=True)
@@ -573,9 +566,7 @@ class UCData(Dir):
             ox: pd.DataFrame = at_types.apply(lambda x: x * ox_df)
         if sum_dict is True:
             ox: np.ndarray = ox.sum().aggregate("unique")
-            # ox_dict: dict = dict(zip(idx, ox))
             ox_val = ox / occupancies
-            # ox_dict: dict = dict(map(lambda x: (x, ox_dict[x] / occupancies[x]), occupancies.keys()))
         else:
             ox_val = ox.apply(lambda x: x / occupancies)
         return at_types, ox_val[0]
@@ -674,8 +665,6 @@ class TargetClayComposition:
         match_df = pd.DataFrame(match_df[self.name], columns=[self.name])
         match_df = self.update_charges(match_df)
         match_df.dropna(inplace=True, how="all")
-        # with open(UCS / "clay_at_types.yaml", "r") as file:
-        #     clayff_at_types: dict = yaml.safe_load(file)
         match_df["new-at-type"] = match_df.index.get_level_values(
             "at-type"
         ).values
@@ -718,9 +707,7 @@ class TargetClayComposition:
                     .reset_index("at-type", drop=True)
                     .rename_axis(index={"new-at-type": "at-type"})[self.name]
                 )
-                new_charge: pd.Series = at_charges.multiply(
-                    match_occs
-                )  # - ((self.uc_data.occupancies[group] - match_df.loc[series.index, self.name].sum())
+                new_charge: pd.Series = at_charges.multiply(match_occs)
                 if not new_charge.hasnans:
                     target_charge = match_df.loc[("C", group), self.name]
                     if np.isclose(new_charge.sum(), target_charge):
@@ -1040,9 +1027,9 @@ class TargetClayComposition:
                 charged_size = (
                     charged_dict["charged"].loc[at_type_duplicate[0]].size
                 )
-                non_charged_size = (
-                    charged_dict["non-charged"].loc[at_type_duplicate[0]].size
-                )
+                # non_charged_size = (
+                #     charged_dict["non-charged"].loc[at_type_duplicate[0]].size
+                # )
                 # size_dict = {
                 #     "charged": charged_size,
                 #     "non-charged": non_charged_size,
@@ -1082,7 +1069,6 @@ class TargetClayComposition:
         )
         if len(charged_non_zero) > 1:
             charged_dict["charged"] = charged_non_zero
-            # charged_size = len(charged_non_zero)
         charged_occ_sum = (
             charged_dict["charged"].product(axis=1).groupby("sheet").sum()
         )
@@ -1139,18 +1125,6 @@ class TargetClayComposition:
                 )
                 sheet_df.update(new_charged_occs)
                 self._df.loc[sheet_df.index] = sheet_df.loc[sheet_df.index]
-                # if self.occupancies != self.uc_data.occupancies:
-                #     new_uncharged_occs = (
-                #         charged_dict["non-charged"]["at-type"]
-                #         .groupby("sheet")
-                #         .apply(lambda x: x + charged_occ_check[x.name] / x.size)
-                #     )
-                # sheet_df.update(new_uncharged_occs)
-                # self.print_df_composition(
-                #     old_composition=self.df.loc[self.idx_sel],
-                #     sheet_df=sheet_df,
-                # )
-                # self._df.loc[sheet_df.index] = sheet_df.loc[sheet_df.index]
             else:
                 self.__abort()
 
@@ -1184,13 +1158,6 @@ class TargetClayComposition:
                 "sheet"
             ).apply(lambda x: x - check_occ.at[x.name] / x.count())
             sheet_df.update(corrected_occupancies)
-            # self.occ_correction_df
-            # self.non_charged_sheet_df(idx_sel=idx_sel)
-            # .dropna()["at-type"]
-            # .groupby("sheet").apply(
-            #     lambda x: x - check_occ.at[x.name] / x.count()
-            # )
-            # )
             accept = None
             old_composition = self.df.copy()
             self._df.update(sheet_df)
@@ -1472,42 +1439,6 @@ class ClayComposition(ABC):
         match_charge.name = "match_charge"
         return match_charge
 
-    def get_atype_weights_1D(
-        self, uc_df, uc_ids, uc_weights, out=None, iter_array=None
-    ):
-        atype_combinations = uc_df[[*list(uc_ids)]].astype(np.float32).values
-        uc_weights = np.atleast_2d(uc_weights.astype(np.float32))
-        iter_array = np.multiply(
-            atype_combinations, uc_weights, out=iter_array
-        )
-        np.divide(
-            iter_array, self.sheet_n_ucs, dtype=np.float32, out=iter_array
-        )
-
-        return np.add.reduce(iter_array, axis=1, out=out)
-
-    # @staticmethod
-    # @njit(nogil=True, parallel=True)
-    # def compute_atype_weights(uc_number_combination, uc_occupancies, n_ucs):
-    #     a, b, c = (
-    #         uc_number_combination.shape[0],
-    #         uc_number_combination.shape[1],
-    #         uc_occupancies.shape[-1],
-    #     )
-    #     result = np.zeros((a, c))
-    #     for ai in prange(a):
-    #         for ci in prange(c):
-    #             for bi in prange(b):
-    #                 result[ai, ci] += (
-    #                     uc_number_combination[ai, bi] * uc_occupancies[bi, ci]
-    #                 )
-    #             result[ai, ci] /= n_ucs
-    #     return result
-
-    # def compute_atype_weights(self, uc_number_combinations, uc_ids):
-    #     uc_occupancies = self.uc_df[[*list(uc_ids)].astype(np.float32).values
-    #     return self.atype_weights_dask.map_blocks(self.compute_njit, self.uc_weights_dask, uc_number_combinations, self.sheet_n_ucs, dtype=np.float32, chunks=(self.uc_weights.chunks[0], uc_occupancies.shape[1]))
-
     def get_atype_diff_dask(atype_weights, target_values):
         diff_array = atype_weights - target_values
         diff_array = dask.array.linalg.norm(diff_array, axis=1)
@@ -1516,133 +1447,6 @@ class ClayComposition(ABC):
             dask.array.equal(diff_array, dist)
         ).compute()[0]
         return dist, match_idx
-
-    # def get_atype_weights(
-    #     self, uc_df, uc_ids, uc_weights, out=None, iter_array=None
-    # ):
-    #     atype_combinations = uc_df[[*list(uc_ids)]].astype(np.float32).values
-    #     uc_weights = np.atleast_2d(uc_weights.astype(np.float32))
-    #     combinations_iter = np.nditer(
-    #         [
-    #             uc_weights,
-    #             atype_combinations,
-    #             iter_array,
-    #         ],
-    #         op_flags=[
-    #             ["readonly"],
-    #             ["readonly"],
-    #             ["writeonly", "allocate"],
-    #         ],
-    #         op_dtypes=np.float32,
-    #         flags=["external_loop", "common_dtype", "buffered"],
-    #         op_axes=[[1, -1, 0], [1, 0, -1], None],
-    #     )
-    #     for cell, element, weight in combinations_iter:
-    #         weight[...] = np.multiply(cell, element)
-    #     np.divide(
-    #         combinations_iter.operands[2],
-    #         self.sheet_n_ucs,
-    #         dtype=np.float32,
-    #         out=combinations_iter.operands[2],
-    #     )
-    #     return np.add.reduce(combinations_iter.operands[2], axis=0, out=out)
-    # a = uc_df[[*list(uc_ids)]].astype(np.float32).values
-    # b = np.atleast_2d(uc_weights.astype(np.float32))
-    # a, b = np.broadcast_arrays(a[np.newaxis, :], b[:, np.newaxis])
-    # c = np.multiply(a, b)
-    # atype_weights = np.divide(c, self.sheet_n_ucs, dtype=np.float32)
-    # atype_weights = np.add.reduce(atype_weights.T, axis=0, out=out)
-    # return out
-
-    @staticmethod
-    @njit(parallel=True)
-    def get_atype_weights(
-        atype_combinations, uc_weights, sheet_n_ucs, out=None, iter_array=None
-    ):
-        # uc_weights = uc_weights  # np.atleast_2d(uc_weights.astype(np.float32)).T
-        iter_array[:] = np.multiply(
-            uc_weights[:, None, :],
-            atype_combinations[:, :, None],
-            # out=iter_array,
-        )
-        iter_array[:] = np.divide(iter_array, sheet_n_ucs)
-        out[:] = np.sum(iter_array, axis=0)
-        return out
-        # combinations_iter = np.nditer(
-        #     [
-        #         uc_weights,
-        #         atype_combinations,
-        #         iter_array,
-        #     ],
-        #     op_flags=[
-        #         ["readonly"],
-        #         ["readonly"],
-        #         ["writeonly", "allocate"],
-        #     ],
-        #     op_dtypes=np.float32,
-        #     flags=["external_loop", "common_dtype", "buffered"],
-        #     op_axes=[[1, -1, 0], [1, 0, -1], None],
-        # )
-        # for cell, element, weight in combinations_iter:
-        #     weight[...] = np.multiply(cell, element)
-        # np.divide(
-        #     combinations_iter.operands[2],
-        #     self.sheet_n_ucs,
-        #     dtype=np.float32,
-        #     out=combinations_iter.operands[2],
-        # )
-        # return np.add.reduce(combinations_iter.operands[2], axis=0, out=out)
-        # a = uc_df[[*list(uc_ids)]].astype(np.float32).values
-        # b = np.atleast_2d(uc_weights.astype(np.float32))
-        # a, b = np.broadcast_arrays(a[np.newaxis, :], b[:, np.newaxis])
-        # c = np.multiply(a, b)
-        # atype_weights = np.divide(c, self.sheet_n_ucs, dtype=np.float32)
-        # atype_weights = np.add.reduce(atype_weights.T, axis=0, out=out)
-        # return out
-
-    def get_atype_weights_dask(
-        self, uc_df, uc_ids, uc_weights  # , out=None, iter_array=None
-    ):
-        atype_combinations = uc_df[[*list(uc_ids)]].astype(np.float32).values.T
-        # atype_combinations = dask.array.from_array(atype_combinations)
-        uc_weights = np.atleast_2d(uc_weights.astype(np.float32)).T
-        uc_weights = dask.array.from_array(uc_weights)
-        weight = uc_weights[:, None, :] * atype_combinations[:, :, None]
-        weight = weight / self.sheet_n_ucs
-        weight = weight.sum(axis=0)
-        return weight
-        # combinations_iter = np.nditer(
-        #     [
-        #         uc_weights,
-        #         atype_combinations,
-        #         iter_array,
-        #     ],
-        #     op_flags=[
-        #         ["readonly"],
-        #         ["readonly"],
-        #         ["writeonly", "allocate"],
-        #     ],
-        #     op_dtypes=np.float32,
-        #     flags=["external_loop", "common_dtype", "buffered"],
-        #     op_axes=[[1, -1, 0], [1, 0, -1], None],
-        # )
-        # for cell, element, weight in combinations_iter:
-        #     weight[...] = np.multiply(cell, element)
-        #     # weight[...] = np.divide(weight, self.sheet_n_ucs)
-        # np.divide(
-        #     combinations_iter.operands[2],
-        #     self.sheet_n_ucs,
-        #     dtype=np.float32,
-        #     out=combinations_iter.operands[2],
-        # )
-        # return np.add.reduce(combinations_iter.operands[2], axis=0, out=out)
-        # a = uc_df[[*list(uc_ids)]].astype(np.float32).values
-        # b = np.atleast_2d(uc_weights.astype(np.float32))
-        # a, b = np.broadcast_arrays(a[np.newaxis, :], b[:, np.newaxis])
-        # c = np.multiply(a, b)
-        # atype_weights = np.divide(c, self.sheet_n_ucs, dtype=np.float32)
-        # atype_weights = np.add.reduce(atype_weights.T, axis=0, out=out)
-        # return out
 
     @cached_property
     @abstractmethod
@@ -1742,13 +1546,22 @@ class UCClayComposition(ClayComposition):
         self.__uc_index_ratios = uc_index_ratios
         self.get_uc_group()
 
-        # self.df = pd.DataFrame.from_dict(uc_index_ratios)
-        # for k, v in uc_index_ratios.items():
-        #     logger.info(f"\t{k}")
-
     @cached_property
     def _uc_match_dict(self) -> dict:
         return self._unique_uc_match_dict
+
+    def get_atype_weights(self, uc_df, uc_ids, uc_weights):
+        atype_combinations = uc_df[[*list(uc_ids)]].astype(float).T.values
+        combinations_iter = np.nditer(
+            [np.atleast_2d(uc_weights), atype_combinations, None],
+            flags=["external_loop"],
+            op_axes=[[1, -1, 0], [0, 1, -1], None],
+        )
+        for cell, element, weight in combinations_iter:
+            weight[...] = cell * element
+        atype_weights = combinations_iter.operands[2] / self.sheet_n_ucs
+        atype_weights = np.add.reduce(atype_weights, axis=0)
+        return atype_weights
 
     def __get_id_weights(self):
         uc_ids = []
@@ -1910,8 +1723,6 @@ class MatchClayComposition(ClayComposition):
     @cached_property
     def factorials(self):
         return [int(math.factorial(n)) for n in range(self.sheet_n_ucs)]
-        # factorials = zarr.array(factorials, chunks=(1000,), dtype=object, object_codec=numcodecs.Pickle(), path=self._get_tmp_zarr().name)
-        # return factorials
 
     def get_n_combs(self, k):
         return int(
@@ -1987,30 +1798,6 @@ class MatchClayComposition(ClayComposition):
             ):
                 chunk[q, eid] = z[1] - z[0]
 
-    # def get_uc_weights_z(self, n_ucs):
-    #     combs_zarr = self._get_uc_weights_zarr(n_ucs)
-    #     combs_zarr[:, :-1] = [
-    #         x
-    #         for x in itertools.combinations(
-    #             range(self.sheet_n_ucs - 1), n_ucs - 1
-    #         )
-    #     ]  # Adjust as needed
-    #
-    #     total_mult = combs_zarr.shape[0] / combs_zarr.nchunks
-    #     for chunk_id, chunk in tqdm(
-    #         enumerate(combs_zarr.blocks),
-    #         total=combs_zarr.nchunks,
-    #         ncols=LINE_LENGTH,
-    #         unit_scale=total_mult,
-    #         bar_format="\t{l_bar}{bar}| {total:5.0f} combinations, {elapsed_s:3.1f}/{remaining_s:3.1f} s elapsed/remaining",
-    #     ):
-    #         # chunk_end = min(chunk_start + self.chunksize, n_combs)
-    #         # chunk = combs_arr[chunk_start:chunk_end]
-    #
-    #         self.compute_combinations(chunk, self.sheet_n_ucs)
-    #         combs_zarr.set_block_selection(chunk_id, chunk)
-    #     return combs_zarr
-
     def drop_unused_ucs(self):
         all_ucs_df = self._uc_data.df
         target_df = self.__target_df.dropna().copy()  # .reset_index('sheet')
@@ -2066,7 +1853,6 @@ class MatchClayComposition(ClayComposition):
                     .dropna(how="all")
                     .fillna(0)
                 )
-                # base_df.append(base_df[[1,2]].apply()
                 diff_df = (
                     base_df[[0, 1]]
                     .apply(lambda x: np.abs(x - base_df["target"]))
@@ -2075,7 +1861,6 @@ class MatchClayComposition(ClayComposition):
                 selected_group_id = diff_df[
                     diff_df == diff_df.min()
                 ].index.to_list()[0]
-                # selected_group = accepted_group[selected_group_id]
                 logger.finfo(
                     f"Selected group {selected_group_id} with base composition:"
                 )
@@ -2155,8 +1940,6 @@ class MatchClayComposition(ClayComposition):
                     )
                     accepted_group = {accept: accepted_group.get(accept)}
                     accepted_base = {accept: accepted_base.get(accept)}
-                    # self.print_groups(accepted_group, all_ucs_df, fill="\t")
-                    # self.print_groups(accepted_group, all_ucs_df)
                     accept = "y"
                 match_group_found = True
             if len(accepted_group) == 1:
@@ -2228,8 +2011,6 @@ class MatchClayComposition(ClayComposition):
                             self.target_df != 0, np.NaN, inplace=True
                         )
                         target_df = self.__target_df.dropna().copy()
-                        # self.__target_df.dropna(inplace=True)
-                        # print(self.target_df)
 
             else:
                 raise RuntimeError("Should not reach this point!")
@@ -2293,23 +2074,6 @@ class MatchClayComposition(ClayComposition):
             n_uc_max = min(2, n_all_ucs)
             logger.finfo(get_debugheader(f"max n_ucs = {n_uc_max}"))
         self._max_ucs = n_uc_max
-
-    # @property
-    # def max_n_uc(self) -> int:
-    #     return self.max_ucs + 1
-    # n_all_ucs = len(self.unique_uc_array) + 1
-    # if not self.debug_run and not self.max_ucs:
-    #     n_uc_max = n_all_ucs
-    # elif self.max_ucs:
-    #     n_uc_max = min(int(self.max_ucs) + 1, n_all_ucs)
-    #     if self.max_ucs != n_uc_max:
-    #         logger.finfo(
-    #             f"Maximum number of unique unit cells in sheet set to {n_uc_max - 1}"
-    #         )
-    # else:
-    #     n_uc_max = min(3, n_all_ucs)
-    #     logger.finfo(get_debugheader(f"max n_ucs = {n_uc_max - 1}"))
-    # return n_uc_max
 
     def _get_zarr_storage(self, name, **kwargs):
         return zarr.storage.DirectoryStore(BUILDER_DATA / f"{name}", **kwargs)
@@ -2384,7 +2148,7 @@ class MatchClayComposition(ClayComposition):
                 for x in itertools.combinations(
                     range(self.sheet_n_ucs - 1), n_ucs - 1
                 )
-            ]  # itertools.combinations(range(self.sheet_n_ucs - 1), n_ucs-1) # Adjust as needed
+            ]
         combs_dask = combs_dask.map_blocks(
             self.compute_combinations_x, self.sheet_n_ucs
         )
@@ -2437,13 +2201,6 @@ class MatchClayComposition(ClayComposition):
         match_found = False
         while not match_found and n_ucs < self.max_ucs:
             n_ucs += 1
-            # for n_ucs in tqdm(
-            #     range(2, self.max_ucs + 1),
-            #     total=self.max_ucs,
-            #     ncols=LINE_LENGTH,
-            #     position=0,
-            #     bar_format="{l_bar}{bar}| Getting combinations for {n_fmt}/{total_fmt} unique unit cells",
-            # ):
             self.get_weight_array_slices(n_ucs)
             better_choice_than_prev = False
             logger.finfo(
@@ -2453,18 +2210,7 @@ class MatchClayComposition(ClayComposition):
             uc_id_combinations = self.get_restrained_uc_combinations_1(
                 n_ucs, uc_id_sel
             )
-            # pbar = SubprocessProgressBar(
-            #     label="\tComparing compositions with target composition"
-            # )
-            # pbar.start()
             uc_number_combinations = self.get_uc_weights_d(n_ucs)
-            # atype_weights = np.empty(
-            #     (uc_df.shape[0], uc_number_combinations.shape[0]), dtype=np.float32
-            # )
-            # iter_array = np.empty(
-            #     (n_ucs, uc_df.shape[0], uc_number_combinations.shape[0]),
-            #     dtype=np.float32,
-            # )
             for uc_ids in tqdm(
                 uc_id_combinations,
                 total=len(uc_id_combinations),
@@ -2473,97 +2219,15 @@ class MatchClayComposition(ClayComposition):
                 bar_format="\t{l_bar}{bar}| {n_fmt}/{total} combinations, {elapsed_s:3.0f} s elapsed",
             ):
                 self.atype_weights_dask[:] = 0
-                ta = time.time()
                 atype_weights = self.compute_dask_njit(
                     uc_number_combinations,
                     uc_df[[*list(uc_ids)]].astype(np.float32).values,
                     self.atype_weights_dask,
                 )
-                tb = time.time()
-                # uc_df[[*list(uc_ids)]].atype(np.float32).values, #get_comb_atype_weights(
-                # uc_number_combinations,
-                # uc_df[[*list(uc_ids)]].astype(np.float32).values,
-                # )
-                # atype_weights = self.get_atype_weights(
-                #     uc_df[[*list(uc_ids)]].astype(np.float32).values.T,
-                #     uc_ids,
-                #     uc_weights=np.atleast_2d(uc_number_combinations.astype(np.float32)).T,
-                #     out=atype_weights,
-                #     iter_array=iter_array,
-                #     sheet_n_ucs=self.sheet_n_ucs,
-                # )
-                dist, match_idx = self.get_atype_diff_da(
+                dist, match_idx = self.get_atype_diff_dask(
                     atype_weights, target_values
                 )
-                tc = time.time()
-                t1, t2 = np.mean(tb - ta), np.mean(tc - tb)
-                # dist = np.amin(diff_array)
-                #
-                #     if n_ucs == 6:
-                #         uc_number_combinations = np.fromiter(occ_combinations)
-                #         atype_weights = np.empty(
-                #             (uc_df.shape[0], uc_number_combinations.shape[0]), dtype=np.float32
-                #         )
-                #         iter_array = np.empty(
-                #             (uc_df.shape[0], n_ucs),
-                #             dtype=np.float32,
-                #         )
-                #     elif n_ucs < 6:
-                #         pass
-                #     else:
-                #         atype_weights = np.empty((uc_df.shape[0]), dtype=np.float32)
-                #         iter_array = np.empty(
-                #             (uc_df.shape[0], n_ucs),
-                #             dtype=np.float32,
-                #         )
 
-                #     for uc_ids in uc_id_combinations:
-                #         if n_ucs < 6:
-                #             self.get_atype_weights(
-                #                 uc_df,
-                #                 uc_ids,
-                #                 uc_weights=uc_number_combinations,
-                #                 out=atype_weights,
-                #                 iter_array=iter_array,
-                #             )
-                #             target_values = np.squeeze(
-                #                 self.target_df.astype(np.float32).values
-                #             )
-                #             diff_array = np.subtract(
-                #                 atype_weights.T,
-                #                 target_values,
-                #             )
-                #             diff_array = np.linalg.norm(diff_array, axis=1)
-                #             dist = np.amin(diff_array)
-                #             match_idx = np.argwhere(np.equal(diff_array, dist))[0]
-                #             if min_dist > dist:
-                #                 match_dict.update(
-                #                     {
-                #                         "n_ucs": n_ucs,
-                #                         "uc_ids": uc_ids,
-                #                         "uc_weights": occ_combinations[match_idx],
-                #                         "composition": atype_weights.T[match_idx],
-                #                         "dist": dist,
-                #                     }
-                #                 )
-                #                 better_choice_than_prev = True
-                #         else:
-                #             for uc_number_combinations in occ_combinations:
-                #                 self.get_atype_weights(
-                #                     uc_df=uc_df,
-                #                     uc_ids=uc_ids,
-                #                     uc_weights=np.asarray(uc_number_combinations),
-                #                     out=atype_weights,
-                #                     iter_array=iter_array,
-                #                 )
-                #                 diff_array = np.subtract(
-                #                     atype_weights.T, target_values, out=diff_array
-                #                 )
-                #                 # diff_array = np.linalg.norm(
-                #                 #     diff_array, axis=1, keepdims=True
-                #                 # )
-                #                 dist = np.linalg.norm(diff_array)
-                #                 # match_idx = np.argwhere(np.equal(diff_array, dist))[0]
                 if min_dist > dist:
                     match_dict.update(
                         {
@@ -2576,32 +2240,20 @@ class MatchClayComposition(ClayComposition):
                     )
                     better_choice_than_prev = True
                     min_dist = dist
-            # pbar.stop()
-            # print(t1, t2)
             if dist == 0.0:
                 match_found = True
                 logger.finfo(
                     f"Found match with zero deviation from target composition.\nStopping here.",
                     initial_linebreak=True,
                 )
-                # break
             if better_choice_than_prev:
                 uc_id_sel = match_dict["uc_ids"]
-                # uc_weights = np.squeeze(match_dict["uc_weights"].compute())
-                # uc_id_sel = np.extract(uc_weights != 1, match_dict["uc_ids"])
             else:
                 logger.finfo(
                     f"Found better match with fewer unit cells.\nStopping here.",
                     initial_linebreak=True,
                 )
                 match_found = True
-            # print(
-            #     match_dict["uc_ids"],
-            #     match_dict["uc_weights"].compute(),
-            #     match_dict["composition"].compute(),
-            #     target_values,
-            #     match_dict["dist"],
-            # )
         logger.finfo(
             f"Best match found with {match_dict['n_ucs']} unique unit cells "
             + f"(total occupancy deviation {match_dict['dist']:+.4f})\n",
@@ -2618,15 +2270,7 @@ class MatchClayComposition(ClayComposition):
 
     @staticmethod
     @njit(nogil=True, parallel=True)
-    def sub(arr, vec):
-        for ai in prange(arr.shape[1]):
-            for bi in prange(arr.shape[0]):
-                arr[ai, bi] -= vec[ai]
-        return arr
-
-    @staticmethod
-    @njit(nogil=True, parallel=True)
-    def norm_ax_1(arr):
+    def get_ax1_norm(arr):
         result = np.zeros((arr.shape[0]), dtype=np.float32)
         for ai in prange(arr.shape[0]):
             for bi in prange(arr.shape[1]):
@@ -2641,30 +2285,12 @@ class MatchClayComposition(ClayComposition):
             if np.equal(arr[ai], min_dist):
                 return np.array([ai])
 
-    def get_atype_diff_da(self, atype_weights, target_values):
+    def get_atype_diff_dask(self, atype_weights, target_values):
         diff_array = atype_weights - target_values
-        diff_array = diff_array.map_blocks(self.norm_ax_1, drop_axis=1)
+        diff_array = diff_array.map_blocks(self.get_ax1_norm, drop_axis=1)
         dist = diff_array.min().compute()
         equal_idx = dask.array.equal(diff_array, dist)
         match_idx = dask.array.argwhere(equal_idx).compute()[0]
-        return dist, match_idx
-
-    def get_atype_diff_dask(self, atype_weights, target_values):
-        diff_array = atype_weights - target_values
-        diff_array = dask.array.linalg.norm(diff_array, axis=1)
-        dist = diff_array.min().compute()
-        match_idx = dask.array.argwhere(
-            dask.array.equal(diff_array, dist),
-        ).compute()[0]
-        return dist, match_idx
-
-    def get_atype_diff(self, atype_weights, target_values, diff_array=None):
-        diff_array = np.subtract(
-            atype_weights.T, target_values, out=diff_array
-        )
-        diff_array = np.linalg.norm(diff_array, axis=1, keepdims=True)
-        dist = np.amin(diff_array)
-        match_idx = np.argwhere(np.equal(diff_array, dist))[0]
         return dist, match_idx
 
     @property
@@ -2968,28 +2594,30 @@ class InterlayerIons(Ions):
                 ]
             )
         ion_ratios = ion_ratios[
-            np.sign(ion_ratios["charges"]) != tot_charge
+            np.sign(ion_ratios["charges"]) != np.sign(tot_charge)
         ].dropna(how="all")
         if ion_ratios["probs"].dropna().empty:
             ion_ratios["probs"].fillna(1.0, inplace=True)
-        self.__df = ion_ratios.copy()
-        if charge not in self.__df["charges"].values:
+        self._df = ion_ratios.copy()
+        if charge not in self._df["charges"].values:
             mono_df = pd.DataFrame(
                 [[0, charge]],
-                columns=self.__df.columns,
-                index=pd.Index([monovalent], name=self.__df.index.name),
+                columns=self._df.columns,
+                index=pd.Index([monovalent], name=self._df.index.name),
             )
-            self.__df = pd.concat([self.__df, mono_df])
-        elif monovalent not in self.__df.index:
-            monovalent = self.__df[self.__df["charges"] == charge].index[0]
-        if not np.isclose(self.__df["probs"].sum(), 1.00):
-            self.__df["probs"] = self.__df["probs"].divide(
-                np.sum(self.__df["probs"])
+            self._df = pd.concat([self._df, mono_df])
+        elif monovalent not in self._df.index:
+            monovalent = self._df[self._df["charges"] == charge].index[0]
+        if np.isclose(self._df["probs"].sum(), 0.00):
+            self._df["probs"] = 1.0 / len(self._df["probs"])
+        elif not np.isclose(self._df["probs"].sum(), 1.00):
+            self._df["probs"] = self._df["probs"].divide(
+                np.sum(self._df["probs"])
             )
         assert np.isclose(
-            self.__df["probs"].sum(), 1.00
+            self._df["probs"].sum(), 1.00
         ), "Interlayer ion probabilities do not sum to 1.00"
-        self.__df["numbers"] = 0
+        self._df["numbers"] = 0
         self.get_ion_numbers(monovalent=monovalent)
 
     def __repr__(self):
@@ -2999,7 +2627,7 @@ class InterlayerIons(Ions):
         return f"{self.__class__.__name__()}({df_str})"
 
     def get_ion_numbers(self, monovalent):
-        df = self.__df[~np.isclose(self.__df["charges"], 0.00)]
+        df = self._df[~np.isclose(self._df["charges"], 0.00)]
         avg_charge = df.loc[:, ["probs", "charges"]].prod(axis=1).sum()
         multiplication_factor = np.abs(np.divide(self.clay_charge, avg_charge))
         ion_charge = -np.sign(self.clay_charge) * (
@@ -3019,11 +2647,11 @@ class InterlayerIons(Ions):
             )
         df.dropna(subset=["charges", "numbers"], inplace=True)
         df = df.convert_dtypes()
-        self.__df = df
+        self._df = df
 
     @property
     def df(self):
-        return self.__df[["charges", "numbers"]]
+        return self._df[["charges", "numbers"]]
 
     @property
     def numbers(self):
@@ -3061,7 +2689,7 @@ class BulkIons(Ions):
         df_str = ", ".join(
             [f"{k}: {v:.2f}" for k, v in self.df["conc"].items()]
         )
-        return f"{self.__class__.__name__()}({df_str})"
+        return f"{self.__class__.__name__}({df_str})"
 
     @property
     def neutralise_ions(self):

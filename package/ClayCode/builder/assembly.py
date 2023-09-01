@@ -13,7 +13,14 @@ import numpy as np
 import pandas as pd
 from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.topology import TopologyConstructor
-from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
+from ClayCode.core.classes import (
+    Dir,
+    FileFactory,
+    GROFile,
+    TOPFile,
+    set_mdp_freeze_groups,
+    set_mdp_parameter,
+)
 from ClayCode.core.consts import FF, GRO_FMT, LINE_LENGTH, MDP, MDP_DEFAULTS
 from ClayCode.core.gmx import (
     GMXCommands,
@@ -31,13 +38,7 @@ from ClayCode.core.lib import (
     select_outside_clay_stack,
     write_insert_dat,
 )
-from ClayCode.core.utils import (
-    backup_files,
-    get_header,
-    get_subheader,
-    set_mdp_freeze_clay,
-    set_mdp_parameter,
-)
+from ClayCode.core.utils import backup_files, get_header, get_subheader
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.lib._cutil import make_whole
 from MDAnalysis.transformations import center_in_box, unwrap, wrap
@@ -176,7 +177,7 @@ class Builder:
         else:
             freeze_grps = None
             freeze_dims = None
-        # em_filestr = set_mdp_freeze_clay(
+        # em_filestr = set_mdp_freeze_groups(
         #     uc_names=uc_names, get_file_or_str=em_inp, freeze_dims=["Y", "Y", "Y"]
         # )
         # for em_prm, prm_value in self.args.mdp_parameters["EM"].items():

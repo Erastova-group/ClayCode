@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import tempfile
-from collections import UserList
+from collections import UserDict, UserList
 from collections.abc import Sequence
 from copy import copy as _copy
 from copy import deepcopy
@@ -40,6 +40,7 @@ import pandas as pd
 import yaml
 from ClayCode.core.consts import FF, ITP_KWDS
 from ClayCode.core.consts import KWD_DICT as _KWD_DICT
+from ClayCode.core.consts import MDP_DEFAULTS
 from ClayCode.core.types import (
     AnyFileType,
     AnyPathType,
@@ -50,7 +51,11 @@ from ClayCode.core.types import (
     StrListOrStrDict,
     StrOrListOfStr,
 )
-from ClayCode.core.utils import get_file_or_str, mdp_to_yaml, select_named_file
+from ClayCode.core.utils import (
+    get_file_or_str,
+    get_search_str,
+    select_named_file,
+)
 from MDAnalysis import AtomGroup, ResidueGroup, Universe
 from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
@@ -181,6 +186,49 @@ def _(pattern: dict) -> str:
 
 
 # Kwd = NewType("Kwd", str)
+
+# MDPFile decorators
+
+
+def key_match_decorator(parameter_dict: Dict[str, Any]):
+    def f_decorator(f):
+        @wraps(f)
+        def wrapper(self, other, *args, **kwargs):
+            assert isinstance(
+                self, MDPFile
+            ), f"Expected MDPFile, found {self.__class__.__name__}"
+            search_str = get_search_str(getattr(self, parameter_dict))
+            return f(self, other, search_str, *args, **kwargs)
+
+        return wrapper
+
+    return f_decorator
+
+
+def get_data_dict(f):
+    @wraps(f)
+    def wrapper(
+        self, other: Union[Dict[str, str], MDPFile, str], *args, **kwargs
+    ):
+        assert isinstance(
+            self, MDPFile
+        ), f"Expected MDPFile, found {self.__class__.__name__}"
+        if type(other) == type(self):
+            other_data = other.parameters
+        elif isinstance(other, str):
+            try:
+                other_data = MDPFile(other).parameters
+            except:
+                other_data = mdp_to_dict(other)
+        elif isinstance(other, dict):
+            other_data = other
+        else:
+            raise TypeError(
+                f"Unexpected type {other.__class__.__name__!r} for {f.__name__.strip('__')!r}"
+            )
+        return f(self, other_data, *args, **kwargs)
+
+    return wrapper
 
 
 class Kwd(str):
@@ -1420,10 +1468,124 @@ class GROFile(File):
 
 class MDPFile(File):
     _suffix = ".mdp"
-    pass
 
-    def to_yaml(self):
-        return mdp_to_yaml(self)
+    def __init__(self, *args, gmx_version=None, **kwargs):
+        File.__init__(self, *args, **kwargs)
+        parameters = self.to_dict()
+        self._string = None
+        self._allowed_prms = {}
+        self.gmx_version = gmx_version
+        if gmx_version is not None:
+            try:
+                self._allowed_prms = MDP_DEFAULTS[gmx_version]
+            except KeyError:
+                logger.info(
+                    f"No parameter information found for GROMACS {gmx_version}"
+                )
+            else:
+                self.check_keys(parameters)
+        self._parameters = {k.lower(): v for k, v in parameters.items()}
+
+    @key_match_decorator("_allowed_prms")
+    @get_data_dict
+    def check_keys(self, other, search_str):
+        for k in other.keys():
+            if not re.search(
+                k, search_str, flags=re.IGNORECASE | re.MULTILINE
+            ):
+                # logger.debug(f"Invalid parameter {k} for {self.gmx_version}")
+                print(f'{k}: ""')
+                # raise KeyError(f"Invalid parameter {k} for {self.gmx_version}")
+
+    @property
+    def parameters(self):
+        if self._parameters is None:
+            self._parameters = {k: v for k, v in self.to_dict().items()}
+        return self._parameters
+
+    @parameters.setter
+    @get_data_dict
+    def parameters(self, parameters):
+        self.add(parameters, replace=True)
+
+    def to_dict(self):
+        return mdp_to_dict(self)
+
+    @key_match_decorator("parameters")
+    @get_data_dict
+    def add(
+        self, other: Union[Dict[str, str], MDPFile], search_str, replace=True
+    ):
+        new_string = self.string
+        freezegrps = None
+        freezedims = ["Y Y Y"]
+        if self.gmx_version:
+            self.check_keys(other)
+        for k, v in other.items():
+            if k.lower() == "freezegrps":
+                freezegrps = v
+            elif k.lower() == "freezedims":
+                freezedims = v
+            if not re.match(k, search_str, flags=re.IGNORECASE):
+                new_string = add_new_mdp_parameter(k, v, new_string)
+            else:
+                if replace:
+                    new_string = set_mdp_parameter(k, v, new_string)
+                else:
+                    new_string = add_mdp_parameter(k, v, new_string)
+        self.string = new_string
+        if freezegrps:
+            set_mdp_freeze_groups(freezegrps, new_string, freezedims, replace)
+        self.string = new_string
+
+    # @key_match_decorator("parameters")
+    # @get_data_dict
+    # def __add__(
+    #     self, other: Union[Dict[str, str], MDPFile], search_str, replace=True
+    # ):
+    #     new_string = self.string
+    #     freezegrps = None
+    #     freezedims = ["Y Y Y"]
+    #     for k, v in other.items():
+    #         if k.lower() == "freezegrps":
+    #             freezegrps = v
+    #         elif k.lower() == "freezedims":
+    #             freezedims = v
+    #         if re.match(search_str, k, flags=re.IGNORECASE):
+    #             if replace:
+    #                 new_string = set_mdp_parameter(k, v, new_string)
+    #         else:
+    #             new_string = add_mdp_parameter(k, v, new_string)
+    #     if freezegrps:
+    #         set_mdp_freeze_groups(freezegrps, new_string, freezedims)
+    #     self.string = new_string
+    #
+    # def set_mdp_freeze_groups(self, freeze_groups, freezedims):
+    #     self.string = set_mdp_freeze_groups(
+    #         freeze_groups, self.string, freezedims
+    #     )
+
+    @key_match_decorator("parameters")
+    def remove(self, other: List[str], search_str: str):
+        new_string = self.string
+        other = list(map(lambda x: x.lower(), other))
+        for prm in other:
+            if prm in self.parameters.keys():
+                new_string = set_mdp_parameter(prm, "")
+        self.string = new_string
+
+    @property
+    def string(self):
+        if self._string is None:
+            self._string = self.read_text()
+        return self._string
+
+    @string.setter
+    def string(self, string):
+        if string != self._string:
+            self._string = None
+            self.write_text(string)
+            self._parameters = None
 
 
 class TOPFile(File):
@@ -1641,7 +1803,7 @@ class BasicPathList(UserList):
         ]
         return remove_list.filter(subtracted_data)
 
-    def __copy__(self: Self) -> Self:
+    def __copy__(self):
         return _copy(self)
 
 
@@ -2088,3 +2250,126 @@ def init_path(path):
     if not Dir(path).is_dir():
         os.makedirs(path)
         logger.finfo(f"Creating new directory {path!r}")
+
+
+def set_mdp_parameter(
+    parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,\-]*?"
+):
+    value = mdp_value_formatter(value)
+    new_str = re.sub(
+        rf"(?<={parameter})(\s*)(=\s*)\s?({searchex})\s*?((\s?;[a-z0-9 ._,\-])?)(\n)",
+        r"\1" + f"= {value} " + r"\4\n",
+        mdp_str,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    return new_str
+
+
+def add_mdp_parameter(
+    parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"
+) -> str:
+    value = mdp_value_formatter(value)
+    new_str = re.sub(
+        rf"(?<={parameter})(\s*)(=\s*)\s?({searchex})\s*?((\s?;[a-z0-9 ._,\-])?)(\n)",
+        r"\1= \3" + f" {value} " + r"\4\n",
+        mdp_str,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    return new_str
+
+
+def add_new_mdp_parameter(
+    parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"
+) -> str:
+    value = mdp_value_formatter(value)
+    mdp_str += f"\n{parameter:<25} = {value}"
+    return mdp_str
+
+
+@get_file_or_str
+def set_mdp_freeze_groups(
+    uc_names: List[str],
+    input_string,
+    freeze_dims: Union[
+        Literal["Y"], Literal["N"], List[Union[Literal["Y"], Literal["N"]]]
+    ] = ["Y", "Y", "Y"],
+    replace=True,
+) -> str:
+    try:
+        if isinstance(str, freeze_dims):
+            if freeze_dims not in ["Y", "N"]:
+                freezedimstr = freeze_dims
+                raise ValueError
+            else:
+                freeze_dims = [freeze_dims for _ in range(3)]
+        freezegrpstr = " ".join(uc_names)
+        if len(freeze_dims) % len(uc_names) != 3:
+            raise ValueError(
+                "Freeze dimensions must have either 1 or 3 elements "
+                "in total or 3 elements per group"
+            )
+        freezearray = np.tile(freeze_dims, (len(uc_names)))
+        freezedimstr = " ".join(freezearray)
+        if not np.isin(freezearray, ["Y", "N"]).all():
+            raise ValueError
+        for freeze_str, freeze_value in zip(
+            ["freezegrps", "freezedim"], [freezegrpstr, freezedimstr]
+        ):
+            if re.search(freeze_str, input_string, flags=re.IGNORECASE):
+                if replace:
+                    input_string = set_mdp_parameter(
+                        freeze_str, freeze_value, input_string
+                    )
+                else:
+                    input_string = add_mdp_parameter(
+                        freeze_str, freeze_value, input_string
+                    )
+            else:
+                input_string = add_new_mdp_parameter(
+                    freeze_str, freeze_value, input_string
+                )
+    except ValueError:
+        raise ValueError(
+            f"Unexpected freeze dimensions value: {freezedimstr!r}"
+            "\nAccepted options are: Y and N"
+        )
+    return input_string
+
+
+@get_file_or_str
+def mdp_to_dict(input_string: str) -> Dict[str, str]:
+    mdp_options: list = re.findall(
+        r"^[a-z0-9\-_]+\s*=.*?(?=[\n;^])",
+        input_string,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    # mdp_yaml = {k: v for }
+    mdp_yaml: str = "\n".join(mdp_options)
+    # mdp_yaml = re.sub("=", ":", mdp_yaml, flags=re.MULTILINE)
+    mdp_yaml = re.sub(r"[\t ]+", "", mdp_yaml, flags=re.MULTILINE)
+    # mdp_yaml = re.sub(r':', ': !mdp ', flags=re.MULTILINE)
+    mdp_yaml = dict(line.split("=") for line in mdp_yaml.splitlines())
+    # mdp_yaml = re.sub(r'\n\n+', '\n', mdp_yaml, flags=re.MULTILINE)
+    return mdp_yaml
+
+
+def mdp_value_formatter(
+    value: Union[List[Union[str, int, float]], str, int, float]
+) -> str:
+    if isinstance(value, list):
+        value = list(map(lambda v: str(v).lower(), value))
+        value = " ".join(value)
+    else:
+        value = str(value)
+    return value
+
+
+def dict_to_mdp(
+    mdp_dict: Dict[str, Union[List[Union[str, int, float]], str, int, float]]
+) -> str:
+    prm_list = [
+        f"{str(k).lower():<25} = {mdp_value_formatter(v)}"
+        for k, v in mdp_dict.items()
+    ]
+    prm_str = "\n".join(prm_list)
+    return prm_str

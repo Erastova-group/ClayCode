@@ -15,7 +15,17 @@ import warnings
 from functools import partial, singledispatch, wraps
 from itertools import chain
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import (
+    Any,
+    Generator,
+    Iterable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import MDAnalysis as mda
 import numpy as np
@@ -187,8 +197,30 @@ def get_logfname(
     return f"{logpath}/{logname}-{run_name}{time}.log"
 
 
-def get_search_str(match_dict: dict[str, Any]) -> str:
-    return "|".join(match_dict.keys())
+@singledispatch
+def get_search_str(match_obj) -> str:
+    raise TypeError(
+        f"Could not generate match pattern from {match_obj.__class__.__name__}"
+    )
+
+
+@get_search_str.register(dict)
+def _(match_obj: dict[str, Any]) -> str:
+    return "|".join(match_obj.keys())
+
+
+from numpy.typing import ArrayLike, NDArray
+
+
+@get_search_str.register(list)
+@get_search_str.register(ArrayLike)
+def _(match_obj: Union[List[str], ArrayLike]):
+    return "|".join(match_obj)
+
+
+@get_search_str.register(Generator)
+def _(match_obj: Union[Generator[Union[str, int, float]]]):
+    return "|".join([str(x) for x in match_obj])
 
 
 def convert_str_list_to_arr(
@@ -476,34 +508,6 @@ def open_outfile(outpath: Union[Path, str], suffix: str, default: str):
     return outpath
 
 
-if __name__ == "__main__":
-    print(mda.__version__, "\n", np.__version__)
-
-
-def set_mdp_parameter(
-    parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,\-]*?"
-):
-    new_str = re.sub(
-        rf"(?<={parameter})(\s*)(=\s*)\s?({searchex})\s*?((\s?;[a-z0-9 ._,\-])?)(\n)",
-        r"\1" + f"= {value} " + r"\4\n",
-        mdp_str,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    return new_str
-
-
-def add_mdp_parameter(
-    parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"
-) -> str:
-    new_str = re.sub(
-        rf"(?<={parameter})(\s*)(=\s*)\s?({searchex})\s*?((\s?;[a-z0-9 ._,\-])?)(\n)",
-        r"\1= \3" + f" {value} " + r"\4\n",
-        mdp_str,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    return new_str
-
-
 def get_file_or_str(f):
     @wraps(f)
     def wrapper(file_or_str, *args, **kwargs):
@@ -535,45 +539,6 @@ def get_file_or_str(f):
     return wrapper
 
 
-@get_file_or_str
-def set_mdp_freeze_clay(
-    uc_names: List[str],
-    input_string,
-    freeze_dims: List[Union[Literal["Y"], Literal["N"]]] = ["Y", "Y", "Y"],
-) -> str:
-    freezegrpstr = " ".join(uc_names)
-    if len(freeze_dims) != 3:
-        raise ValueError("Freeze dimensions must have 3 elements")
-    freezearray = np.tile(freeze_dims, (len(uc_names)))
-    freezedimstr = " ".join(freezearray)
-    if not np.isin(freezearray, ["Y", "N"]).all():
-        raise ValueError(
-            f"Unexpected freeze dimensions value: {freezedimstr!r}"
-            "\nAccepted options are: Y and N"
-        )
-    input_string = set_mdp_parameter("freezegrps", freezegrpstr, input_string)
-    input_string = set_mdp_parameter("freezedim", freezedimstr, input_string)
-    return input_string
-
-
-@get_file_or_str
-def mdp_to_yaml(input_string: str) -> Dict[str, str]:
-    mdp_options: list = re.findall(
-        r"^[a-z0-9\-_]+\s*=.*?(?=[\n;^])",
-        input_string,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-
-    # mdp_yaml = {k: v for }
-    mdp_yaml: str = "\n".join(mdp_options)
-    # mdp_yaml = re.sub("=", ":", mdp_yaml, flags=re.MULTILINE)
-    mdp_yaml = re.sub(r"[\t ]+", "", mdp_yaml, flags=re.MULTILINE)
-    # mdp_yaml = re.sub(r':', ': !mdp ', flags=re.MULTILINE)
-    mdp_yaml = dict(line.split("=") for line in mdp_yaml.splitlines())
-    # mdp_yaml = re.sub(r'\n\n+', '\n', mdp_yaml, flags=re.MULTILINE)
-    return mdp_yaml
-
-
 def get_arr_bytes(shape: Tuple[int, int], arr_dtype):
     return np.prod(shape) * np.empty(shape=(1,), dtype=arr_dtype).itemsize
 
@@ -582,3 +547,13 @@ def get_n_combs(N, k):
     return int(
         math.factorial(N - 1) / (math.factorial(k - 1) * math.factorial(N - k))
     )
+
+
+def property_exists_checker(instance, property_name, prop_type=None):
+    prop = getattr(instance, f"_{property_name}")
+    if prop is None:
+        raise AttributeError(
+            f"{instance.__class__.name}.{property_name} not set!"
+        )
+    if prop_type is not None and type(prop) != prop_type:
+        setattr(instance, prop_type(prop))

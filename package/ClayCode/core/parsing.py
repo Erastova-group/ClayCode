@@ -29,6 +29,8 @@ __all__ = {
     "AnalysisArgs",
 }
 
+from ClayCode.siminp.writer import GMXRunFactory
+
 logger = logging.getLogger(__name__)
 
 parser: ArgumentParser = ArgumentParser(
@@ -274,90 +276,90 @@ siminpparser.add_argument(
     help="Equilibration parameter yaml file.",
     type=File,
     required=False,
-    dest="EQ_CONF",
+    dest="yaml_file",
 )
 
 
-siminp_subparsers = siminpparser.add_subparsers()
+# siminp_subparsers = siminpparser.add_subparsers()
 
-dspace_arg_group = siminpparser.add_argument_group("il_spacing")
+# dspace_arg_group = siminpparser.add_argument_group("il_spacing")
+#
+# remove_wat_group = siminpparser.add_mutually_exclusive_group(required=False)
+#
+# dspace_arg_group.add_argument(
+#     "-dspace",
+#     help="d-spacing in \u212B",
+#     metavar="d_spacing",
+#     dest="D_SPACE",
+#     type=float,
+#     required=True,
+# )
 
-remove_wat_group = siminpparser.add_mutually_exclusive_group(required=False)
-
-dspace_arg_group.add_argument(
-    "-dspace",
-    help="d-spacing in \u212B",
-    metavar="d_spacing",
-    dest="D_SPACE",
-    type=float,
-    required=True,
-)
-
-remove_wat_group.add_argument(
-    "-uc_wat",
-    help="number of water molecules to remove per cycle per unit cell",
-    metavar="n_waters",
-    dest="UC_WAT",
-    type=float,
-    default=0.1,
-    required=False,
-)
-
-remove_wat_group.add_argument(
-    "-sheet_wat",
-    help="number of water molecules to remove per cycle per sheet",
-    metavar="n_waters",
-    dest="SHEET_WAT",
-    type=float,
-    default=None,
-    required=False,
-)
-
-remove_wat_group.add_argument(
-    "-percent_wat",
-    help="percentage of inital water molecules to remove per cycle per sheet",
-    metavar="n_waters",
-    dest="PERCENT_WAT",
-    type=float,
-    default=None,
-    required=False,
-)
-
-dspace_arg_group.add_argument(
-    "-remove_steps",
-    help="water removal interval",
-    metavar="remove_steps",
-    dest="REMOVE_STEPS",
-    type=int,
-    default=1000000,
-    required=False,
-)
-
-
-def valid_run_type(run_name):
-    try:
-        run_type, run_id = run_name.split("_")
-        assert re.match(
-            r"[0-9]*", run_id
-        ), f"Invalid run id option: {run_id!r}, must be numeric"
-    except ValueError as e:
-        run_type = run_name
-    assert run_type in [
-        "EQ",
-        "P",
-    ], f'Invalid run type option: {run_type!r}, select either "EQ" or "P"'
-    return run_name
+# remove_wat_group.add_argument(
+#     "-uc_wat",
+#     help="number of water molecules to remove per cycle per unit cell",
+#     metavar="n_waters",
+#     dest="UC_WAT",
+#     type=float,
+#     default=0.1,
+#     required=False,
+# )
+#
+# remove_wat_group.add_argument(
+#     "-sheet_wat",
+#     help="number of water molecules to remove per cycle per sheet",
+#     metavar="n_waters",
+#     dest="SHEET_WAT",
+#     type=float,
+#     default=None,
+#     required=False,
+# )
+#
+# remove_wat_group.add_argument(
+#     "-percent_wat",
+#     help="percentage of inital water molecules to remove per cycle per sheet",
+#     metavar="n_waters",
+#     dest="PERCENT_WAT",
+#     type=float,
+#     default=None,
+#     required=False,
+# )
+#
+# dspace_arg_group.add_argument(
+#     "-remove_steps",
+#     help="water removal interval",
+#     metavar="remove_steps",
+#     dest="REMOVE_STEPS",
+#     type=int,
+#     default=1000000,
+#     required=False,
+# )
 
 
-siminpparser.add_argument(
-    "-runs",
-    help="Run type specifications",
-    # type=str,
-    nargs="+",
-    type=valid_run_type,
-)
-
-siminpparser.add_argument("-run_config")
+# def valid_run_type(run_name):
+#     try:
+#         run_type, run_id = run_name.split("_")
+#         assert re.match(
+#             r"[0-9]*", run_id
+#         ), f"Invalid run id option: {run_id!r}, must be numeric"
+#     except ValueError as e:
+#         run_type = run_name
+#     assert run_type in [
+#         "EQ",
+#         "P",
+#     ], f'Invalid run type option: {run_type!r}, select either "EQ" or "P"'
+#     return run_name
+#
+#
+# siminpparser.add_argument(
+#     "-runs",
+#     help="Run type specifications",
+#     # type=str,
+#     nargs="+",
+#     type=valid_run_type,
+# )
+#
+# siminpparser.add_argument("-run_config")
 
 # TODO: add plotting?
 #
@@ -399,7 +401,8 @@ def read_yaml_path_decorator(*path_args):
                             path = Dir(path)
                         v = str(path)
                     self.data[k] = v
-                    logger.finfo(kwd_str=f"\t{k} = ", message=f"{v!r}")
+                    if type(v) != dict:
+                        logger.finfo(kwd_str=f"\t{k} = ", message=f"{v!r}")
                 else:
                     raise KeyError(f"Unrecognised argument {k}!")
             return f(self)
@@ -967,43 +970,79 @@ class PlotArgs(_Args):
 class SiminpArgs(_Args):
     option = "siminp"
     # TODO: Add csv or yaml for eq run prms
-    _run_order = ["EM", "EQ", "D_SPACE", "P"]
-
-    _arg_names = [
-        "OUTPATH",
-        "SYSNAME",
-        "INDIR",
-        "INP_FILENAME" "GRO_NAME",
-        "TOP_NAME",
-        "SIMINP",
-        "REMOVE_STEPS",
+    _run_order = [
+        "EM",
+        "EQ_NVT_F",
+        "EQ_NpT_F",
+        "EQ_NVT_R",
+        "EQ_NpT_R",
+        "EQ_NVT",
+        "EQ_NpT",
         "D_SPACE",
-        "SHEET_WAT",
-        "UC_WAT",
-        "PERCENT_WAT",
-        "GMX",
+        "[A-Z0-9_]",
     ]
 
-    def __init__(self, data):
+    _arg_names = [
+        "SIMINP",
+        "OUTPATH",
+        "SYSNAME",
+        "INPATH",
+        "INGRO",
+        "INTOP",
+        "RUN_SCRIPT",
+        "INP_FILENAME",
+        "GRO_NAME",
+        "TOP_NAME",
+        "RUN_PRMS",
+        "MDP_PRMS",
+        "GMX",
+        "GMX_VERSION",
+    ]
+
+    def __init__(self, data, debug_run=False):
         # from ClayCode.siminp.consts import SIMINP_DEFAULTS as _siminp_defaults
 
-        super().__init__(self, data)
+        super().__init__(data)
+        self.debug_run = debug_run
         self.process()
+
+    @read_yaml_path_decorator("RUN_PRMS")
+    def read_yaml(self) -> None:
+        """Read clay model builder specifications
+        and mdp_parameter defaults from yaml file."""
+        pass
+
+    def _get_run_specs(self):
+        run_factory = GMXRunFactory()
+        try:
+            run_specs: dict = self.data["SIMINP"]
+        except KeyError:
+            logger.error(f"No run specifications found!")
+            sys.exit(1)
+        else:
+            logger.finfo("Selected run types:")
+            run_id = 0
+            runs = {}
+            for run_type in self._run_order:
+                matches = []
+                for run_spec in run_specs.keys():
+                    match = re.match(f"{run_type}[_0-9]*", run_spec)
+                    if match:
+                        matches.append(match.group(0))
+                for match_run in sorted(matches):
+                    run_id += 1
+                    run_options = run_specs.pop(match_run)
+                    runs[run_id] = {match_run: run_options}
+                    run = run_factory.init_subclass(
+                        match_run, run_id, run_options
+                    )
+                    logger.finfo(f"\t{run_id}: {run_type}")
 
     def process(self):
         logger.info(get_header("Getting simulation input parameters"))
-        run_specs = self.data["SIMINP"]
-        logger.finfo("Selected run types:")
-        run_id = 0
-        runs = []
-        for run_type in self._run_order:
-            try:
-                run_id += 1
-                run = run_specs.pop(run_type)
-                runs.append(0, run)
-                logger.finfo(f"\t{run_id}: {run_type}")
-            except KeyError:
-                pass
+        self.read_yaml()
+        self.runs = self._get_run_specs()
+
         if "dspace" in self.data:
             logger.info(get_subheader("d-spacing equilibration parameters"))
             self.d_spacing = self.data[

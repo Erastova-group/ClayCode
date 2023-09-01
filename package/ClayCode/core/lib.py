@@ -1590,4 +1590,4 @@ def run_em(
     return conv
 
 
-# mdp_to_yaml(MDP / 'em_fix.mdp')
+# mdp_to_dict(MDP / 'em_fix.mdp')

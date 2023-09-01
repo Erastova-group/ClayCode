@@ -13,15 +13,18 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.classes import GROFile, MDPFile
+from ClayCode.core.classes import (
+    GROFile,
+    MDPFile,
+    set_mdp_freeze_groups,
+    set_mdp_parameter,
+)
 from ClayCode.core.consts import LINE_LENGTH, MDP, MDP_DEFAULTS
 from ClayCode.core.utils import (
     SubprocessProgressBar,
     execute_shell_command,
     get_header,
     get_subheader,
-    set_mdp_freeze_clay,
-    set_mdp_parameter,
 )
 
 DEFAULT_GMX = "gmx"
@@ -167,7 +170,7 @@ class GMXCommands:
             except AttributeError:
                 logger.debug("No parameters/run type defined.")
         if isinstance(freeze_dims, list) and isinstance(freeze_grps, list):
-            mdp_str = set_mdp_freeze_clay(
+            mdp_str = set_mdp_freeze_groups(
                 uc_names=freeze_grps,
                 file_or_str=mdp_str,
                 freeze_dims=freeze_dims,
@@ -234,7 +237,7 @@ class GMXCommands:
                     )
                 )
                 if command == "grompp":
-                    mdp_prms = MDPFile(gmx_args["f"]).to_yaml()
+                    mdp_prms = MDPFile(gmx_args["f"]).to_dict()
                     crd_file = GROFile(gmx_args["c"])
                     box_dims = crd_file.universe.dimensions[:3]
                     check_box_lengths(mdp_prms, box_dims)
