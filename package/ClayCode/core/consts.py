@@ -185,3 +185,5 @@ CLAYFF_AT_CHARGES = UCS / "clay_charges.yaml"
 
 
 TABSIZE = 4
+
+ANGSTROM = "\u212B"

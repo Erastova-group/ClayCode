@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import logging
 import pathlib
@@ -19,7 +21,7 @@ from ClayCode.core.classes import (
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
-from ClayCode.core.consts import LINE_LENGTH, MDP, MDP_DEFAULTS
+from ClayCode.core.consts import ANGSTROM, LINE_LENGTH, MDP, MDP_DEFAULTS
 from ClayCode.core.utils import (
     SubprocessProgressBar,
     execute_shell_command,
@@ -750,12 +752,14 @@ def check_box_lengths(mdp_prms, box_dims):
             cutoffs.append(float(mdp_prms[cutoff]))
         except KeyError:
             pass
+        except ValueError:
+            pass
     max_cutoff = np.max(cutoffs) * 10  # in A
     min_box_length = np.min(box_dims)
     if max_cutoff >= (0.5 * min_box_length):
         logger.finfo(
-            f"Shortest box vector ({min_box_length:.1f} \u212B) needs to be at least twice as long as "
-            f"the selected GROMACS cutoff ({max_cutoff:.1f} \u212B).\n\n"
+            f"Shortest box vector ({min_box_length:.1f} {ANGSTROM}) needs to be at least twice as long as "
+            f"the selected GROMACS cutoff ({max_cutoff:.1f} {ANGSTROM}).\n\n"
             f"Aborting model construction."
         )
         sys.exit(2)

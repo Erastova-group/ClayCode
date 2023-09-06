@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
+from __future__ import annotations
 
-from ClayCode.core import lib, utils
 from ClayCode.core.classes import (
     BasicPath,
     BasicPathList,
@@ -43,18 +43,10 @@ from ClayCode.core.classes import (
     TOPList,
     YAMLFile,
 )
-from ClayCode.core.gmx import GMXCommands
 from ClayCode.core.log import ClayCodeLogger
 from ClayCode.core.parsing import ArgsFactory, BuildArgs, SiminpArgs, parser
 
 __all__ = [
-    "GMXCommands",
-    "lib",
-    "utils",
-    "parsing",
-    "consts",
-    "ClayCodeLogger",
-    "types",
     "Kwd",
     "KwdList",
     "BasicPath",

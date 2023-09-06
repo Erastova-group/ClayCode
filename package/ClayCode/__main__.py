@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import logging
 import sys
-from typing import NewType, Type, TypeVar
 
+from ClayCode import ClayCodeLogger
 from ClayCode.builder.utils import select_input_option
 from ClayCode.core import ArgsFactory, BuildArgs, SiminpArgs, parser
 

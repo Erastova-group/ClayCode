@@ -15,7 +15,7 @@ import pandas as pd
 import yaml
 from ClayCode.builder.consts import BUILDER_DATA
 from ClayCode.core.classes import BasicPath, Dir, File, init_path
-from ClayCode.core.consts import FF, MDP_DEFAULTS, UCS
+from ClayCode.core.consts import ANGSTROM, FF, MDP_DEFAULTS, UCS
 from ClayCode.core.utils import get_debugheader, get_header, get_subheader
 
 __all__ = {
@@ -288,7 +288,7 @@ siminpparser.add_argument(
 #
 # dspace_arg_group.add_argument(
 #     "-dspace",
-#     help="d-spacing in \u212B",
+#     help="d-spacing in {ANGSTROM}",
 #     metavar="d_spacing",
 #     dest="D_SPACE",
 #     type=float,
@@ -631,7 +631,7 @@ class BuildArgs(_Args):
                 prm_value = self._build_defaults[prm]
             setattr(self, prm.lower(), prm_value)
         if self.z_padding <= 0:
-            raise ValueError(f"Interlayer padding must be > 0 \u212B")
+            raise ValueError(f"Interlayer padding must be > 0 {ANGSTROM}")
         setattr(self, "mdp_parameters", MDP_DEFAULTS)
         setattr(self, "max_ucs", self.data["MAX_UCS"])
         try:
@@ -1051,7 +1051,7 @@ class SiminpArgs(_Args):
             self.n_wat = self.data["n_wat"]
             self.n_steps = self.data["n_steps"]
             self.data["runs"].append("D_SPACE")
-            logger.finfo(f"Target spacing: {self.d_spacing:2.2f} \u212B")
+            logger.finfo(f"Target spacing: {self.d_spacing:2.2f} {ANGSTROM}")
             logger.finfo(
                 f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"
             )

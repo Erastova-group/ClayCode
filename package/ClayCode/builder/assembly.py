@@ -24,7 +24,14 @@ from ClayCode.core.classes import (
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
-from ClayCode.core.consts import FF, GRO_FMT, LINE_LENGTH, MDP, MDP_DEFAULTS
+from ClayCode.core.consts import (
+    ANGSTROM,
+    FF,
+    GRO_FMT,
+    LINE_LENGTH,
+    MDP,
+    MDP_DEFAULTS,
+)
 from ClayCode.core.gmx import (
     GMXCommands,
     add_gmx_args,
@@ -81,16 +88,16 @@ class Builder:
         logger.info(get_header(f"Building {self.args.name} model"))
         logger.finfo(f"{self.args.n_sheets} sheets")
         x_dim: float = self.sheet.x_cells * self.sheet.uc_dimensions[0]
-        y_dim: float = (self.sheet.y_cells * self.sheet.uc_dimensions[1],)
+        y_dim: float = self.sheet.y_cells * self.sheet.uc_dimensions[1]
         logger.finfo(
             kwd_str="Sheet dimensions: ",
-            message=f"{x_dim:.2f} \u212B X {y_dim:.2f} \u212B "
+            message=f"{x_dim:.2f} {ANGSTROM} X {y_dim:.2f} {ANGSTROM} "
             f"({self.sheet.x_cells} unit cells X {self.sheet.y_cells} unit cells)",
         )
         if self.args.box_height > self.sheet.uc_dimensions[2]:
             logger.finfo(
                 kwd_str="Box height: ",
-                message=f"{self.args.box_height:.1f} \u212B",
+                message=f"{self.args.box_height:.1f} {ANGSTROM}",
             )
         else:
             logger.finfo("Will set box height to clay height")
@@ -274,7 +281,7 @@ class Builder:
         if type(self.args.box_height) in [int, float]:
             if self.args.box_height > self.stack.universe.dimensions[2]:
                 logger.finfo(
-                    f"Extending simulation box to {self.args.box_height:.1f} \u212B"
+                    f"Extending simulation box to {self.args.box_height:.1f} {ANGSTROM}"
                 )
                 self.remove_SOL()
                 self.center_clay_in_box()
@@ -568,7 +575,7 @@ class Builder:
         crdout.universe: Universe = combined
         logger.finfo(
             kwd_str=f"\tClay stack height: ",
-            message=f"{combined.dimensions[2]:2.2f} \u212B",
+            message=f"{combined.dimensions[2]:2.2f} {ANGSTROM}",
         )
         crdout.write(self.top)
         add_resnum(crdin=crdout, crdout=crdout)
@@ -1019,7 +1026,7 @@ class Solvent:
         return top
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.n_mols} molecules, {self.x_dim:.2f} X {self.y_dim:.2f} X {self.z_dim:.2f} \u212B))"
+        return f"{self.__class__.__name__}({self.n_mols} molecules, {self.x_dim:.2f} X {self.y_dim:.2f} X {self.z_dim:.2f} {ANGSTROM}))"
 
     def __str__(self) -> str:
         return self.__repr__()
@@ -1083,11 +1090,11 @@ class Solvent:
         while True:
             if self._z_padding > 5:
                 raise Exception(
-                    f"\nUnsuccessful solvation after expanding interlayer by {self._z_padding} \u212B.\nSomething odd is going on..."
+                    f"\nUnsuccessful solvation after expanding interlayer by {self._z_padding} {ANGSTROM}.\nSomething odd is going on..."
                 )
 
             logger.finfo(
-                f"\tAttempting solvation with interlayer height = {self.z_dim:.2f} \u212B"
+                f"\tAttempting solvation with interlayer height = {self.z_dim:.2f} {ANGSTROM}"
             )
             if self._z_dim < self.min_height:
                 self._z_dim = self.min_height
@@ -1109,7 +1116,7 @@ class Solvent:
                 logger.finfo(kwd_str="\t\t", message=f"{e}")
                 self._z_padding += self._z_padding_increment
                 logger.finfo(
-                    f"\t\tIncreasing box size by {self._z_padding} \u212B"
+                    f"\t\tIncreasing box size by {self._z_padding} {ANGSTROM}"
                 )
                 continue
             else:

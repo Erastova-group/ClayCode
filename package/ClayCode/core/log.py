@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+
+from __future__ import annotations
+
 import logging
 import logging.config
 import os
@@ -161,3 +164,6 @@ class ClayCodeLogger(logging.Logger):
             drop_whitespace=False,
         )
         self.info(f"{initial_chars}{message_str}")
+
+
+logging.setLoggerClass(ClayCodeLogger)

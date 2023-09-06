@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import logging
-import sys
 import warnings
 
 from Bio import BiopythonDeprecationWarning
@@ -8,6 +9,7 @@ from Bio import BiopythonDeprecationWarning
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=BiopythonDeprecationWarning)
+
 from ClayCode.core import (
     ArgsFactory,
     BasicPath,
@@ -23,7 +25,6 @@ from ClayCode.core import (
     FileFactory,
     FileList,
     ForceField,
-    GMXCommands,
     GROFile,
     GROList,
     ITPFile,
@@ -87,7 +88,6 @@ __all__ = [
     "ITPList",
     "ITPFile",
     "MDPList",
-    "GMXCommands",
     "YAMLFile",
     "FFDir",
     "ForceField",
