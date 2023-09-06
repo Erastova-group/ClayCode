@@ -13,7 +13,10 @@ dependencies = ['matplotlib>=3.6.2',
     'pyyaml>=6',
     'scipy>=1.9.3',
     'tqdm>=4.43.0',
-    'parmed>=4.1'
+    'parmed>=4.1',
+    'nocasedict',
+    'zarr~=2.16',
+    'dask~=2023.6'
     ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -66,3 +69,6 @@ exclude = '''
     | dist
 )/
 '''
+[project.dev-dependencies]
+sphinx = "^4.0"
+sphinx-autodoc-typehints = "^1.12"  

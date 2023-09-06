@@ -1,21 +1,45 @@
-from typing import Any, AnyStr, Dict, List, Literal, Union
+from os import PathLike
+from typing import Any, Dict, List, Literal, NewType, Type, TypeVar, Union
 
-StrOrListOfStr = Union[AnyStr, List[AnyStr]]
-StrListOrStrDict = Union[str, List[str], Dict[str, Any]]
-FileNameMatchSelector = Union[
-    Literal["full", "stem", "ext", "suffix", "parts"]
+from caseless_dictionary import CaselessDict
+
+__all__ = [
+    "StrOrListOf",
+    "StrOrListDictOf",
+    "StrNum",
+    "StrNumOrListDictOf",
+    "FileNameMatchSelector",
+    "AnyFile",
+    "AnyDir",
+    "PathType",
+    "PathOrStr",
+    "AnyDict",
+    "Definition",
 ]
-GROFileType = "GROFile"
-TOPFileType = "TOPFile"
-ITPFileType = "ITPFile"
-ITPFileType = "YAMLFile"
-AnyFileType = Union[
-    "GROFile", "ITPFile", "TOPFile", "File", "MDPFile", "YAMLFile"
-]
-AnyDirType = Union["Dir", "FFDir"]
-BasicPathType = "BasicPath"
-FileOrStr = Union[AnyFileType, BasicPathType]
-FileListType = List[AnyFileType]
-AnyPathType = Union[
-    AnyFileType, BasicPathType, AnyDirType, "Path", "PosixPath"
-]
+
+
+StrOrListOf = TypeVar("StrOrListOf", str, List[str])
+StrOrListDictOf = TypeVar("StrListorStrDict", str, List[str], Dict[str, Any])
+StrNum = TypeVar("StrNum", str, float, int)
+StrNumOrListDictOf = TypeVar(
+    "StrNumOrListDictOf", StrNum, List[StrNum], Dict[StrNum, Any]
+)
+FileNameMatchSelector = TypeVar(
+    "FileNameMatchSelector",
+    Literal["full"],
+    Literal["stem"],
+    Literal["ext"],
+    Literal["suffix"],
+    Literal["parts"],
+)
+
+
+AnyFile = TypeVar("AnyFile", bound=Type["File"])
+AnyDir = TypeVar("AnyDir", bound=Type["Dir"])
+PathType = TypeVar("PathType", PathLike, AnyFile, AnyDir)
+
+PathOrStr = TypeVar("PathOrStr", PathType, str)
+
+AnyDict = TypeVar("AnyDict", Dict, CaselessDict)
+
+Definition = NewType("Definition", Type["Definition"])

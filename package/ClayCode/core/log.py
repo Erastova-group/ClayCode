@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import logging
 import logging.config
 import os
@@ -5,10 +6,8 @@ import random
 import re
 import shutil
 import textwrap
-from functools import partialmethod
 from pathlib import Path
 
-import numpy as np
 from ClayCode.core.consts import (
     LINE_LENGTH,
     TABSIZE,

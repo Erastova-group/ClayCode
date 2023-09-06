@@ -30,6 +30,7 @@ from typing import (
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
+from caseless_dictionary import CaselessDict
 from ClayCode.core.consts import LINE_LENGTH as line_length
 from ClayCode.core.consts import TABSIZE, exec_date, exec_time
 
@@ -205,21 +206,16 @@ def get_search_str(match_obj) -> str:
 
 
 @get_search_str.register(dict)
+@get_search_str.register(CaselessDict)
 def _(match_obj: dict[str, Any]) -> str:
-    return "|".join(match_obj.keys())
+    return "|".join([str(x) for x in match_obj.keys()])
 
 
 from numpy.typing import ArrayLike, NDArray
 
 
 @get_search_str.register(list)
-@get_search_str.register(ArrayLike)
-def _(match_obj: Union[List[str], ArrayLike]):
-    return "|".join(match_obj)
-
-
-@get_search_str.register(Generator)
-def _(match_obj: Union[Generator[Union[str, int, float]]]):
+def _(match_obj: List[str]):
     return "|".join([str(x) for x in match_obj])
 
 

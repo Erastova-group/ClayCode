@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: UTF-8 -*-
+"""Assemble clay system"""
+from __future__ import annotations
 
 import logging
 import os
@@ -7,7 +10,7 @@ import shutil
 import tempfile
 from functools import cached_property
 from pathlib import Path
-from typing import Callable, List, Literal, Optional, Union
+from typing import Any, Callable, List, Literal, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
@@ -40,24 +43,23 @@ from ClayCode.core.lib import (
 )
 from ClayCode.core.utils import backup_files, get_header, get_subheader
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
-from MDAnalysis.lib._cutil import make_whole
-from MDAnalysis.transformations import center_in_box, unwrap, wrap
 from MDAnalysis.units import constants
 from numpy._typing import NDArray
-from pyparsing import unicode_string
 
-__all__ = ["Builder", "Sheet"]
+__all__ = ["Builder", "Sheet", "Solvent"]
 
 logger = logging.getLogger(__name__)
 
 
 class Builder:
-    __tmp_outpath = tempfile.TemporaryDirectory()
-    __tmp_file = tempfile.NamedTemporaryFile(
-        dir=__tmp_outpath.name, delete=False
-    )
+    __tmp_outpath: Type[
+        tempfile.TemporaryDirectory
+    ] = tempfile.TemporaryDirectory()
+    __tmp_file: Type[
+        tempfile.NamedTemporaryFile
+    ] = tempfile.NamedTemporaryFile(dir=__tmp_outpath.name, delete=False)
 
-    def __init__(self, build_args):
+    def __init__(self, build_args: Type["BuildArgs"]):
         self.args = build_args
         self.sheet = Sheet(
             self.args._uc_data,
@@ -73,15 +75,13 @@ class Builder:
             [self.sheet.dimensions[0], self.sheet.dimensions[1]],
         )
         self.top = TopologyConstructor(self.args._uc_data, self.args.ff)
-        self.__il_solv = None
-        self.__stack = None
-        self.__box_ext = False
+        self.__il_solv: Union[None, GROFile] = None
+        self.__stack: Union[None, GROFile] = None
+        self.__box_ext: bool = False
         logger.info(get_header(f"Building {self.args.name} model"))
         logger.finfo(f"{self.args.n_sheets} sheets")
-        x_dim, y_dim = (
-            self.sheet.x_cells * self.sheet.uc_dimensions[0],
-            self.sheet.y_cells * self.sheet.uc_dimensions[1],
-        )
+        x_dim: float = self.sheet.x_cells * self.sheet.uc_dimensions[0]
+        y_dim: float = (self.sheet.y_cells * self.sheet.uc_dimensions[1],)
         logger.finfo(
             kwd_str="Sheet dimensions: ",
             message=f"{x_dim:.2f} \u212B X {y_dim:.2f} \u212B "
@@ -94,13 +94,15 @@ class Builder:
             )
         else:
             logger.finfo("Will set box height to clay height")
-        self.gmx_commands = GMXCommands(gmx_alias=self.args.gmx_alias)
+        self.gmx_commands: GMXCommands = GMXCommands(
+            gmx_alias=self.args.gmx_alias
+        )
 
     @property
     def extended_box(self) -> bool:
         return self.__box_ext
 
-    def solvate_clay_sheets(self, backup=False) -> None:
+    def solvate_clay_sheets(self, backup: bool = False) -> None:
         logger.info(get_subheader("2. Generating interlayer solvent."))
         solvent: Solvent = Solvent(
             x_dim=self.sheet.dimensions[0],
@@ -122,14 +124,14 @@ class Builder:
 
     @staticmethod
     def construct_solvent(
-        solvate,
-        ion_charge,
-        solvate_add_func,
-        ion_add_func,
-        solvent_remove_func,
-        solvent_rename_func=None,
-        backup=False,
-    ):
+        solvate: bool,
+        ion_charge: Union[int, float],
+        solvate_add_func: Callable[[bool], Any],
+        ion_add_func: Callable[[], Any],
+        solvent_remove_func: Callable[[], Any],
+        solvent_rename_func: Optional[Callable[[], Any]] = None,
+        backup: bool = False,
+    ) -> None:
         if not solvate and ion_charge == 0:
             pass
         elif solvate or ion_charge != 0:

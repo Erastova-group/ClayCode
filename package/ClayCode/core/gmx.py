@@ -31,6 +31,13 @@ DEFAULT_GMX = "gmx"
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "GMXCommands",
+    "gmx_command_wrapper",
+    "check_box_lengths",
+    "add_gmx_args",
+]
+
 
 def add_gmx_args(f):
     @wraps(f)

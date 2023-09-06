@@ -1,11 +1,12 @@
+#!/usr/bin/env python3
+# -*- coding: UTF-8 -*-
 from __future__ import annotations
 
-import copy
 import logging
 import os
 import re
 import tempfile
-from collections import UserDict, UserList
+from collections import UserList
 from collections.abc import Sequence
 from copy import copy as _copy
 from copy import deepcopy
@@ -27,9 +28,11 @@ from typing import (
     Iterable,
     List,
     Literal,
+    Mapping,
     NewType,
     NoReturn,
     Optional,
+    Set,
     Tuple,
     Union,
     cast,
@@ -38,18 +41,18 @@ from typing import (
 import numpy as np
 import pandas as pd
 import yaml
+from caseless_dictionary import CaselessDict
 from ClayCode.core.consts import FF, ITP_KWDS
 from ClayCode.core.consts import KWD_DICT as _KWD_DICT
 from ClayCode.core.consts import MDP_DEFAULTS
 from ClayCode.core.types import (
-    AnyFileType,
-    AnyPathType,
-    FileListType,
     FileNameMatchSelector,
-    FileOrStr,
-    GROFileType,
-    StrListOrStrDict,
-    StrOrListOfStr,
+    PathOrStr,
+    PathType,
+    StrNum,
+    StrNumOrListDictOf,
+    StrOrListDictOf,
+    StrOrListOf,
 )
 from ClayCode.core.utils import (
     get_file_or_str,
@@ -115,7 +118,10 @@ def split_fname(fname: str) -> List[Union[str, None]]:
     return name_split
 
 
-def match_str(searchstr: str, pattern: str) -> Union[None, str]:
+def match_str(
+    searchstr: str,
+    pattern: Union[StrNum, Sequence[StrNum], Tuple[str], Mapping[str, Any]],
+) -> Union[None, str]:
     """Match a string agains a string of list of search patterns.
     Return matching string or None if no match is found."""
     check = None
@@ -138,7 +144,7 @@ def match_str(searchstr: str, pattern: str) -> Union[None, str]:
 
 
 @singledispatch
-def get_match_pattern(pattern: StrOrListOfStr):
+def get_match_pattern(pattern: StrOrListOf):
     """Generate search pattern from list, str, dict, int or float"""
     if hasattr(pattern, "parent"):
         return str(pattern.resolve())
@@ -205,7 +211,28 @@ def key_match_decorator(parameter_dict: Dict[str, Any]):
     return f_decorator
 
 
-def get_data_dict(f):
+def get_mdp_data_dict_function_decorator(f):
+    @wraps(f)
+    def wrapper(other: Union[Dict[str, str], MDPFile, str], *args, **kwargs):
+        if type(other) == MDPFile:
+            other_data = other.parameters
+        elif isinstance(other, str):
+            try:
+                other_data = MDPFile(other).parameters
+            except:
+                other_data = mdp_to_dict(other)
+        elif isinstance(other, dict):
+            other_data = other
+        else:
+            raise TypeError(
+                f"Unexpected type {other.__class__.__name__!r} for {f.__name__.strip('__')!r}"
+            )
+        return f(other_data, *args, **kwargs)
+
+    return wrapper
+
+
+def get_mdp_data_dict_method_decorator(f):
     @wraps(f)
     def wrapper(
         self, other: Union[Dict[str, str], MDPFile, str], *args, **kwargs
@@ -236,7 +263,7 @@ class Kwd(str):
 
     def match(
         self,
-        pattern: StrListOrStrDict,
+        pattern: StrOrListDictOf,
         mode: Literal["full", "parts"] = "full",
     ) -> Union[Kwd, None]:
         """Match keywords against a search pattern and return match"""
@@ -382,8 +409,8 @@ class BasicPath(_Path):
 
         @wraps(method)
         def wrapper(
-            self,
-            pattern: Union[str, List[str], int, float, Dict[str, Any]],
+            self: BasicPath,
+            pattern: StrNumOrListDictOf,
             mode: FileNameMatchSelector = "full",
         ) -> Union[BasicPath, None]:
             pattern = get_match_pattern(pattern)
@@ -429,7 +456,7 @@ class BasicPath(_Path):
         return self.stem, self.suffix
 
     @classmethod
-    def check_os(cls):
+    def check_os(cls) -> Union[BasicPath, NotImplementedError]:
         return (
             cls
             if os.name == "posix"
@@ -439,15 +466,12 @@ class BasicPath(_Path):
         )
 
     @_match_deorator
-    def match_name(self) -> str:
+    def match_name(self) -> Union[str, None]:
         return self.name
 
     @_match_deorator
-    def filter(self):
+    def filter(self) -> Union[BasicPath, None]:
         return self
-
-
-Dir = NewType("Dir", _Path)
 
 
 class File(BasicPath):
@@ -469,7 +493,7 @@ class File(BasicPath):
     def _get_filetype(self, suffix: str):
         suffix = suffix.strip(".")
         if suffix != self.suffix.strip("."):
-            return FileFactory(self.with_suffix(suffix))
+            return PathFactory(self.with_suffix(suffix))
         else:
             return self
 
@@ -864,8 +888,6 @@ class ParameterFactory:
 
 # get_defs = partialmethod(__get_def_sections, ifstr='')
 # get_ndfs = partialmethod(__get_def_sections, ifstr='n')
-
-Definition = NewType("Definition", Any)
 
 
 class Definition:
@@ -1469,7 +1491,7 @@ class GROFile(File):
 class MDPFile(File):
     _suffix = ".mdp"
 
-    def __init__(self, *args, gmx_version=None, **kwargs):
+    def __init__(self, *args, gmx_version=0, **kwargs):
         File.__init__(self, *args, **kwargs)
         parameters = self.to_dict()
         self._string = None
@@ -1477,34 +1499,45 @@ class MDPFile(File):
         self.gmx_version = gmx_version
         if gmx_version is not None:
             try:
-                self._allowed_prms = MDP_DEFAULTS[gmx_version]
+                if gmx_version == 0:
+                    self._allowed_prms = []
+                    [
+                        self._allowed_prms.extend(list(MDP_DEFAULTS[x].keys()))
+                        for x in MDP_DEFAULTS.keys()
+                        if re.fullmatch("[0-9]+", f"{x}")
+                    ]
+                    self._allowed_prms = np.unique(
+                        [self._allowed_prms]
+                    ).tolist()
+                else:
+                    self._allowed_prms = MDP_DEFAULTS[gmx_version]
             except KeyError:
                 logger.info(
                     f"No parameter information found for GROMACS {gmx_version}"
                 )
             else:
                 self.check_keys(parameters)
-        self._parameters = {k.lower(): v for k, v in parameters.items()}
+        self._parameters = parameters
 
     @key_match_decorator("_allowed_prms")
-    @get_data_dict
+    @get_mdp_data_dict_method_decorator
     def check_keys(self, other, search_str):
         for k in other.keys():
             if not re.search(
                 k, search_str, flags=re.IGNORECASE | re.MULTILINE
             ):
-                # logger.debug(f"Invalid parameter {k} for {self.gmx_version}")
-                print(f'{k}: ""')
-                # raise KeyError(f"Invalid parameter {k} for {self.gmx_version}")
+                logger.error(f"Invalid parameter {k} for {self.gmx_version}")
+                # print(f'{k}: ""')
+                # # raise KeyError(f"Invalid parameter {k} for {self.gmx_version}")
 
     @property
     def parameters(self):
         if self._parameters is None:
-            self._parameters = {k: v for k, v in self.to_dict().items()}
-        return self._parameters
+            self._parameters = CaselessDict(self.to_dict())
+        return {k: v for k, v in self._parameters.items() if v != ""}
 
     @parameters.setter
-    @get_data_dict
+    @get_mdp_data_dict_method_decorator
     def parameters(self, parameters):
         self.add(parameters, replace=True)
 
@@ -1512,7 +1545,7 @@ class MDPFile(File):
         return mdp_to_dict(self)
 
     @key_match_decorator("parameters")
-    @get_data_dict
+    @get_mdp_data_dict_method_decorator
     def add(
         self, other: Union[Dict[str, str], MDPFile], search_str, replace=True
     ):
@@ -1539,7 +1572,7 @@ class MDPFile(File):
         self.string = new_string
 
     # @key_match_decorator("parameters")
-    # @get_data_dict
+    # @get_mdp_data_dict_method_decorator
     # def __add__(
     #     self, other: Union[Dict[str, str], MDPFile], search_str, replace=True
     # ):
@@ -1596,7 +1629,7 @@ class TOPFile(File):
         self.__coordinates = None
 
     @property
-    def gro(self) -> GROFileType:
+    def gro(self) -> GROFile:
         return GROFile(self.with_suffix(".gro"))
 
 
@@ -1628,7 +1661,7 @@ class YAMLFile(File):
 
     @data.setter
     @get_file_or_str
-    def data(self, input_string: FileOrStr):
+    def data(self, input_string: PathOrStr):
         self._data = input_string
 
 
@@ -1644,7 +1677,7 @@ class Dir(BasicPath):
                 f"Expected {self._suffix!r}, found {self.suffix!r}"
             )
 
-    def _get_filelist(self, ext: StrOrListOfStr = _suffices) -> FileListType:
+    def _get_filelist(self, ext: StrOrListOf = _suffices) -> FileList:
         assert type(ext) in [
             str,
             list,
@@ -1674,19 +1707,43 @@ class Dir(BasicPath):
         #     filelist = sorted(filelist)
         # return filelist
 
+    def with_suffix(self, suffix):
+        """Return a new path with the file suffix changed.  If the path
+        has no suffix, add given suffix.  If the given suffix is an empty
+        string, remove the suffix from the path.
+        """
+        f = self._flavour
+        if f.sep in suffix or f.altsep and f.altsep in suffix:
+            raise ValueError("Invalid suffix %r" % (suffix,))
+        if suffix and not suffix.startswith(".") or suffix == ".":
+            raise ValueError("Invalid suffix %r" % (suffix))
+        name = self.name
+        if not name:
+            raise ValueError("%r has an empty name" % (self,))
+        old_suffix = self.suffix
+        if not old_suffix:
+            name = name + suffix
+        else:
+            name = name[: -len(old_suffix)] + suffix
+        return FileFactory(
+            self._from_parsed_parts(
+                self._drv, self._root, self._parts[:-1] + [name]
+            )
+        )
+
     @property
-    def filelist(self) -> FileListType:
+    def filelist(self) -> FileList:
         return PathListFactory(self)
 
     @property
-    def itp_filelist(self):
+    def itp_filelist(self) -> ITPList:
         return ITPList(self)
 
     @property
-    def gro_filelist(self):
+    def gro_filelist(self) -> GROList:
         return GROList(self)
 
-    def __copy__(self):
+    def __copy__(self) -> Dir:
         return _copy(self)
 
 
@@ -1722,7 +1779,7 @@ class FFDir(Dir):
 
 
 class BasicPathList(UserList):
-    def __init__(self, path: AnyPathType, ext="*", check=False, order=None):
+    def __init__(self, path: PathType, ext="*", check=False, order=None):
         if not isinstance(path, list):
             self.path = DirFactory(path)
             # if order is not None:
@@ -2246,9 +2303,9 @@ class SimDir(Dir):
         return base
 
 
-def init_path(path):
+def init_path(path, exist_ok=True):
     if not Dir(path).is_dir():
-        os.makedirs(path)
+        os.makedirs(path, exist_ok=exist_ok)
         logger.finfo(f"Creating new directory {path!r}")
 
 
@@ -2348,7 +2405,7 @@ def mdp_to_dict(input_string: str) -> Dict[str, str]:
     # mdp_yaml = re.sub("=", ":", mdp_yaml, flags=re.MULTILINE)
     mdp_yaml = re.sub(r"[\t ]+", "", mdp_yaml, flags=re.MULTILINE)
     # mdp_yaml = re.sub(r':', ': !mdp ', flags=re.MULTILINE)
-    mdp_yaml = dict(line.split("=") for line in mdp_yaml.splitlines())
+    mdp_yaml = CaselessDict(line.split("=") for line in mdp_yaml.splitlines())
     # mdp_yaml = re.sub(r'\n\n+', '\n', mdp_yaml, flags=re.MULTILINE)
     return mdp_yaml
 
@@ -2368,8 +2425,7 @@ def dict_to_mdp(
     mdp_dict: Dict[str, Union[List[Union[str, int, float]], str, int, float]]
 ) -> str:
     prm_list = [
-        f"{str(k).lower():<25} = {mdp_value_formatter(v)}"
-        for k, v in mdp_dict.items()
+        f"{str(k):<25} = {mdp_value_formatter(v)}" for k, v in mdp_dict.items()
     ]
     prm_str = "\n".join(prm_list)
     return prm_str

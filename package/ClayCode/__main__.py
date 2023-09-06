@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 import logging
 import sys
+from typing import NewType, Type, TypeVar
 
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.parsing import ArgsFactory, BuildArgs, SiminpArgs, parser
+from ClayCode.core import ArgsFactory, BuildArgs, SiminpArgs, parser
 
 __all__ = ["run"]
-
-logger = logging.getLogger(__name__)
+logger: ClayCodeLogger = logging.getLogger(__name__)
 
 
 def run():
@@ -33,8 +33,7 @@ def run():
             backup=clay_builder.args.backup,
         )
         logger.finfo(
-            f"Wrote interlayer sheet to {clay_builder.il_solv.name!r}",
-            initial_linebreak=True,
+            f"Wrote interlayer sheet to {clay_builder.il_solv.name!r}"
         )
         clay_builder.stack_sheets(
             extra=extra_il_space[args.il_solv], backup=clay_builder.args.backup

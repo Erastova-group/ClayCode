@@ -29,6 +29,8 @@ __all__ = [
     "ITP_KWDS",
 ]
 
+from caseless_dictionary import CaselessDict
+
 DATA = files("ClayCode.data")
 AA = DATA.joinpath("AA")
 FF = DATA.joinpath("FF")
@@ -173,6 +175,8 @@ KWD_DICT = set_globals()
 
 with open(MDP / "defaults.yaml", "r") as yaml_file:
     MDP_DEFAULTS = yaml.safe_load(yaml_file)
+    for k, v in MDP_DEFAULTS.items():
+        MDP_DEFAULTS[k] = CaselessDict({ki: vi for ki, vi in v.items()})
 
 LINE_LENGTH: int = 100
 

@@ -4,10 +4,10 @@
 
 </br>
 
-[//]:<img src="https://github.com/Erastova-group/ClayCode/blob/b30acce3f0c85371355118c34c8fff92ce7226a5/Logo.png"  width="300" height="300">
-[//]: <img src="https://github.com/Erastova-group/ClayCode/blob/ca58f5369238aa7ce668343d0af9275df20a21c1/Logo.png"  width="150" height="100">
+[//]:<img src=https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/Logo.png"  width="300" height="300">
+[//]: <img src=https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/Logo.png"  width="150" height="100">
 
-<img src="https://github.com/Erastova-group/ClayCode/blob/b4849ac053ba219f893c069477691a2bf2c196ec/ClayCode_logo_vertical.png" width="250" >
+<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/Logo.png" width="300" >
 
 by Hannah Pollak, Matteo Degiacomi, Valentina Erastova, University of Edinburgh, 2023
 
