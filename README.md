@@ -3,10 +3,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </br>
-
-[//]:<img src=https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/Logo.png"  width="300" height="300">
-[//]: <img src=https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/Logo.png"  width="150" height="100">
-
 <img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/Logo.png" width="300" >
 
 by Hannah Pollak, Matteo Degiacomi, Valentina Erastova, University of Edinburgh, 2023
