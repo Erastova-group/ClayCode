@@ -2,7 +2,7 @@
 <!--- ![logo](https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/Logo.png)-->
 
 
-<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/Logo.png"  width="500">
+<img src="https://raw.githubusercontent.com/Erastova-group/ClayCode/main/docs/assets/Logo.png"  width="300">
 
 
 **ClayCode** generates clay mineral structures based upon their natural partially ocupied unit cell compositions and assigns ClayFF forecefield parameters, generating all the input files ready for simulation with Gromacs software.
