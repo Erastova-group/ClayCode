@@ -30,14 +30,14 @@ import MDAnalysis.coordinates
 import numpy as np
 import pandas as pd
 from ClayCode.analysis.analysisbase import analysis_class
-from ClayCode.core.classes import GROFile
+from ClayCode.core.cctypes import PathType
+from ClayCode.core.classes import ForceField, GROFile, YAMLFile
 from ClayCode.core.consts import (
     AA,
+    CLAYFF_AT_TYPES,
     DATA,
     FF,
     IONS,
-    LINE_LENGTH,
-    MDP,
     SOL,
     SOL_DENSITY,
     UCS,
@@ -256,6 +256,66 @@ def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
     # Only clay + one other atom group selected
     else:
         return sel, clay
+
+
+def select_clay(
+    universe: MDAnalysis.Universe,
+    ff: ForceField = None,
+    atomtypes: List[str] = None,
+) -> MDAnalysis.AtomGroup:
+    """Select clay atoms based on atom names in force field.
+    :param universe: MDAnalysis universe
+    :type universe: MDAnalysis.Universe
+    :param ff: force field
+    :type ff: ForceField
+    :return: clay atoms
+    :rtype: MDAnalysis.AtomGroup
+    """
+    if atomtypes is None and ff is not None:
+        atomtypes = (
+            ff["clay"]["atomtypes"]["at-type"]
+            .apply(lambda x: x[:3].upper())
+            .tolist()
+        )
+    elif atomtypes is None and ff is None:
+        atomtypes = []
+        for sheet_types in YAMLFile(CLAYFF_AT_TYPES).data.values():
+            for atype in sheet_types.values():
+                if len(atype.split("_")) == 1:
+                    atomtypes.append(atype[:3].upper())
+    else:
+        atomtypes = [at.upper() for at in atomtypes]
+    clay_atoms = universe.select_atoms(
+        f'name {"* ".join(atomtypes)}*'
+    ).residues.atoms
+    return clay_atoms
+
+
+def generate_restraints(
+    atom_group: AtomGroup,
+    outfilename: Union[str, PathType],
+    fc: Union[List[int], int] = 1000,
+    add_to_file: bool = False,
+):
+    if not Path(outfilename).is_file() or not add_to_file:
+        with open(outfilename, "w") as outfile:
+            outfile.write("[ position_restraints ]\n")
+            outfile.write(
+                '; {"i":6}  {"funct":5} {"fx":6} {"fy":6} {"fz":6}\n'
+            )
+    with open(outfilename, "a") as outfile:
+        if type(fc) == int:
+            fc = [fc]
+        if len(fc) == 1:
+            fc = fc * 3
+        else:
+            assert len(fc) in [1, 3], ValueError(
+                f"Expected 1 or 3 force constants, got {len(fc)}"
+            )
+        for atom in atom_group:
+            outfile.write(
+                f'{atom.index+1:6} {1:5} {" ".join([f"{fci:6}" for fci in fc])}\n'
+            )
 
 
 def select_outside_clay_stack(

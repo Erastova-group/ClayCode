@@ -76,12 +76,7 @@ def gmx_command_wrapper(f):
 
 
 class GMXCommands:
-    def __init__(
-        self,
-        gmx_alias="gmx",
-        mdp_template=None,
-        mdp_defaults={},
-    ):
+    def __init__(self, gmx_alias="gmx", mdp_template=None, mdp_defaults={}):
         self.gmx_alias = gmx_alias
         _ = self.gmx_header
         try:
@@ -148,9 +143,7 @@ class GMXCommands:
         if mdp_temp_file:
             mdp_str = self.mdp_string
             mdp_temp_file = tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=".mdp",
-                prefix=self.mdp_template.stem,
+                delete=False, suffix=".mdp", prefix=self.mdp_template.stem
             )
             file = mdp_temp_file = Path(mdp_temp_file.name)
         run_dict = {}
@@ -170,8 +163,10 @@ class GMXCommands:
                     f"{run_type} is an invalid argument for run_type"
                 )
         if mdp_temp_file and not mdp_prms:
-            mdp_prms = self.mdp_defaults
-        for prm_dict in [run_dict, mdp_prms]:
+            mdp_prms = {}
+        # Set MDP parameters with user-set parameters taking precedence
+        # over internal run-type defaults over internal gmx-version defaults
+        for prm_dict in [self.mdp_defaults, run_dict, mdp_prms]:
             try:
                 for parameter, value in prm_dict.items():
                     logger.debug(f"{parameter}: {value}")
@@ -425,11 +420,10 @@ class GMXCommands:
             freeze_dims=freeze_dims,
             freeze_grps=freeze_grps,
         )
-        return "grompp", {
-            "capture_output": True,
-            "text": True,
-            "temp_file": temp_file,
-        }
+        return (
+            "grompp",
+            {"capture_output": True, "text": True, "temp_file": temp_file},
+        )
 
     @run_gmx_command(
         commandargs_dict={},

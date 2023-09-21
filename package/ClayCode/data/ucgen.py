@@ -6,24 +6,16 @@ from typing import Dict, Literal, Optional, Union
 
 import numpy as np
 import pandas as pd
-from ClayCode.builder.claycomp import UCClayComposition, UCData, UnitCell
+from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.classes import ForceField, GROFile, ITPFile, YAMLFile
-from ClayCode.core.consts import CLAYFF_AT_CHARGES as clatff_at_charges
-from ClayCode.core.consts import CLAYFF_AT_TYPES as clayff_at_types
-from ClayCode.core.consts import FF, ITP_KWDS, UCS
-from ClayCode.core.types import AnyPathType
-from MDAnalysis.core.groups import Atom
-from MDAnalysis.core.topologyattrs import TopologyAttr
+from ClayCode.core.cctypes import PathType
+from ClayCode.core.classes import Dir, ForceField, GROFile, ITPFile
+from ClayCode.core.consts import ITP_KWDS, UCS
+from ClayCode.data.consts import CLAY_ACHARGES, CLAY_FF
 from MDAnalysis.topology import tables
 from MDAnalysis.topology.guessers import guess_bonds
 
 # DEFAULT_ITP = UCS / "default.itp"
-CLAY_FF = FF / "ClayFF_Fe"
-
-CLAY_ATYPES = YAMLFile(clayff_at_types)
-CLAY_ACHARGES = YAMLFile(clatff_at_charges)
-
 
 # class SubstitutionAtom(TopologyAttr):
 #     def __init__(self, atom: Atom, other, sheet=None):
@@ -54,16 +46,16 @@ class UCWriter:
 
     def __init__(
         self,
-        gro_file: Union[AnyPathType, str],
+        gro_file: Union[PathType, str],
         uc_type: str,
-        odir: Optional[Union[AnyPathType, str]],
-        ff: Union[AnyPathType, str] = CLAY_FF,
+        odir: Optional[Union[PathType, str]],
+        ff: Union[PathType, str] = CLAY_FF,
     ):
         if odir is None:
             odir = UCS
         self._gro = GROFile(gro_file)
         self.gro = copy.deepcopy(self._gro)
-        self.path = odir / uc_type
+        self.path = Dir(odir) / uc_type
         self.name = uc_type
         self.ff = ForceField(ff)
         try:
@@ -134,14 +126,15 @@ class UCWriter:
             ] = default_solv
             charge_occ_df = charge_occ_df.append(new_entry)
             print(
-                f"Adding new {self.name} unit cell spcifications to database."
+                f"Adding new {self.name} unit cell specifications to database."
             )
             charge_occ_df.convert_dtypes().reset_index().to_csv(
                 UCS / "charge_occ.csv", index=False
             )
 
     def _get_gro(self, uc_name: str, universe=None):
-        """Write GRO file into the"""
+        """Write GRO file:
+        :param uc_name"""
         if universe is None:
             u = self._gro.universe
         else:
@@ -156,8 +149,7 @@ class UCWriter:
         self.gro.write()
 
     def _get_itp(
-        self,
-        uc_name: str,  # , default_itp: Union[AnyPathType, str] = DEFAULT_ITP
+        self, uc_name: str  # , default_itp: Union[PathType, str] = DEFAULT_ITP
     ):
         """Write the ITP file that corresponds to the gro file of the same name.
         Uses force field parameters from :py:data::`ClayCode.data.FF.ClayFF_Fe` database.
@@ -174,10 +166,7 @@ class UCWriter:
         # itp_file.string = "[ moleculetype ]\n" "[ atoms ]\n" "[ bonds ]\n"
         # itp_file.write()
         itp_file["moleculetype"] = re.sub(
-            r"NAME",
-            uc_name,
-            "NAME\t1",
-            flags=re.MULTILINE,
+            r"NAME", uc_name, "NAME\t1", flags=re.MULTILINE
         )
         uc_id = self.get_id(uc_name)
         gro_df = self.get_uc_gro(uc_id).df
@@ -185,8 +174,7 @@ class UCWriter:
         atom_cols = itp_kwds["atoms"]
         atom_cols.remove("id")
         itp_atom_df = pd.DataFrame(
-            index=pd.Index(gro_df["atom-id"], name="id"),
-            columns=atom_cols,
+            index=pd.Index(gro_df["atom-id"], name="id"), columns=atom_cols
         )
         itp_atom_df["at-name"] = gro_df["at-type"].values
         itp_atom_df["res-name"] = gro_df.index.values

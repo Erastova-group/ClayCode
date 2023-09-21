@@ -3,6 +3,7 @@
 """Assemble clay system"""
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import re
@@ -77,10 +78,6 @@ class Builder:
             fstem=self.args.filestem,
             outpath=self.args.outpath,
         )
-        check_box_lengths(
-            self.args.mdp_parameters["EM"],
-            [self.sheet.dimensions[0], self.sheet.dimensions[1]],
-        )
         self.top = TopologyConstructor(self.args._uc_data, self.args.ff)
         self.__il_solv: Union[None, GROFile] = None
         self.__stack: Union[None, GROFile] = None
@@ -104,6 +101,11 @@ class Builder:
         self.gmx_commands: GMXCommands = GMXCommands(
             gmx_alias=self.args.gmx_alias
         )
+        self.em_prms = self.gmx_commands.mdp_defaults.copy()
+        self.em_prms.update(self.args.mdp_parameters["EM"])
+        check_box_lengths(
+            self.em_prms, [self.sheet.dimensions[0], self.sheet.dimensions[1]]
+        )
 
     @property
     def extended_box(self) -> bool:
@@ -123,10 +125,7 @@ class Builder:
         if backup:
             backup_files(self.args.outpath / spc_file.name)
             backup_files(self.args.outpath / spc_file.top.name)
-        solvent.write(
-            spc_name=spc_file,
-            topology=self.top,
-        )
+        solvent.write(spc_name=spc_file, topology=self.top)
         self.il_solv: GROFile = spc_file
 
     @staticmethod
@@ -304,9 +303,7 @@ class Builder:
                 )
             else:
                 self.__box_ext: bool = False
-        check_box_lengths(
-            self.args.mdp_parameters["EM"], self.stack.universe.dimensions[:3]
-        )
+        check_box_lengths(self.em_prms, self.stack.universe.dimensions[:3])
 
     def remove_SOL(self) -> None:
         box_u: Universe = self.stack.universe
@@ -873,7 +870,7 @@ class Sheet:
         )
         if filename.is_file() and backup:
             logger.debug(
-                f"\n{filename.parent}/{filename.name} already exists, creating backup.",
+                f"\n{filename.parent}/{filename.name} already exists, creating backup."
             )
             backup_files(filename)
         gro_df: pd.DataFrame = self.uc_data.gro_df
@@ -1127,6 +1124,7 @@ class Solvent:
         self.__top: TopologyConstructor = topology
 
     def check_solvent_nummols(self, solvate_stderr: str) -> None:
+        """Find number of inserted water molecules from GROMAX stderr output"""
         added_wat: str = re.search(
             r"(?<=Number of solvent molecules:)\s+(\d+)", solvate_stderr
         ).group(1)

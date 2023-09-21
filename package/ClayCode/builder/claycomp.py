@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+""":mod:`claycomp` --- ClayCode builder module for processing clay compositions"""
 from __future__ import annotations
 
 import itertools
@@ -11,7 +11,6 @@ import re
 import shutil
 import sys
 import tempfile
-import time
 from abc import ABC, abstractmethod
 from functools import (
     cache,
@@ -53,33 +52,59 @@ MAX_STORE_ARR_SIZE = 536870912
 
 
 class UnitCell(ITPFile):
+    """Class for handling single unit cell data"""
+
     @property
-    def idx(self):
+    def idx(self) -> str:
+        """Unit cell index
+        :return: unit cell index
+        :rtype: str"""
         return self.stem[2:]
 
     @property
-    def clay_type(self):
+    def clay_type(self) -> str:
+        """Clay type
+        :return: clay type
+        :rtype: str"""
         return self.parent.name
 
     @property
-    def uc_stem(self):
+    def uc_stem(self) -> str:
+        """Unit cell stem
+        :return: unit cell stem
+        :rtype: str"""
         return self.stem[:2]
 
     @cached_property
-    def atom_df(self):
+    def atom_df(self) -> pd.DataFrame:
+        """Atom type dataframe
+        :return: atom type dataframe
+        :rtype: pd.DataFrame"""
         atoms = self.get_parameter("atoms")
         return atoms.df
 
     @cached_property
-    def charge(self):
+    def charge(self) -> float:
+        """Unit cell charge
+        :return: unit cell charge
+        :rtype: float"""
         return self.atom_df["charge"].sum().round(6)
 
 
 class UCData(Dir):
+    """Class for handling unit cell data collection of a single clay type"""
+
     _suffices = [".gro", ".itp"]
     _sheet_grouper = pd.Grouper(level="sheet", sort=False)
 
     def __init__(self, path: Dir, uc_stem=None, ff=None):
+        """Initialize UCData object
+        :param path: path to unit cell data directory
+        :type path: Dir
+        :param uc_stem: unit cell stem, defaults to None
+        :type uc_stem: str, optional
+        :param ff: force field, defaults to None
+        :type ff: str, optional"""
         from ClayCode.core.classes import ForceField
 
         if uc_stem is None:
@@ -91,8 +116,8 @@ class UCData(Dir):
         self.__uc_idxs: list = list(map(lambda x: str(x[-2:]), self.available))
         self.uc_idxs = self.__uc_idxs.copy()
         self.atomtypes: pd.DataFrame = self.ff["atomtypes"].df
-        self._full_df: pd.DataFrame = None
-        self._df: pd.DataFrame = None
+        self._full_df = None
+        self._df = None
         self.__get_full_df()
         self.__get_df()
         self.__atomic_charges = None
@@ -128,10 +153,7 @@ class UCData(Dir):
 
     @staticmethod
     def __abort():
-        logger.finfo(
-            "Aborting model construction.",
-            initial_linebreak=True,
-        )
+        logger.finfo("Aborting model construction.", initial_linebreak=True)
         sys.exit(0)
 
     def get_uc_group_base_compositions(self):
@@ -296,8 +318,8 @@ class UCData(Dir):
                 message=f"{self.uc_stem}{uc_idx_str}\n",
                 initial_linebreak=True,
             )
-        except KeyError as e:
-            e(f"{group_id} is an invalid group id!")
+        except KeyError:
+            raise KeyError(f"{group_id} is an invalid group id!")
 
     def reset_selection(self):
         self.group_id = None
@@ -335,7 +357,9 @@ class UCData(Dir):
     def __get_full_df(self):
         idx = self.atomtypes.iloc[:, 0]
         cols = [*self.uc_idxs, "charge", "sheet"]
-        self._full_df = pd.DataFrame(index=idx, columns=cols, dtype=np.float64)
+        self._full_df: pd.DataFrame = pd.DataFrame(
+            index=idx, columns=cols, dtype=np.float64
+        )
         self._full_df["charge"].update(
             self.atomtypes.set_index("at-type")["charge"]
         )
@@ -462,6 +486,9 @@ class UCData(Dir):
 
     @property
     def atomic_charges(self):
+        """Get dictionary of unit cell atomic charges
+        :return: dictionary of unit cell atomic charges
+        :rtype: Dict[str , int]"""
         return self._get_oxidation_numbers(
             self.occupancies, self.df, self.tot_charge
         )[0]
@@ -469,12 +496,19 @@ class UCData(Dir):
     @singledispatchmethod
     @staticmethod
     def _get_oxidation_numbers(
-        occupancies,
+        occupancies: Dict[Union[Literal["T"], Literal["O"]], int],
         df: Union[pd.DataFrame, pd.Series],
         tot_charge: Optional = None,
         sum_dict: bool = True,
-    ) -> Dict[str, int]:
-        pass
+    ) -> Dict[Union[Literal["T"], Literal["O"]], int]:
+        """Get oxidation numbers from unit cell composition and occupancies.
+        :param occupancies: dictionary of unit cell sheet occupancies
+        :type occupancies: Dict[Union[Literal['T'], Literal['O']], int]
+        :param df: unit cell composition dataframe
+        :type df: Union[pd.DataFrame, pd.Series]
+        :param tot_charge: total charge of unit cell composition, defaults to None
+        :type tot_charge: Optional[int]"""
+        raise NotImplementedError
 
     @_get_oxidation_numbers.register(dict)
     @staticmethod
@@ -483,7 +517,7 @@ class UCData(Dir):
         df: Union[pd.DataFrame, pd.Series],
         tot_charge: Optional = None,
         sum_dict: bool = True,
-    ) -> Dict[str, int]:
+    ) -> Tuple[pd.DataFrame, Dict[str, int]]:
         """Get oxidation numbers from unit cell composition and occupancies"""
         ox_dict = UCData._get_ox_dict()
         # df = df.loc[['T','O']]
@@ -540,7 +574,7 @@ class UCData(Dir):
         df: Union[pd.DataFrame, pd.Series],
         tot_charge: Optional = None,
         sum_dict: bool = True,
-    ) -> int:
+    ) -> Tuple[pd.DataFrame, NDArray]:
         """Get oxidation numbers from unit cell composition and occupancies"""
         ox_dict = UCData._get_ox_dict()
         ox_df: pd.DataFrame = df.copy()
@@ -573,7 +607,10 @@ class UCData(Dir):
 
     @staticmethod
     @cache
-    def _get_ox_dict():
+    def _get_ox_dict() -> Dict[Union[Literal["T"], Literal["O"]], int]:
+        """Get dictionary of oxidation numbers for tetrahedral (T) and octahedral (O) elements.
+        :return: dictionary of oxidation numbers for tetrahedral (T) and octahedral (O) elements
+        :rtype: Dict[str, int]"""
         logger.debug(f"UCS: {UCS.resolve()}")
         with open(UCS / "clay_charges.yaml", "r") as file:
             ox_dict: dict = yaml.safe_load(file)
@@ -581,6 +618,8 @@ class UCData(Dir):
 
 
 class TargetClayComposition:
+    """Class for processing target clay composition."""
+
     sheet_grouper = pd.Grouper(level="sheet", sort=False)
 
     def __init__(
@@ -595,6 +634,26 @@ class TargetClayComposition:
         zero_threshold=0.001,
         manual_setup=True,
     ):
+        """Class for processing target clay composition.
+        :param name: name of target clay composition
+        :type name: str
+        :param csv_file: csv file containing target clay composition
+        :type csv_file: Union[str, File]
+        :param uc_data: unit cell data
+        :type uc_data: UCData
+        :param occ_tol: occupancy tolerance
+        :type occ_tol: float
+        :param sel_priority: selection priority
+        :type sel_priority: Union[Literal['charge'], Literal['occupancy']]
+        :param charge_priority: charge priority
+        :type charge_priority: Union[Literal['charge'], Literal['occupancy']]
+        :param occ_correction_threshold: occupancy correction threshold
+        :type occ_correction_threshold: float
+        :param zero_threshold: zero threshold
+        :type zero_threshold: float
+        :param manual_setup: manual setup
+        :type manual_setup: bool
+        :return: None"""
         self.name: str = name
         self.manual_setup = manual_setup
         self.zero_threshold = zero_threshold
@@ -632,16 +691,20 @@ class TargetClayComposition:
         self.__ion_df: pd.DataFrame = None
         self.set_ion_numbers()
 
-    def __repr__(self):
+    def __str__(self):
         return f"{self.__class__.__name__}({self.name!r})"
 
-    def __str__(self):
-        def __repr__(self):
-            return f"{self.__class__.__name__}({self.name!r})"
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.name!r})"
 
     def update_charges(
         self, df: Union[pd.DataFrame, pd.Series]
     ) -> Union[pd.DataFrame, pd.Series]:
+        """Update charges in matching composition `df` with charges from `self.df`.
+        :param df: matching composition `pd.DataFrame` or `pd.Series`
+        :type df: Union[pd.DataFrame, pd.Series]
+        :return: matching composition `pd.DataFrame` or `pd.Series` with updated charges
+        :rtype: Union[pd.DataFrame, pd.Series]"""
         charges = pd.Series(self.get_charges(df), name=self.name)
         charges = charges.reindex_like(df.xs("C"))
         df.loc["C"].update(charges)
@@ -649,18 +712,33 @@ class TargetClayComposition:
 
     @cached_property
     def clayff_at_types(self):
+        """Get dictionary of clayff atom types and corresponding elements.
+        :return: dictionary of clayff atom types and corresponding elements
+        :rtype: Dict[str, str]"""
         clayff_at_types = YAMLFile(CLAYFF_AT_TYPES)
         return clayff_at_types.data
 
     @cached_property
-    def clayff_elements(self):
+    def clayff_elements(self) -> Dict[str, str]:
+        """Get dictionary of elements and corresponding clayff atom types.
+        :return: dictionary of elements and corresponding clayff atom types
+        :rtype: Dict[str, str]"""
         reverse_at_types = {v: k for (k, v) in self.clayff_at_types.items()}
         return reverse_at_types
 
-    def clayff_to_element(self, at_type):
+    def clayff_to_element(self, at_type: str) -> str:
+        """Get element from clayff atom type
+        :param at_type: clayff atom type
+        :type at_type: str
+        :return: element
+        :rtype: str"""
         return self.clayff_elements[at_type]
 
-    def __get_match_df(self, csv_file):
+    def __get_match_df(self, csv_file: Union[str, File]) -> pd.DataFrame:
+        """Get `pd.Dataframe` that matches a target clay composition specified in a csv file.
+        :param csv_file: csv file containing target clay composition
+        :return: `pd.Dataframe` containing target clay composition
+        :rtype: pd.DataFrame"""
         match_df = self.__read_match_df(csv_file)
         match_df = pd.DataFrame(match_df[self.name], columns=[self.name])
         match_df = self.update_charges(match_df)
@@ -724,7 +802,7 @@ class TargetClayComposition:
                     result_map={"y": "m", "n": "n", "": "m", "m": "y"},
                 )
                 if charge_adjust == "y":
-                    new_charge = get_checked_input(
+                    new_charge: float = get_checked_input(
                         query="Enter new charge value:",
                         result_type=float,
                         check_value=r"[0-9.]+",
@@ -1402,6 +1480,7 @@ class TargetClayComposition:
         return match_idx
 
     def __read_match_df(self, csv_file):
+        """Read match DataFrame from csv file."""
         match_df: pd.DataFrame = pd.read_csv(csv_file)
         match_df["sheet"].ffill(inplace=True)
         match_cols = match_df.columns.values
@@ -1413,7 +1492,16 @@ class TargetClayComposition:
 
 
 class ClayComposition(ABC):
+    """Base class for clay composition."""
+
     def __init__(self, sheet_n_ucs: int, uc_data: UCData, name: str):
+        """Initialize clay composition class.
+        :param sheet_n_ucs: number of unit cells in each sheet
+        :type sheet_n_ucs: int
+        :param uc_data: unit cell data
+        :type uc_data: UCData
+        :param name: name of unit cell type
+        :type name: str"""
         self._uc_data = uc_data
         self.sheet_n_ucs = int(sheet_n_ucs)
         self.name = name
@@ -1425,7 +1513,8 @@ class ClayComposition(ABC):
         return f"{self.__class__.__name__}({self.name!r})"
 
     @cached_property
-    def match_charge(self):
+    def match_charge(self) -> pd.Series:
+        """Return charge of matched unit cell composition."""
         uc_data = self._uc_data.atomic_charges.copy()
         match_data = self.match_composition.copy().to_frame(name="occ")
         for sheet, charges in uc_data.groupby("sheet", group_keys=True):
@@ -1439,7 +1528,13 @@ class ClayComposition(ABC):
         match_charge.name = "match_charge"
         return match_charge
 
-    def get_atype_diff_dask(atype_weights, target_values):
+    def get_atype_diff_dask(atype_weights, target_values) -> Tuple[float, int]:
+        """Return difference between target and actual composition.
+        :param atype_weights: actual composition
+        :type atype_weights: dask.array
+        :param target_values: target composition
+        :type target_values: NDArray[float]
+        """
         diff_array = atype_weights - target_values
         diff_array = dask.array.linalg.norm(diff_array, axis=1)
         dist = diff_array.min().compute()
@@ -1450,19 +1545,36 @@ class ClayComposition(ABC):
 
     @cached_property
     @abstractmethod
-    def _unique_uc_match_dict(self) -> dict:
+    def _unique_uc_match_dict(self):
+        """Return dict of unique unit cell compositions and their weights."""
         pass
 
     @cached_property
     @abstractmethod
     def _uc_match_dict(self):
+        """Return dict of unit cell compositions and their weights."""
         pass
 
-    def uc_dimensions(self):
+    def uc_dimensions(self) -> NDArray[float]:
+        """Return unit cell dimensions.
+        :return: unit cell dimensions
+        :rtype: NDArray[float]
+        """
         return self._uc_data.dimensions
 
     @staticmethod
-    def print_groups(group_dict, uc_df, fill=""):
+    def print_groups(
+        group_dict: Dict[int, List[str]], uc_df: pd.DataFrame, fill: str = ""
+    ):
+        """Print unit cell groups and their occupancies.
+        :param group_dict: dict of unit cell groups
+        :type group_dict: Dict[int, List[str]]
+        :param uc_df: unit cell DataFrame
+        :type uc_df: pd.DataFrame
+        :param fill: fill string for printing
+        :type fill: str
+        :return: None
+        """
         for group_id, group_ucs in group_dict.items():
             uc_group_df = uc_df.loc[:, group_ucs]
             logger.finfo(
@@ -1788,13 +1900,7 @@ class MatchClayComposition(ClayComposition):
         m, n = chunk.shape
         for q in prange(m):
             for eid, z in enumerate(
-                zip(
-                    [-1, *chunk[q, :-1]],
-                    [
-                        *chunk[q, :-1],
-                        sheet_n_ucs - 1,
-                    ],
-                )
+                zip([-1, *chunk[q, :-1]], [*chunk[q, :-1], sheet_n_ucs - 1])
             ):
                 chunk[q, eid] = z[1] - z[0]
 
@@ -1821,8 +1927,7 @@ class MatchClayComposition(ClayComposition):
                 uc_group_df = all_ucs_df[group_uc_ids]
                 # discard all unit cells with non-zero values where target composition has zeros
                 uc_group_df = uc_group_df.loc[
-                    :,
-                    (uc_group_df[unused_target_atype_mask] == 0).all(),
+                    :, (uc_group_df[unused_target_atype_mask] == 0).all()
                 ]
                 # check that the group has non-zero values for all atom types in the target composition
                 unused_uc_atype_mask = (
@@ -2081,20 +2186,14 @@ class MatchClayComposition(ClayComposition):
     def init_weight_arrays(self, target_composition):
         n_atypes = len(target_composition)
         arr_size = get_arr_bytes(
-            (
-                self.get_n_combs(self.max_ucs),
-                np.max([n_atypes, self.max_ucs]),
-            ),
+            (self.get_n_combs(self.max_ucs), np.max([n_atypes, self.max_ucs])),
             arr_dtype=np.float32,
         )
         max_ucs = self.max_ucs
         while arr_size > MAX_STORE_ARR_SIZE:
             max_ucs -= 1
             arr_size = get_arr_bytes(
-                (
-                    self.get_n_combs(max_ucs),
-                    np.max([n_atypes, max_ucs]),
-                ),
+                (self.get_n_combs(max_ucs), np.max([n_atypes, max_ucs])),
                 arr_dtype=np.float32,
             )
         if max_ucs != self.max_ucs:
@@ -2126,11 +2225,7 @@ class MatchClayComposition(ClayComposition):
                 out_dask[:] = 0
                 if np.all(out_zarr.shape != (n_combs, shape_1)):
                     out_dask = out_dask[:n_combs, :shape_1]
-                setattr(
-                    self,
-                    f"_{array_name}_dask",
-                    out_dask,
-                )
+                setattr(self, f"_{array_name}_dask", out_dask)
 
     def get_weight_array_slices(self, n_ucs):
         n_combs = self.get_n_combs(n_ucs)

@@ -19,6 +19,7 @@ __all__ = [
 
 
 StrOrListOf = TypeVar("StrOrListOf", str, List[str])
+StrOrDictOf = TypeVar("StrOrListOf", str, Dict[str, str])
 StrOrListDictOf = TypeVar("StrListorStrDict", str, List[str], Dict[str, Any])
 StrNum = TypeVar("StrNum", str, float, int)
 StrNumOrListDictOf = TypeVar(

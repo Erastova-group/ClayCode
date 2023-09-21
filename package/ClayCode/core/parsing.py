@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import copy
 import logging
 import os
@@ -8,15 +10,29 @@ from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserDict
 from functools import cached_property
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+import MDAnalysis
 import numpy as np
 import pandas as pd
 import yaml
+from caseless_dictionary import CaselessDict
 from ClayCode.builder.consts import BUILDER_DATA
 from ClayCode.core.classes import BasicPath, Dir, File, init_path
 from ClayCode.core.consts import ANGSTROM, FF, MDP_DEFAULTS, UCS
-from ClayCode.core.utils import get_debugheader, get_header, get_subheader
+from ClayCode.core.lib import select_clay
+from ClayCode.core.utils import (
+    get_debugheader,
+    get_header,
+    get_subheader,
+    parse_yaml,
+    select_file,
+)
+from ClayCode.data.ucgen import UCWriter
+from ClayCode.siminp.writer import GMXRunFactory, MDPRunGenerator
+
+"""Argument parsing module"""
+
 
 __all__ = {
     "ArgsFactory",
@@ -29,7 +45,6 @@ __all__ = {
     "AnalysisArgs",
 }
 
-from ClayCode.siminp.writer import GMXRunFactory
 
 logger = logging.getLogger(__name__)
 
@@ -279,6 +294,17 @@ siminpparser.add_argument(
     dest="yaml_file",
 )
 
+dataparser = subparsers.add_parser(
+    "data", help="Add new unit cell types to database."
+)
+
+dataparser.add_argument(
+    "-f",
+    help="YAML file with unit cell data",
+    type=File,
+    required=True,
+    dest="yaml_file",
+)
 
 # siminp_subparsers = siminpparser.add_subparsers()
 
@@ -380,10 +406,13 @@ siminpparser.add_argument(
 
 def read_yaml_path_decorator(*path_args):
     def read_yaml_decorator(f):
-        def wrapper(self: _Args):
+        def wrapper(self: _Args, enumerate_duplicates=False):
             assert isinstance(self, _Args), "Wrong class for decorator"
             with open(self.data["yaml_file"], "r") as file:
-                self.__yaml_data = yaml.safe_load(file)
+                self.__yaml_data = parse_yaml(
+                    file, enumerate_duplicates=enumerate_duplicates
+                )
+                print("self.__yaml_data")
             logger.finfo(f"Reading {file.name!r}:\n")
             for k, v in self.__yaml_data.items():
                 if k in self._arg_names:
@@ -414,10 +443,11 @@ def read_yaml_path_decorator(*path_args):
 
 class _Args(ABC, UserDict):
     option = None
-
+    _arg_defaults = {}
     _arg_names = []
 
     def __init__(self, data: dict):
+        # self._arg_defaults = {}
         self.data = data
 
     def __repr__(self):
@@ -433,6 +463,81 @@ class _Args(ABC, UserDict):
     @abstractmethod
     def check(self):
         pass
+
+    def _set_attributes(self, data_keys: List[str], optional: List[str] = []):
+        for prm in data_keys:
+            try:
+                prm_value = self.data[prm]
+            except KeyError:
+                try:
+                    prm_value = self._arg_defaults[prm]
+                except KeyError:
+                    if prm in optional:
+                        prm_value = None
+                    else:
+                        raise KeyError(f"Missing required parameter {prm!r}")
+            setattr(self, prm.lower(), prm_value)
+
+    @property
+    def mdp_parameters(self) -> CaselessDict[str, str]:
+        if not hasattr(self, "_mdp_defaults"):
+            self._mdp_defaults = MDP_DEFAULTS
+        return self._mdp_defaults
+
+    def get_ff_data(self):
+        from ClayCode.core.classes import ForceField
+
+        water_sel_dict = {"SPC": ["ClayFF_Fe", ["spc", "interlayer_spc"]]}
+        ff_dict = {}
+        logger.info(get_subheader("Getting force field data"))
+        for ff_key, ff_sel in self.ff.items():
+            if ff_key == "WATER":
+                ff_sel = water_sel_dict[ff_sel][0]
+            ff = ForceField(FF / ff_sel)
+            ff_dict[ff_key.lower()] = ff
+            logger.finfo(kwd_str=f"{ff_key}: ", message=f"{ff.name}")
+            itp_str = f"\n\t".join(ff.itp_filelist.stems)
+            logger.info(f"\t{itp_str}\n")
+        self.ff = ff_dict
+
+    @property
+    def ff_data(self) -> Dict[str, Type["ForceField"]]:
+        if not hasattr(self, "ff"):
+            self.get_ff_data()
+        return self.ff
+
+    def _select_clay(
+        self, universe: MDAnalysis.Universe
+    ) -> MDAnalysis.Universe:
+        return select_clay(universe, self.ff)
+
+    @property
+    def update_mdp_parameters(
+        self, key: str, prm_dict: Union[CaselessDict[str, Any], Dict[str, Any]]
+    ):
+        mdp_prms = self.mdp_defaults
+        try:
+            mdp_prms[key].update(CaselessDict(prm_dict))
+        except KeyError:
+            mdp_prms[key] = CaselessDict(prm_dict)
+        self._mdp_defaults = mdp_prms
+
+    def _get_gmx_prms(self):
+        try:
+            GMX = self.data["GMX"]
+        except KeyError:
+            GMX = self._arg_defaults["GMX"]
+            logger.finfo(
+                kwd_str="Using default GROMACS alias: ", message=f"{GMX}"
+            )
+        setattr(self, "gmx_alias", GMX)
+
+    def _get_outpath(self):
+        try:
+            outpath = self.data["OUTPATH"]
+            self.outpath = Dir(outpath, check=False)
+        except KeyError:
+            raise KeyError("No output directory specified")
 
 
 class BuildArgs(_Args):
@@ -472,6 +577,7 @@ class BuildArgs(_Args):
         "MIN_IL_HEIGHT",
         "MAX_UCS",
     ]
+    _arg_defaults = _build_defaults
 
     def __init__(self, data, debug_run=False) -> None:
         super().__init__(data)
@@ -479,7 +585,6 @@ class BuildArgs(_Args):
         self._target_comp = None
         self._uc_data = None
         self.filestem: str = None
-        # self.uc_df: pd.DataFrame = None
         self.uc_charges: pd.DataFrame = None
         self.x_cells: int = None
         self.y_cells: int = None
@@ -493,12 +598,9 @@ class BuildArgs(_Args):
         self._raw_comp: pd.DataFrame = None
         self._corr_comp: pd.DataFrame = None
         self._uc_comp: pd.DataFrame = None
-        self.mdp_parameters: Dict[str, Any] = None
         self.ff = None
         self.ucs = None
         self.il_solv = None
-        # self.read_yaml()
-        # self.check()
         self.process()
 
     @read_yaml_path_decorator("CLAY_COMP", "OUTPATH")
@@ -605,7 +707,7 @@ class BuildArgs(_Args):
                 f"Only one interlayer solvation specification allowed!\n Found {len(il_solv_prms)}: "
                 + ", ".join(il_solv_prms)
             )
-        for prm in [
+        data_keys = [
             "BUILD",
             "X_CELLS",
             "Y_CELLS",
@@ -624,36 +726,21 @@ class BuildArgs(_Args):
             "ZERO_THRESHOLD",
             "Z_PADDING",
             "MIN_IL_HEIGHT",
-        ]:
-            try:
-                prm_value = self.data[prm]
-            except KeyError:
-                prm_value = self._build_defaults[prm]
-            setattr(self, prm.lower(), prm_value)
+        ]
+        self._set_attributes(data_keys=data_keys)
         if self.z_padding <= 0:
             raise ValueError(f"Interlayer padding must be > 0 {ANGSTROM}")
-        setattr(self, "mdp_parameters", MDP_DEFAULTS)
+        # setattr(self, "mdp_parameters", MDP_DEFAULTS)
         setattr(self, "max_ucs", self.data["MAX_UCS"])
         try:
             mdp_prm_file = self.data["MDP_PRMS"]
             with open(mdp_prm_file, "r") as mdp_file:
                 mdp_prms = yaml.safe_load(mdp_file)
-                self.mdp_parameters["EM"].update(mdp_prms)
+                self.mdp_parameters.update_mdp_parameters("EM", mdp_prms)
         except KeyError:
             pass
-        try:
-            outpath = self.data["OUTPATH"]
-            self.outpath = Dir(outpath, check=False)
-        except KeyError:
-            raise KeyError("No output directory specified")
-        try:
-            GMX = self.data["GMX"]
-        except KeyError:
-            GMX = self._build_defaults["GMX"]
-            logger.finfo(
-                kwd_str="Using default GROMACS alias: ", message=f"{GMX}"
-            )
-        setattr(self, "gmx_alias", GMX)
+        self._get_outpath()
+        self._get_gmx_prms()
 
     def _get_zarr_storage(self, name, **kwargs):
         import zarr
@@ -687,22 +774,6 @@ class BuildArgs(_Args):
         self.get_il_ions()
         self.get_il_solvation_data()
         self.get_bulk_ions()
-
-    def get_ff_data(self):
-        from ClayCode.core.classes import ForceField
-
-        water_sel_dict = {"SPC": ["ClayFF_Fe", ["spc", "interlayer_spc"]]}
-        ff_dict = {}
-        logger.info(get_subheader("Getting force field data"))
-        for ff_key, ff_sel in self.ff.items():
-            if ff_key == "WATER":
-                ff_sel = water_sel_dict[ff_sel][0]
-            ff = ForceField(FF / ff_sel)
-            ff_dict[ff_key.lower()] = ff
-            logger.finfo(kwd_str=f"{ff_key}: ", message=f"{ff.name}")
-            itp_str = f"\n\t".join(ff.itp_filelist.stems)
-            logger.info(f"\t{itp_str}\n")
-        self.ff = ff_dict
 
     def get_uc_data(self):
         from ClayCode.builder.claycomp import UCData
@@ -847,13 +918,17 @@ class BuildArgs(_Args):
 
     @property
     def sheet_uc_ids(self):
+        """Unit cell IDs in clay sheet.
+        :rtype: NDArray[str]"""
         return self.match_comp.uc_ids
 
     @property
     def match_charge(self):
+        """Total charge of clay model."""
         return self.match_comp.match_charge
 
-    def get_il_ions(self):
+    def get_il_ions(self) -> None:
+        """Get interlayer ion concentrations."""
         from ClayCode.builder.claycomp import InterlayerIons
 
         tot_charge = self.match_charge["tot"]
@@ -870,7 +945,8 @@ class BuildArgs(_Args):
                 n_ucs=self.sheet_n_cells,
             )
 
-    def get_bulk_ions(self):
+    def get_bulk_ions(self) -> None:
+        """Get bulk ion concentrations."""
         from ClayCode.builder.claycomp import BulkIons, InterlayerIons
 
         self._bulk_ions = BulkIons(
@@ -886,15 +962,21 @@ class BuildArgs(_Args):
             )
 
     @property
-    def bulk_ion_conc(self):
+    def bulk_ion_conc(self) -> float:
+        """Total bulk ion concentration.
+        :rtype: float"""
         return self._bulk_ions.tot_conc
 
     @property
-    def bulk_ion_df(self):
+    def bulk_ion_df(self) -> pd.DataFrame:
+        """DataFrame with bulk ion concentrations.
+        :rtype: pd.DataFrame"""
         return self._bulk_ions.conc
 
     @cached_property
-    def default_bulk_pion(self):
+    def default_bulk_pion(self) -> Tuple[str, float]:
+        """Default bulk cation species to neutralise excess charge.
+        :rtype: Tuple[str, float]"""
         neutralise_ions = self._bulk_ions.neutralise_ions
         return tuple(
             *neutralise_ions[neutralise_ions["charge"] > 0]["conc"]
@@ -904,6 +986,8 @@ class BuildArgs(_Args):
 
     @cached_property
     def default_bulk_nion(self):
+        """Default bulk anion species to neutralise excess charge.
+        :rtype: Tuple[str, float]"""
         neutralise_ions = self._bulk_ions.neutralise_ions
         return tuple(
             *neutralise_ions[neutralise_ions["charge"] < 0]["conc"]
@@ -912,7 +996,9 @@ class BuildArgs(_Args):
         )
 
     @cached_property
-    def neutral_bulk_ions(self):
+    def neutral_bulk_ions(self) -> Union[pd.DataFrame, None]:
+        """Number of bulk ions to neutralise excess charge.
+        :rtype: pd.DataFrame or None"""
         try:
             neutral_df = self._neutral_bulk_ions.df
         except AttributeError:
@@ -921,25 +1007,37 @@ class BuildArgs(_Args):
             return neutral_df
 
     @property
-    def n_il_ions(self):
+    def n_il_ions(self) -> Dict[str, int]:
+        """Number of interlayer ions per clay sheet
+        :rtype: Dict[str, int]"""
         return self.il_ions.numbers
 
 
 class AnalysisArgs(_Args):
+    """Parameters for analysing simulation run data with :mod:`ClayCode.analysis`"""
+
     option = "analysis"
 
-    def __init__(self, data):
+    def __init__(self, data: Dict[str, Any]):
+        """Class for handling arguments for analysing simulation run data."""
         super().__init__(data)
 
 
 class CheckArgs(_Args):
+    """Parameters for checking simulation run data with :mod:`ClayCode.check`"""
+
     option = "check"
 
-    def __init__(self, data):
+    def __init__(self, data: Dict[str, Any]):
+        """Class for handling arguments for checking simulation run data.
+        :param data: dictionary of arguments
+        :type data: Dict[str, Any]"""
         super().__init__(data)
 
 
 class EditArgs(_Args):
+    """Parameters for editing clay model with :mod:`ClayCode.edit`"""
+
     option = "edit"
 
     _arg_names = [
@@ -956,19 +1054,31 @@ class EditArgs(_Args):
         "ions": ["pion", "n_ion", "conc", "n_mols", "replace_type"],
     }
 
-    def __init__(self, data):
+    def __init__(self, data: Dict[str, Any]):
+        """Class for handling arguments for editing clay models.
+        :param data: dictionary of arguments
+        :type data: Dict[str, Any]"""
         super().__init__(data)
 
 
 class PlotArgs(_Args):
+    """Parameters for plotting analysis data with :mod:`ClayCode.plot`"""
+
     option = "plot"
 
-    def __init__(self, data):
+    def __init__(self, data: Dict[str, Any]):
+        """Class for handling arguments for plotting analysis data.
+        :param data: dictionary of arguments
+        :type data: Dict[str, Any]"""
         super().__init__(data)
 
 
 class SiminpArgs(_Args):
+    """Parameters for setting up GROMACS simulations with :mod:`ClayCode.siminp`"""
+
     option = "siminp"
+    from ClayCode.siminp.consts import SIMINP_DEFAULTS as _siminp_defaults
+
     # TODO: Add csv or yaml for eq run prms
     _run_order = [
         "EM",
@@ -997,23 +1107,29 @@ class SiminpArgs(_Args):
         "MDP_PRMS",
         "GMX",
         "GMX_VERSION",
+        "FF",
     ]
+    _arg_defaults = _siminp_defaults
 
-    def __init__(self, data, debug_run=False):
-        # from ClayCode.siminp.consts import SIMINP_DEFAULTS as _siminp_defaults
-
+    def __init__(self, data: Dict[str, Any], debug_run: bool = False):
+        """Class for handling arguments for setting up GROMACS simulations.
+        :param data: dictionary of arguments
+        :type data: Dict[str, Any]
+        :debug_run: flag for running in debug mode
+        :type debug_run: bool"""
         super().__init__(data)
+        self.run_sequence = []
         self.debug_run = debug_run
         self.process()
 
-    @read_yaml_path_decorator("RUN_PRMS")
-    def read_yaml(self) -> None:
+    @read_yaml_path_decorator("OUTPATH", "INPATH", "INGRO", "INTOP")
+    def read_yaml(self, enumerate_duplicates=True) -> None:
         """Read clay model builder specifications
         and mdp_parameter defaults from yaml file."""
         pass
 
     def _get_run_specs(self):
-        run_factory = GMXRunFactory()
+        """Get run specifications from YAML file data."""
         try:
             run_specs: dict = self.data["SIMINP"]
         except KeyError:
@@ -1023,78 +1139,249 @@ class SiminpArgs(_Args):
             logger.finfo("Selected run types:")
             run_id = 0
             runs = {}
+            matches = []
             for run_type in self._run_order:
-                matches = []
-                for run_spec in run_specs.keys():
+                remove_keys = []
+                for run_spec, run_options in sorted(run_specs.items()):
                     match = re.match(f"{run_type}[_0-9]*", run_spec)
                     if match:
-                        matches.append(match.group(0))
-                for match_run in sorted(matches):
-                    run_id += 1
-                    run_options = run_specs.pop(match_run)
-                    runs[run_id] = {match_run: run_options}
-                    run = run_factory.init_subclass(
-                        match_run, run_id, run_options
+                        # run_type = match.group(0)
+                        matches.append((run_spec, match.group(0), run_options))
+                        remove_keys.append(run_spec)
+                    # else:
+                    # run_type = run_spec
+                    # non_matches.append((run_spec, run_spec, run_options))
+                    # matches[run_spec] = (match.group(0), run_options)
+                    # matches.append(run_spec, match.group(0), run_options)
+                for match in remove_keys:
+                    run_specs.pop(match)
+            non_matches = [(k, k, v) for k, v in sorted(run_specs.items())]
+            for run_name, run_match, run_options in [*matches, *non_matches]:
+                print(run_name)
+                run_id += 1
+                if run_id == 1:
+                    self.mdp_generator.add_run(
+                        run_id,
+                        run_name,
+                        igro=self.ingro,
+                        itop=self.intop,
+                        odir=self.outpath,
+                        deffnm=run_name,
+                        **run_options,
                     )
-                    logger.finfo(f"\t{run_id}: {run_type}")
-
-    def process(self):
-        logger.info(get_header("Getting simulation input parameters"))
-        self.read_yaml()
-        self.runs = self._get_run_specs()
-
-        if "dspace" in self.data:
-            logger.info(get_subheader("d-spacing equilibration parameters"))
-            self.d_spacing = self.data[
-                "D_SPACE"
-            ]  # convert d-spacing from A to nm
-            self.n_wat = self.data["n_wat"]
-            self.n_steps = self.data["n_steps"]
-            self.data["runs"].append("D_SPACE")
-            logger.finfo(f"Target spacing: {self.d_spacing:2.2f} {ANGSTROM}")
-            logger.finfo(
-                f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"
-            )
-        if self.data["runs"] is not None:
-            self.run_sequence = sorted(self.data["runs"])
-            assigned_id = 1
-            for run_id, run_name in enumerate(self.run_sequence):
-                try:
-                    run_type, assigned_id = run_name.split("_")
-                except ValueError:
-                    run_type = run_name
-                    if run_id != 0:
-                        if prev == run_type:
-                            if assigned_id == 1:
-                                self.run_sequence[
-                                    run_id - 1
-                                ] = f"{prev}_{assigned_id}"
-                            assigned_id += 1
-                            self.run_sequence[
-                                run_id
-                            ] = f"{run_type}_{assigned_id}"
-                        else:
-                            assigned_id = 1
-                prev = run_type
-            logger.info(get_subheader("Selected the following run types:"))
-            for run_id, run_name in enumerate(self.run_sequence):
-                logger.finfo(f"\t{run_id + 1}: {run_name}")
+                else:
+                    self.mdp_generator.add_run(
+                        run_id,
+                        run_name,
+                        odir=self.outpath,
+                        deffnm=run_name,
+                        **run_options,
+                    )
+                # run_options = run_specs.pop(run_name)
+                # runs[run_id] = {match_run: run_options}
+                # mdp_generator.add_run(
+                #     run_id=run_id,
+                #     name=match_run,
+                # )
+                # run_generator = MDPRunGenerator(mdp_prms=)
+                # run = run_factory.init_subclass(
+                #     match_run, run_id, run_options
+                # )
+                logger.finfo(f"\t{run_id}: {run_name}")
+            # return runs
 
     def check(self):
-        ...
+        """Check that all required arguments are present and set instance attributes."""
+
+        data_keys = [
+            "GMX",
+            "GMX_VERSION",
+            "INGRO",
+            "OUTPATH",
+            "INPATH",
+            "INTOP",
+            "FF",
+            "SCRIPT_TEMPLATE",
+        ]
+        paths = ["OUTPATH", "INPATH", "INGRO"]
+        if [k in self.data.keys() for k in paths].count(True) == 0:
+            raise ValueError(
+                f"At leat one of {', '.join(paths)} must be specified for simulation input generation!"
+            )
+        elif [k in self.data.keys() for k in ["INPATH", "OUTPATH"]].count(
+            True
+        ) == 1:
+            self.data["INPATH"] = self.data["OUTPATH"] = (
+                self.data["INPATH"] or self.data["OUTPATH"]
+            )
+        elif [k in self.data.keys() for k in ["INPATH", "OUTPATH"]].count(
+            True
+        ) == 2:
+            pass
+        else:
+            self.data["INPATH"] = self.data["OUTPATH"] = self.data[
+                "INGRO"
+            ].parent
+        if "INGRO" not in self.data.keys():
+            self.data["INGRO"] = select_file(
+                self.data["INPATH"], suffix=".gro", how="latest"
+            )
+        if "INTOP" not in self.data.keys():
+            self.data["INTOP"] = select_file(
+                self.data["INPATH"], suffix=".top", how="latest"
+            )
+        self._set_attributes(
+            data_keys=data_keys, optional=["INTOP", "SCRIPT_TEMPLATE"]
+        )
+
+    def process(self):
+        """Process simulation input arguments."""
+        logger.info(get_header("Getting simulation input parameters"))
+        self.read_yaml(enumerate_duplicates=True)
+        self.check()
+        self.get_ff_data()
+        if self.data["SIMINP"]:
+            prms_dict = {"mdp_prms": None, "run_prms": None}
+            for k in prms_dict:
+                try:
+                    prms_dict[k] = self.data[k.upper()]
+                except KeyError:
+                    pass
+            self.mdp_generator = MDPRunGenerator(
+                gmx_alias=self.gmx,
+                gmx_version=self.gmx_version,
+                mdp_prms=prms_dict["mdp_prms"],
+                run_options=prms_dict["run_prms"],
+            )
+        self._get_run_specs()
+        # if "dspace" in self.data:
+        #     logger.info(get_subheader("d-spacing equilibration parameters"))
+        #     self.d_spacing = self.data[
+        #         "D_SPACE"
+        #     ]  # convert d-spacing from A to nm
+        #     self.n_wat = self.data["n_wat"]
+        #     self.n_steps = self.data["n_steps"]
+        #     self.data["runs"].append("D_SPACE")
+        #     logger.finfo(f"Target spacing: {self.d_spacing:2.2f} {ANGSTROM}")
+        #     logger.finfo(
+        #         f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"
+        #     )
+        # if len(self.mdp_generator._runs) != 0:
+        #     prms_dict = {"mdp_prms": None, "run_prms": None}
+        #     for k in prms_dict:
+        #         try:
+        #             prms_dict[k] = self.data[k.upper()]
+        #         except KeyError:
+        #             pass
+        #     self.run_sequence = self.data["runs"]
+        #     assigned_id = 1
+        #     logger.info(get_subheader("Selected the following run types:"))
+        #     for run_id, run_dict in sorted(self.run_sequence.items()):
+        #         for run_name, run_prms in run_dict.items():
+        #             try:
+        #                 run_type, assigned_id = run_name.split("_")
+        #             except ValueError:
+        #                 run_type = run_name
+        #                 assigned_id = run_id
+        #             finally:
+        #                 # if run_id != 1:
+        #         if prev == run_type:
+        #             if assigned_id == 1:
+        #                 self.run_sequence[run_id - 1] = {
+        #                     f"{prev}_{assigned_id}": run_prms
+        #                 }
+        #             assigned_id += 1
+        #             self.run_sequence[run_id] = {
+        #                 f"{run_type}_{assigned_id}": run_prms
+        #             }
+        #         else:
+        #             assigned_id = 1
+        # prev = run_type
+        #
+        # # for run_id, run_name in enumerate(self.run_sequence):
+        # logger.finfo(
+        #     f"\t{run_id}: {next(iter(self.run_sequence[run_id].keys()))}"
+        # )
+
+    def write_runs(self):
+        self.mdp_generator.write_runs(self.outpath, ff=self.ff_data)
+
+
+class DataArgs(_Args):
+    """Class for handling arguments for adding or modifying interlayer data with :mod:`ClayCode.data`."""
+
+    option = "data"
+    _arg_names = [
+        "OUTPATH",
+        "INGRO",
+        "UC_TYPE",
+        "SUBSTITUTIONS",
+        "DEFAULT_SOLV",
+    ]
+
+    _arg_defaults = {"SUBSTITUTIONS": None, "DEFAULT_SOLV": None}
+
+    def __init__(self, data, debug_run=False):
+        """Initialise data argument class.
+        :param data: command line arguments
+        :param type: Dict[str, Any]
+         :param debug_run: debug run flag
+         :param type: bool"""
+        super().__init__(data)
+        self.process()
+
+    def process(self):
+        """Process data arguments."""
+        self.read_yaml()
+        self.check()
+
+    @read_yaml_path_decorator("OUTPATH", "INGRO")
+    def read_yaml(self):
+        """Read specifications from yaml file."""
+        pass
+
+    def check(self) -> None:
+        """Check that all required arguments are present."""
+        self._set_attributes(data_keys=self._arg_names)
+
+    def add_substitutions(self) -> None:
+        """Generate new unit cell by adding substitutions to base unit cell."""
+        for k, v in self.substitutions.items():
+            if isinstance(v, dict):
+                for k1, v1 in v.items():
+                    self.uc_writer.add_substitution(k1, v1)
+            else:
+                self.uc_writer.add_substitution(k, v)
+
+    def _split_sub_str(self, sub_str: str) -> Tuple[str]:
+        """Split a '->' separated string into a tuple of two strings.
+        :param sub_str: string to split
+        :type sub_str: str
+        :return: tuple of two strings
+        :return type: Tuple[str]
+        """
+        return tuple([s.strip() for s in sub_str.split("->")])
 
 
 class ArgsFactory:
+    """Factory class for initialising parser argument classes."""
+
     _options = {
         "builder": BuildArgs,
         "edit": EditArgs,
         "check": CheckArgs,
         "analysis": AnalysisArgs,
         "siminp": SiminpArgs,
+        "data": DataArgs,
     }
 
     @classmethod
     def init_subclass(cls, parse_args):
+        """Initialise parser argument class based on command line arguments.
+        :param parse_args: command line arguments
+        :param type: Dict[str, Any]
+        :return: parser argument class
+        :return type: _Args subclass"""
         if type(parse_args) != dict:
             data = parse_args.__dict__
         option = data.pop("option")

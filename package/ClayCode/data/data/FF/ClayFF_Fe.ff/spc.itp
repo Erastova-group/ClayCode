@@ -1,3 +1,5 @@
+; Bulk SPC water
+
 [ moleculetype ]
 ; molname       nrexcl
   SOL           2

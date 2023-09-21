@@ -12,27 +12,20 @@ import sys
 import threading
 import time
 import warnings
+from collections import defaultdict
 from functools import partial, singledispatch, wraps
 from itertools import chain
 from pathlib import Path
-from typing import (
-    Any,
-    Generator,
-    Iterable,
-    Iterator,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import Any, List, Literal, Optional, Tuple, Union
 
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
+import yaml.loader
 from caseless_dictionary import CaselessDict
 from ClayCode.core.consts import LINE_LENGTH as line_length
 from ClayCode.core.consts import TABSIZE, exec_date, exec_time
+from numpy.typing import ArrayLike, NDArray
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -211,9 +204,6 @@ def _(match_obj: dict[str, Any]) -> str:
     return "|".join([str(x) for x in match_obj.keys()])
 
 
-from numpy.typing import ArrayLike, NDArray
-
-
 @get_search_str.register(list)
 def _(match_obj: List[str]):
     return "|".join([str(x) for x in match_obj])
@@ -367,6 +357,7 @@ def select_file(
     suffix=None,
     how: Literal["latest", "largest"] = "latest",
 ) -> Union[None, Path]:
+    """Select file from path."""
     check_func_dict = {
         "latest": lambda x: x.st_mtime,
         "largest": lambda x: x.st_size,
@@ -378,12 +369,15 @@ def select_file(
     if searchstr is None and suffix is None:
         f_iter = path.iterdir()
     else:
-        if suffix is None:
+        if suffix is None or suffix == "":
             suffix = ""
+        else:
+            suffix = suffix.strip(".")
+            suffix = f".{suffix}"
         if searchstr is None:
             searchstr = "*"
-        f_iter = path.glob(rf"{searchstr}[.]*{suffix}")
-        backups = path.glob(rf"#{searchstr}[.]*{suffix}.[1-9]*#")
+        f_iter = path.glob(rf"{searchstr}{suffix}")
+        backups = path.glob(rf"#{searchstr}{suffix}.[1-9]*#")
         f_iter = chain(f_iter, backups)
     prev_file_stat = 0
     last_file = None
@@ -406,6 +400,10 @@ def select_file(
 
 
 def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]) -> np.array:
+    """Get product of index levels with names in `name_sel`.
+    :param idx: index
+    :param name_sel: list of index level names
+    :return: array of index values"""
     idx_names = idx.names
     idx_values = [
         idx.get_level_values(level=name)
@@ -422,6 +420,10 @@ def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]) -> np.array:
 def get_u_files(
     path: Union[str, Path], suffices=["gro", "top"]
 ) -> Tuple[Path, Path]:
+    """Get files in with selected suffices and same name stem as `path`.
+    :param path: path to file
+    :param suffices: suffices of files to select
+    :return: tuple of files"""
     files = {}
     path = Path(path)
     largest_files = ["trr"]
@@ -437,6 +439,11 @@ def get_u_files(
 def _get_header(
     header_str: str, fill: str, n_linechars: int = line_length
 ) -> str:
+    """Get header for printing formatted log headers.
+    :param header_str: header string
+    :param fill: fill character
+    :param n_linechars: number of characters per line
+    :return: header string"""
     return (
         f"\n{fill:{fill}>{n_linechars}}\n"
         f"{header_str:^{n_linechars}}\n"
@@ -448,6 +455,10 @@ def backup_files(
     new_filename: Union[str, Path],
     old_filename: Optional[Union[str, Path]] = None,
 ) -> str:
+    """Backup files.
+    :param new_filename: new filename
+    :param old_filename: old filename
+    :return: backup string for log"""
     already_exists = list(new_filename.parent.glob(f"{new_filename.name}"))
     already_exists.extend(
         list(new_filename.parent.glob(f"{new_filename.name}.*"))
@@ -475,6 +486,12 @@ def backup_files(
 
 
 def _get_info_box(header_str, fill, n_linechars=line_length, n_fillchars=0):
+    """Get info box for printing formatted log headers.
+    :param header_str: header string
+    :param fill: fill character
+    :param n_linechars: number of characters per line
+    :param n_fillchars: number of fill characters
+    :return: info box string"""
     fill_len = n_fillchars // 2
     n_linechars -= 2 * fill_len
     return (
@@ -493,6 +510,11 @@ get_debugheader = partial(get_debugheader, n_fillchars=50)
 
 
 def open_outfile(outpath: Union[Path, str], suffix: str, default: str):
+    """Process output path or set output filename to default and initialise parent directory.
+    :param outpath: output path or bool
+    :param suffix: suffix of output file
+    :param default: default output filename
+    :return: output path"""
     if type(outpath) == bool:
         outpath = Path(f"{default}.json")
     elif type(outpath) in [str, Path]:
@@ -505,6 +527,8 @@ def open_outfile(outpath: Union[Path, str], suffix: str, default: str):
 
 
 def get_file_or_str(f):
+    """Get file or string from file or string."""
+
     @wraps(f)
     def wrapper(file_or_str, *args, **kwargs):
         import json
@@ -535,17 +559,33 @@ def get_file_or_str(f):
     return wrapper
 
 
-def get_arr_bytes(shape: Tuple[int, int], arr_dtype):
+def get_arr_bytes(shape: Tuple[int, int], arr_dtype) -> int:
+    """Get number of bytes in array.
+    :param shape: shape of array
+    :param arr_dtype: dtype of array
+    :return: number of bytes in array
+    """
     return np.prod(shape) * np.empty(shape=(1,), dtype=arr_dtype).itemsize
 
 
 def get_n_combs(N, k):
+    """Get number of combinations of k items from N items.
+    :param N: number of items
+    :param k: number of items to select
+    :return: number of combinations
+    """
     return int(
         math.factorial(N - 1) / (math.factorial(k - 1) * math.factorial(N - k))
     )
 
 
 def property_exists_checker(instance, property_name, prop_type=None):
+    """Check if property exists and is of correct type.
+    :param instance: instance of class
+    :param property_name: name of property to check
+    :param prop_type: type of property to check
+    :return: None
+    """
     prop = getattr(instance, f"_{property_name}")
     if prop is None:
         raise AttributeError(
@@ -553,3 +593,55 @@ def property_exists_checker(instance, property_name, prop_type=None):
         )
     if prop_type is not None and type(prop) != prop_type:
         setattr(instance, prop_type(prop))
+
+
+def parse_yaml_with_duplicate_keys(yaml_source):
+    """Parse yaml file and enumerate names of duplicate keys.
+    :param yaml_source: yaml file or string
+    :return: dictionary with parsed data
+    """
+
+    class DuplicateKeyLoader(yaml.loader.Loader):
+        pass
+
+    def construct_mapping(loader, node, deep=False):
+        """Load data from yaml file and enumerate names of duplicate keys.
+        :param loader: yaml loader
+        :param node: yaml node
+        :param deep: if True, recursively load data
+        :return: dictionary with parsed data
+        """
+        mapping = defaultdict(list)
+        remove_keys = []
+        for k, v in node.value:
+            key = loader.construct_object(k, deep=deep)
+            v = loader.construct_object(v, deep=deep)
+            mapping[key].append(v)
+        for k, v in mapping.copy().items():
+            if len(v) == 1:
+                mapping[k] = v[0]
+            else:
+                for i in range(len(v)):
+                    mapping[f"{k}_{i+1}"] = v[i]
+                remove_keys.append(k)
+        for k in remove_keys:
+            mapping.pop(k)
+        return dict(mapping)
+
+    DuplicateKeyLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping
+    )
+    return yaml.load(yaml_source, DuplicateKeyLoader)
+
+
+def parse_yaml(source, enumerate_duplicates=False):
+    """Parse yaml file and with option to enumerate names of duplicate keys.
+    :param source: yaml file or string
+    :param enumerate_duplicates: if True, enumerate names of duplicate keys
+    :return: dictionary with parsed data
+    """
+    if enumerate_duplicates:
+        yaml_str = parse_yaml_with_duplicate_keys(source)
+    else:
+        yaml_str = yaml.safe_load(source)
+    return yaml_str

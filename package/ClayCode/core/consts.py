@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict
 
 import yaml
+from caseless_dictionary import CaselessDict
 from importlib_resources import files
 
 __all__ = [
@@ -29,9 +30,7 @@ __all__ = [
     "ITP_KWDS",
 ]
 
-from caseless_dictionary import CaselessDict
-
-DATA = files("ClayCode.data")
+DATA = files("ClayCode.data.data")
 AA = DATA.joinpath("AA")
 FF = DATA.joinpath("FF")
 MDP = DATA.joinpath("MDP")
@@ -95,6 +94,7 @@ ITP_KWDS = TOP_KWDS = {
     "molecules": ["res-name", "mol-number"],
     "settles": ["at-type", "func", "doh", "dhh"],
     "exclusions": ["ai", "aj", "ak"],
+    "position_restraints": ["i", "funct", "fcx", "fcy", "fcz"],
 }
 DTYPES = {
     "at-type": "str",
@@ -136,6 +136,10 @@ DTYPES = {
     "funct": "int16",
     "sys-name": "str",
     "mol-number": "int32",
+    "fcx": "int32",
+    "fcy": "int32",
+    "fcz": "int32",
+    "i": "int32",
 }
 
 GRO_KWDS = {}
@@ -159,14 +163,12 @@ def set_globals() -> Dict[str, Dict[str, str]]:
     )
     for kwd_dict in kwds:
         kwd = kwd_dict.split("_")[0]
-        # assert len(dicts) % 2 == 0, ValueError(f'Expected even number of KWD and DTYPE dictionaries.')
         new_dict = {}
         for key, vals in global_dict(kwd_dict).items():
             new_dict[key] = {}
             for val in vals:
                 new_dict[key][val] = global_dict("DTYPES")[val]
         combined_dict[f".{kwd.lower()}"] = new_dict
-        # del_global(kwd_dict)
     del_global("DTYPES")
     return combined_dict
 

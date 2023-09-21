@@ -1,8 +1,31 @@
+; Nonbonded Clayff parameters
+; +++++++++++++++++++++++++++
+;
+; atom descriptions and masses are assigned in atomtypes.atp
+;
+; ClayFF parameters:
+; ==================
+;       Cygan, R. T., Greathouse, J. A., & Kalinichev, A. G. (2021).
+;       Journal of Physical Chemistry C, 125(32), 17573–17589.
+;       Supplementary data: 10.1021/ACS.JPCC.1C04600/SUPPL_FILE/JP1C04600_SI_001.PDF
+;   Notes:
+;   ------
+;
+;       edited feo to be "D_o value for Fe should be 9.0298 x 10-7, not 9.0298 x 10-6 as in the paper" - Andrey K.
+;       i.e D_o of Fe is = Mg not Li
+;       introduced Fe(II) -fe2- that is same as Fe(III) -feo- but has charges of octahedral Mg -mgo-
+; Trioctahedral O-parameters for talc:
+; ------------------------------------
+;       Wang, J., Kalinichev, A. G., & Kirkpatrick, R. J. (2006).
+;       Geochimica et Cosmochimica Acta, 70(3), 562–582. 10.1016/j.gca.2005.10.006
+;
+; Trioctahedral O-parameters for charged clays:
+; ---------------------------------------------
+;       Marry, V., Dubois, E., Malikova, N., Durand-Vidal, S., Longeville, S., & Breu, J. (2011).
+;       Environmental Science and Technology, 45(7), 2850–2855.
+;       Supplementary data: 10.1021/ES1031932/SUPPL_FILE/ES1031932_SI_001.PDF
+
 [ atomtypes ]
-; atom descriptions and masses are assigned in ffclayff.atp
-; edited feo to be "D_o value for Fe should be 9.0298 x 10-7, not 9.0298 x 10-6 as in the paper"-Andrey K.
-; i.e D_o of Fe is = Mg not Li
-; introduced Fe(II) -fe2- that is same as Fe(III) -feo- nbut has charges of octahedral Mg -mgo-
 ; name at.number mass   charge  ptype   sigma           epsilon
    hw   1       1.008   0.4100  A       0.000000        0.00000
    ho   1       1.008   0.4250  A       0.000000        0.00000

@@ -2,6 +2,12 @@
 # -*- coding: UTF-8 -*-
 from __future__ import annotations
 
+import logging
+
+from ClayCode.core.log import ClayCodeLogger
+
+logging.setLoggerClass(ClayCodeLogger)
+
 from ClayCode.core.classes import (
     BasicPath,
     BasicPathList,
@@ -43,7 +49,6 @@ from ClayCode.core.classes import (
     TOPList,
     YAMLFile,
 )
-from ClayCode.core.log import ClayCodeLogger
 from ClayCode.core.parsing import ArgsFactory, BuildArgs, SiminpArgs, parser
 
 __all__ = [

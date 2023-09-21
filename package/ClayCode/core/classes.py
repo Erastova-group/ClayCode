@@ -42,10 +42,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from caseless_dictionary import CaselessDict
-from ClayCode.core.consts import FF, ITP_KWDS
-from ClayCode.core.consts import KWD_DICT as _KWD_DICT
-from ClayCode.core.consts import MDP_DEFAULTS
-from ClayCode.core.types import (
+from ClayCode.core.cctypes import (
     FileNameMatchSelector,
     PathOrStr,
     PathType,
@@ -54,6 +51,9 @@ from ClayCode.core.types import (
     StrOrListDictOf,
     StrOrListOf,
 )
+from ClayCode.core.consts import FF, ITP_KWDS
+from ClayCode.core.consts import KWD_DICT as _KWD_DICT
+from ClayCode.core.consts import MDP_DEFAULTS
 from ClayCode.core.utils import (
     get_file_or_str,
     get_search_str,
@@ -63,7 +63,7 @@ from MDAnalysis import AtomGroup, ResidueGroup, Universe
 from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
 
-logging.getLogger("numexpr").setLevel(logging.WARNING)
+# logging.getLogger("numexpr").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
@@ -262,9 +262,7 @@ class Kwd(str):
     """str container for '.itp' and '.top' file parameters"""
 
     def match(
-        self,
-        pattern: StrOrListDictOf,
-        mode: Literal["full", "parts"] = "full",
+        self, pattern: StrOrListDictOf, mode: Literal["full", "parts"] = "full"
     ) -> Union[Kwd, None]:
         """Match keywords against a search pattern and return match"""
         if mode == "full":
@@ -1551,7 +1549,7 @@ class MDPFile(File):
     ):
         new_string = self.string
         freezegrps = None
-        freezedims = ["Y Y Y"]
+        freezedims = ["Y", "Y", "Y"]
         if self.gmx_version:
             self.check_keys(other)
         for k, v in other.items():
@@ -1559,16 +1557,22 @@ class MDPFile(File):
                 freezegrps = v
             elif k.lower() == "freezedims":
                 freezedims = v
-            if not re.match(k, search_str, flags=re.IGNORECASE):
+            elif not re.search(
+                k, search_str, flags=re.IGNORECASE | re.MULTILINE
+            ):
                 new_string = add_new_mdp_parameter(k, v, new_string)
             else:
                 if replace:
                     new_string = set_mdp_parameter(k, v, new_string)
                 else:
                     new_string = add_mdp_parameter(k, v, new_string)
-        self.string = new_string
-        if freezegrps:
-            set_mdp_freeze_groups(freezegrps, new_string, freezedims, replace)
+        if freezegrps is not None and freezegrps != [] and freezegrps != "":
+            new_string = set_mdp_freeze_groups(
+                file_or_str=new_string,
+                uc_names=freezegrps,
+                freeze_dims=freezedims,
+                replace=replace,
+            )
         self.string = new_string
 
     # @key_match_decorator("parameters")
@@ -2352,44 +2356,45 @@ def set_mdp_freeze_groups(
     ] = ["Y", "Y", "Y"],
     replace=True,
 ) -> str:
-    try:
-        if isinstance(str, freeze_dims):
-            if freeze_dims not in ["Y", "N"]:
-                freezedimstr = freeze_dims
-                raise ValueError
-            else:
-                freeze_dims = [freeze_dims for _ in range(3)]
-        freezegrpstr = " ".join(uc_names)
-        if len(freeze_dims) % len(uc_names) != 3:
+    if isinstance(freeze_dims, str):
+        if freeze_dims not in ["Y", "N"]:
             raise ValueError(
-                "Freeze dimensions must have either 1 or 3 elements "
-                "in total or 3 elements per group"
+                f"Unexpected freeze dimensions value: {freeze_dims!r}"
+                "\nAccepted options are: Y and N"
             )
-        freezearray = np.tile(freeze_dims, (len(uc_names)))
-        freezedimstr = " ".join(freezearray)
-        if not np.isin(freezearray, ["Y", "N"]).all():
-            raise ValueError
-        for freeze_str, freeze_value in zip(
-            ["freezegrps", "freezedim"], [freezegrpstr, freezedimstr]
+        else:
+            freeze_dims = [freeze_dims for _ in range(3)]
+    if not (
+        len(freeze_dims) % 3 == 0 and len(freeze_dims) // 3 == len(uc_names)
+    ):
+        raise ValueError(
+            "Freeze dimensions must have either 1 or 3 elements "
+            "in total or 3 elements per group"
+        )
+    freezegrpstr = " ".join(uc_names)
+    freezearray = np.tile(freeze_dims, (len(uc_names)))
+    freezedimstr = " ".join(freezearray)
+    if not np.isin(freezearray, ["Y", "N"]).all():
+        raise ValueError
+    for freeze_str, freeze_value in zip(
+        ["freezegrps", "freezedim"], [freezegrpstr, freezedimstr]
+    ):
+        if re.search(
+            freeze_str, input_string, flags=re.IGNORECASE | re.MULTILINE
         ):
-            if re.search(freeze_str, input_string, flags=re.IGNORECASE):
-                if replace:
-                    input_string = set_mdp_parameter(
-                        freeze_str, freeze_value, input_string
-                    )
-                else:
-                    input_string = add_mdp_parameter(
-                        freeze_str, freeze_value, input_string
-                    )
-            else:
-                input_string = add_new_mdp_parameter(
+            if replace:
+                input_string = set_mdp_parameter(
                     freeze_str, freeze_value, input_string
                 )
-    except ValueError:
-        raise ValueError(
-            f"Unexpected freeze dimensions value: {freezedimstr!r}"
-            "\nAccepted options are: Y and N"
-        )
+            else:
+                input_string = add_mdp_parameter(
+                    freeze_str, freeze_value, input_string
+                )
+        else:
+            input_string = add_new_mdp_parameter(
+                freeze_str, freeze_value, input_string
+            )
+
     return input_string
 
 

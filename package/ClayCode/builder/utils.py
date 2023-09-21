@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 logger = logging.getLogger(__name__)
 
 
-def make_manual_setup_choice(select_function: str):
+def make_manual_setup_choice(select_function):
     @wraps(select_function)
     def wrapper(instance_or_manual_setup, *args, **kwargs):
         manual_setup = get_manual_setup_option(instance_or_manual_setup)
@@ -64,7 +64,7 @@ def get_checked_input(
     exit_val: str = "e",
     *result_init_args,
     **result_init_kwargs,
-):
+) -> Any:
     while not isinstance(result, result_type):
         result_input = input(f"{query} (or exit with {exit_val!r})\n")
         if result_input == exit_val:

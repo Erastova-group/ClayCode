@@ -7,8 +7,14 @@ import sys
 from ClayCode import ClayCodeLogger
 from ClayCode.builder.utils import select_input_option
 from ClayCode.core import ArgsFactory, BuildArgs, SiminpArgs, parser
+from ClayCode.core.parsing import DataArgs
+from ClayCode.data.ucgen import UCWriter
 
 __all__ = ["run"]
+
+
+logging.setLoggerClass(ClayCodeLogger)
+
 logger: ClayCodeLogger = logging.getLogger(__name__)
 
 
@@ -19,7 +25,12 @@ def run():
     args = args_factory.init_subclass(args)
     # file_handler = logging.FileHandler(filename=args.)
     # logger.addHandler(file_handler)
-    if isinstance(args, BuildArgs):
+    if isinstance(args, SiminpArgs):
+        args.write_runs()
+    if isinstance(args, DataArgs):
+        uc_writer = UCWriter(args.ingro, args.uc_type, args.outpath)
+        uc_writer.write_new_uc(args.uc_name)
+    elif isinstance(args, BuildArgs):
         from ClayCode.builder import Builder
 
         extra_il_space = {True: 1.5, False: 1}

@@ -143,7 +143,7 @@ dmypy.json
 
 *.tpr
 *.zip
-# *.png
+
 *.bz2
 .idea/
 *#*
@@ -151,9 +151,11 @@ test_data
 notebooks
 results
 dask-worker-space
+.vscode/
 
 # the website goes into the gh-pages branch 
 site/
 *.numbers
 Tutorial/exp_clay.numbers
 Tutorial/*/
+/package/.vscode/
