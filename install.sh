@@ -1,3 +1,3 @@
 #!/bin/bash
 
-pipx install --python python3.9 --force $1 .
+pipx install --python python3.10 --force $1 .
