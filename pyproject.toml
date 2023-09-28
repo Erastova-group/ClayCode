@@ -69,6 +69,4 @@ exclude = '''
     | dist
 )/
 '''
-[project.dev-dependencies]
-sphinx = "^4.0"
-sphinx-autodoc-typehints = "^1.12"  
+
