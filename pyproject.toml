@@ -17,7 +17,8 @@ dependencies = ['matplotlib>=3.6.2',
     'nocasedict',
     'zarr~=2.16',
     'dask~=2023.6',
-    'caseless-dictionary'
+    'caseless-dictionary>=1',
+    'importlib_resources>=6.0'
     ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -51,7 +52,7 @@ include-package-data = true
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"
 
 [build-system]
-requires = ["setuptools>=62"]
+requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.black]
