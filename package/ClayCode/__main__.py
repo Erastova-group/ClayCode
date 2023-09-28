@@ -4,9 +4,8 @@ from __future__ import annotations
 import logging
 import sys
 
-from ClayCode import ClayCodeLogger
+from ClayCode import ArgsFactory, BuildArgs, ClayCodeLogger, SiminpArgs, parser
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core import ArgsFactory, BuildArgs, SiminpArgs, parser
 from ClayCode.core.parsing import DataArgs
 from ClayCode.data.ucgen import UCWriter
 

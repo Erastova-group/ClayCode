@@ -48,6 +48,7 @@ include-package-data = true
     'FF/*.itp', 'MDP/*.mdp', 'UCS/*/*.itp', 'UCS/*/*.itp',
     'UCS/*/*.itp', 'CLAYS/*/*/*/*.gro', 'CLAYS/*/*/*/*.top',
     'UCS/*.csv', 'UCS/*.yaml']
+"ClayCode.siminp.config" = ["defaults.yaml"]
 
 [project.urls]
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"

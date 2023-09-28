@@ -5,4 +5,5 @@ recursive-include package/ClayCode/data *
 recursive-include package/ClayCode/builder/config *
 recursive-include package/ClayCode/builder/tests/ *
 recursive-include package/ClayCode/builder/data *
+recursive-include package/ClayCode/siminp/config *
 
