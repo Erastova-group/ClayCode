@@ -1906,7 +1906,7 @@ class MatchClayComposition(ClayComposition):
 
     def drop_unused_ucs(self):
         all_ucs_df = self._uc_data.df
-        target_df = self.__target_df.dropna().copy()  # .reset_index('sheet')
+        target_df = self.__target_df.dropna().copy()
         combined_idx = (all_ucs_df.index.to_flat_index()).union(
             target_df.index.to_flat_index()
         )
@@ -1941,7 +1941,6 @@ class MatchClayComposition(ClayComposition):
                     accepted_base[group_id] = base_ucs[group_id]
                 else:
                     missing_group_at_types[group_id] = missing_uc_at_types
-                # combined_mask = np.logical_and(unused_uc_atype_mask, unused_target_atype_mask)
             accept = None
             if len(accepted_group) > 1:
                 logger.finfo(f"Found {len(accepted_group)} unit cell groups.")
@@ -2146,9 +2145,7 @@ class MatchClayComposition(ClayComposition):
 
     @property
     def uc_df(self):
-        return self._uc_data.df.reindex(
-            index=self.target_df.index
-        )  # .sort_index(ascending=False, level='sheet', sort_remaining=True).dropna()
+        return self._uc_data.df.reindex(index=self.target_df.index)
 
     @property
     def target_df(self):
@@ -2487,72 +2484,6 @@ class MatchClayComposition(ClayComposition):
         sel[:] = 0
         return sel
 
-    # def get_sheet_uc_number_combinations(self, n_ucs: int):
-    #     """
-    #     Returns a list of lists with the combinations of 2, 3, n_ucs given the
-    #     columns.
-    #     """
-    #     combs_dask = self.uc_weights_da(n_ucs)
-    #     combs_dask[:] = 0
-    #     if combs_dask.shape[0] > 1:
-    #         combs_dask[:, :-1] = [
-    #             x
-    #             for x in itertools.combinations(
-    #                 range(self.sheet_n_ucs - 1), n_ucs - 1
-    #             )
-    #         ]  # itertools.combinations(range(self.sheet_n_ucs - 1), n_ucs-1) # Adjust as needed
-    #     combs_dask = combs_dask.map_blocks(
-    #         self.compute_combinations, self.sheet_n_ucs
-    #     )
-    #     return combs_dask
-    # combs_zarr = self._get_uc_weights_zarr(n_ucs)
-    # combs_zarr[:, :-1] = [
-    #     x
-    #     for x in itertools.combinations(
-    #         range(self.sheet_n_ucs - 1), n_ucs - 1
-    #     )
-    # ]
-    # total_mult = combs_zarr.shape[0] / combs_zarr.nchunks
-    # for chunk_id, chunk in tqdm(
-    #     enumerate(combs_zarr.blocks),
-    #     total=combs_zarr.nchunks,
-    #     ncols=LINE_LENGTH,
-    #     unit_scale=total_mult,
-    #     bar_format="\t{l_bar}{bar}| {total:5.0f} combinations, {elapsed_s:3.1f}/{remaining_s:3.1f} s elapsed/remaining",
-    # ):
-    #     self.compute_combinations(chunk, self.sheet_n_ucs)
-    #     combs_zarr.set_block_selection(chunk_id, chunk)
-    # return combs_zarr
-
-    # @staticmethod
-    # @njit(
-    #     ["void(int32, int32[:, :])", "void(int64, int64[:, :])"], parallel=True
-    # )
-    # def compute_combinations(sheet_n_ucs, chunk):
-    #     m, n = chunk.shape
-    #     for q in prange(m):
-    #         for eid, z in enumerate(
-    #             zip(
-    #                 [-1, *chunk[q, :-1]],
-    #                 [
-    #                     *chunk[q, :-1],
-    #                     sheet_n_ucs - 1,
-    #                 ],
-    #             )
-    #         ):
-    #             chunk[q, eid] = z[1] - z[0]
-    #
-    # @staticmethod
-    # @njit("int16[:,:](int16[:, :], int16)", parallel=True, nogil=True)
-    # def compute_combinations(chunk, N):
-    #     a, b = chunk.shape
-    #     c = N - 1
-    #     for ai in prange(a):
-    #         x = np.array([-1, *chunk[ai, :-1], c])
-    #         for bi in prange(b):
-    #             chunk[ai, bi] = x[bi + 1] - x[bi]
-    #     return chunk
-
     @staticmethod
     def get_uc_weight_list(N, k):
         n_combs = int(
@@ -2572,23 +2503,6 @@ class MatchClayComposition(ClayComposition):
 
     def get_uc_combinations(self, n_ucs):
         return itertools.combinations(self.unique_uc_array, n_ucs)
-
-    # def get_restrained_uc_combinations(self, n_ucs, fixed_uc_idxs):
-    #     uc_array = self.unique_uc_array
-    #     remaining_uc_ids = np.extract(
-    #         np.alltrue(
-    #             np.not_equal(
-    #                 *np.broadcast_arrays(
-    #                     uc_array[:, np.newaxis], np.atleast_2d(fixed_uc_idxs)
-    #                 )
-    #             ),
-    #             axis=1,
-    #         ),
-    #         uc_array,
-    #     )
-    #     n_remaining = n_ucs - len(fixed_uc_idxs)
-    #     for uc_ids in itertools.combinations(remaining_uc_ids, n_remaining):
-    #         yield sorted([*fixed_uc_idxs, *uc_ids])
 
     def get_restrained_uc_combinations(self, n_ucs, fixed_uc_idxs):
         mask = ~np.isin(self.unique_uc_array, fixed_uc_idxs)
@@ -2719,7 +2633,7 @@ class InterlayerIons(Ions):
         df_str = ", ".join(
             [f"{k}: {v}" for k, v in self.df["numbers"].items()]
         )
-        return f"{self.__class__.__name__()}({df_str})"
+        return f"{self.__class__.__name__}({df_str})"
 
     def get_ion_numbers(self, monovalent):
         df = self._df[~np.isclose(self._df["charges"], 0.00)]

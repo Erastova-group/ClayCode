@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
-"""Assemble clay system"""
+r""":mod:`ClayCode.builder.assembly` --- Assembly of clay models
+==============================================================="""
 from __future__ import annotations
 
 import copy
@@ -15,7 +16,7 @@ from typing import Any, Callable, List, Literal, Optional, Type, Union
 
 import numpy as np
 import pandas as pd
-from ClayCode.builder.claycomp import UCData
+from ClayCode.builder.claycomp import InterlayerIons, UCData
 from ClayCode.builder.topology import TopologyConstructor
 from ClayCode.core.classes import (
     Dir,
@@ -109,9 +110,16 @@ class Builder:
 
     @property
     def extended_box(self) -> bool:
+        """
+        :return: Whether a bulk space has been added to the clay stack.
+        :rtype: bool"""
         return self.__box_ext
 
     def solvate_clay_sheets(self, backup: bool = False) -> None:
+        """Generate interlayer solvent sheets.
+        :param backup: Whether to back up existing files.
+        :type backup: bool
+        :return: None"""
         logger.info(get_subheader("2. Generating interlayer solvent."))
         solvent: Solvent = Solvent(
             x_dim=self.sheet.dimensions[0],
@@ -138,6 +146,22 @@ class Builder:
         solvent_rename_func: Optional[Callable[[], Any]] = None,
         backup: bool = False,
     ) -> None:
+        """Construct solvent workflow.
+        :param solvate: Whether to solvate the clay stack.
+        :type solvate: bool
+        :param ion_charge: Charge of the system.
+        :type ion_charge: Union[int, float]
+        :param solvate_add_func: Function to add solvent.
+        :type solvate_add_func: Callable[[bool], Any]
+        :param ion_add_func: Function to add ions.
+        :type ion_add_func: Callable[[], Any]
+        :param solvent_remove_func: Function to remove solvent.
+        :type solvent_remove_func: Callable[[], Any]
+        :param solvent_rename_func: Function to rename solvent.
+        :type solvent_rename_func: Optional[Callable[[], Any]]
+        :param backup: Whether to backup existing files.
+        :type backup: bool
+        :return: None"""
         if not solvate and ion_charge == 0:
             pass
         elif solvate or ion_charge != 0:
@@ -150,6 +174,8 @@ class Builder:
                     solvent_rename_func()
 
     def rename_il_solv(self) -> None:
+        """Rename interlayer solvent residues from 'SOl' to 'iSL'.
+        :return: None"""
         il_u: Universe = Universe(str(self.il_solv))
         il_resnames: NDArray = il_u.residues.resnames
         il_resnames: list = list(
@@ -160,22 +186,20 @@ class Builder:
         self.il_solv.write(topology=self.top)
         self.il_solv = self.il_solv
 
-        # self.top.reset_molecules()
-        # self.top.add_molecules(il_u)
-        # self.top.write(self.il_solv.top)
-
     def run_em(
         self,
         freeze_clay: Optional[
             Union[List[Union[Literal["Y"], Literal["N"]]], bool]
         ] = ["Y", "Y", "Y"],
         backup=False,
-    ):
+    ) -> None:
+        """Run energy minimisation.
+        :param freeze_clay: Whether to freeze the clay stack during energy minimisation. If a list of three booleans is provided, the corresponding dimensions will be frozen. If True, all three dimensions will be frozen. If False, no dimensions will be frozen.
+        :type freeze_clay: Optional[Union[List[Union[Literal["Y"], Literal["N"]]], bool]]
+        :param backup: Whether to backup existing files.
+        :type backup: bool
+        :return: None"""
         logger.info(get_subheader("Minimising energy"))
-        # logger.finfo(f'{self.gmx_info()}')
-        # em_inp = MDP / f"{self.gmx_commands.version}/em.mdp"
-        # em_inp = self.gmx_commands.mdp_template
-        # uc_names = None
         if freeze_clay:
             if isinstance(freeze_clay, bool):
                 freeze_dims = ["Y", "Y", "Y"]
@@ -185,26 +209,7 @@ class Builder:
         else:
             freeze_grps = None
             freeze_dims = None
-        # em_filestr = set_mdp_freeze_groups(
-        #     uc_names=uc_names, get_file_or_str=em_inp, freeze_dims=["Y", "Y", "Y"]
-        # )
-        # for em_prm, prm_value in self.args.mdp_parameters["EM"].items():
-        #     em_filestr = set_mdp_parameter(em_prm, prm_value, em_filestr)
-        # em_filestr = set_mdp_parameter("constraints", "all-bonds", em_filestr)
-        # em_filestr = set_mdp_parameter("emstep", "0.001", em_filestr)
-        # em_filestr = set_mdp_parameter("emtol", "1000", em_filestr)
-        # mdp_file = Path(self.__tmp_outpath.name) / f"{Path(em_inp).stem}.mdp"
-        # with open(mdp_file, "w") as file:
-        # tempfile.NamedTemporaryFile(
-        # mode="w+",
-        # prefix=Path(em_inp).stem,
-        # suffix=".mdp",
-        # delete=False,
-        # dir=self.__tmp_outpath,
-        # ) as mdp_file:
-        # file.write(em_filestr)
         result = run_em(
-            # mdp=mdp_file,
             crdin=self.stack,
             topin=self.stack.top,
             odir=self.args.outpath,
@@ -256,8 +261,12 @@ class Builder:
         return result
 
     def conclude(self):
+        """Conclude model setup.
+        Copy final files to output directory.
+        :return: None"""
         logger.info(get_subheader("Finishing up"))
         self.stack: GROFile = self.args.outpath / self.stack.name
+        add_resnum(crdin=self.stack, crdout=self.stack)
         self.__tmp_outpath.cleanup()
         logger.debug(
             f"Wrote final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
@@ -269,6 +278,8 @@ class Builder:
         logger.info(get_header(f"{self.args.name} model setup complete"))
 
     def remove_il_solv(self, min_height=1.0) -> None:
+        """Remove interlayer solvent if interlayer needs to have ions but no solvent.
+        :return None"""
         logger.finfo("Removing interlayer solvent", initial_linebreak=True)
         il_u: Universe = Universe(str(self.il_solv))
         il_atoms: AtomGroup = il_u.select_atoms("not resname SOL iSL")
@@ -277,6 +288,10 @@ class Builder:
         self.il_solv = self.il_solv
 
     def extend_box(self, backup) -> None:
+        """Extend simulation box to specified height.
+        :param backup: Whether to back up existing files.
+        :type backup: bool
+        :return: None"""
         if type(self.args.box_height) in [int, float]:
             if self.args.box_height > self.stack.universe.dimensions[2]:
                 logger.finfo(
@@ -306,6 +321,8 @@ class Builder:
         check_box_lengths(self.em_prms, self.stack.universe.dimensions[:3])
 
     def remove_SOL(self) -> None:
+        """Remove solvent molecules from clay stack.
+        :return: None"""
         box_u: Universe = self.stack.universe
         box_u: AtomGroup = box_u.select_atoms("not resname SOL")
         self.stack.universe = box_u
@@ -314,6 +331,13 @@ class Builder:
         self.stack.write(topology=self.top)
 
     def solvate_box(self, extra=1.5, backup=False) -> None:
+        """Solvate bulk space.
+        :param extra: Offset for solvation.
+        :type extra: float
+        :param backup: Whether to back up existing files.
+        :type backup: bool
+        :return: None"""
+
         if self.extended_box is True:
             logger.finfo("Adding bulk solvation:")
             solv_box_crd: GROFile = self.get_filename("solv", suffix=".gro")
@@ -333,13 +357,10 @@ class Builder:
                     *self.stack.universe.dimensions[:3] * 0.10
                 ),
             )
-            # self.stack = solv_box_crd
-            # solv_box_u = self.stack.universe
             solv_box_u: Universe = solv_box_crd.universe.copy()
             not_sol: AtomGroup = solv_box_u.select_atoms("not resname SOL")
             sol: AtomGroup = solv_box_u.select_atoms("resname SOL")
             _sol = self.select_molecules_outside_clay(sol, extra=extra)
-            # logger.finfo(f'\tInserted {sol.n_atoms} {np.unique(sol.resnames)[0]} molecules')
             logger.finfo(
                 f"\tInserted {_sol.n_atoms} {np.unique(_sol.resnames)[0]} molecules"
             )
@@ -352,9 +373,6 @@ class Builder:
 
             self.stack: GROFile = solv_box_crd
             self.stack.write(self.top)
-            # self.top.reset_molecules()
-            # self.top.add_molecules(solv_box_u)
-            # self.top.write(self.stack.top)
             logger.finfo(f"Saving solvated box as {self.stack.stem!r}\n")
         else:
             logger.finfo("Skipping bulk solvation.\n")
@@ -364,6 +382,8 @@ class Builder:
         return " ".join(self.args.ff["ions"]["atomtypes"].df["at-type"])
 
     def remove_bulk_ions(self):
+        """Remove ions from bulk space.
+        :return: None"""
         stack_u = self.stack.universe
         il_ions = stack_u.select_atoms(f"resname {self.__ion_sel_str}")
         il_ions = self.select_molecules_outside_clay(il_ions, extra=0)
@@ -373,6 +393,9 @@ class Builder:
 
     @property
     def clay(self):
+        """Clay atoms.
+        :return: AtomGroup of clay atoms.
+        :rtype: AtomGroup"""
         return self.stack.universe.select_atoms(
             f"resname {self.args.uc_stem}*"
         )
@@ -380,6 +403,13 @@ class Builder:
     def select_molecules_outside_clay(
         self, atomgroup: AtomGroup, extra: Union[int, float] = 0
     ) -> AtomGroup:
+        """Select molecules outside clay stack.
+        :param atomgroup: AtomGroup to select from.
+        :type atomgroup: AtomGroup
+        :param extra: Offset to add to clay boundaries.
+        :type extra: Union[int, float]
+        :return: AtomGroup of molecules outside clay stack.
+        :rtype: AtomGroup"""
         atom_group: AtomGroup = select_outside_clay_stack(
             atom_group=atomgroup, clay=self.clay, extra=extra
         )
@@ -391,13 +421,24 @@ class Builder:
 
     @property
     def clay_min(self) -> float:
+        """Minimum z-coordinate of clay atoms.
+        :return: Minimum z-coordinate of clay atoms.
+        :rtype: float"""
         return np.min(self.clay.positions[:, 2])
 
     @property
     def clay_max(self) -> float:
+        """Maximum z-coordinate of clay atoms.
+        :return: Maximum z-coordinate of clay atoms.
+        :rtype: float"""
+
         return np.max(self.clay.positions[:, 2])
 
     def add_bulk_ions(self, backup=False) -> None:
+        """Add bulk ions to bulk space.
+        :param backup: Whether to back up existing files.
+        :type backup: bool
+        """
         if self.extended_box is True:
             logger.finfo("Adding bulk ions:")
             outcrd: GROFile = self.get_filename("solv", "ions", suffix=".gro")
@@ -415,12 +456,11 @@ class Builder:
             # TODO: use monovalent bulk ion from Ions class
             ion_df: pd.DataFrame = self.args.bulk_ion_df
             pion: str = self.args.default_bulk_pion[0]
-            # pq = int(self.args.default_bulk_pion[1])
             nion: str = self.args.default_bulk_nion[0]
-            # nq = int(self.args.default_bulk_nion[1])
             bulk_x, bulk_y, bulk_z = self.stack.universe.dimensions[:3]
             bulk_z -= np.abs(self.clay_max - self.clay_min)
             replaced: int = 0
+            ion_charge = 0
             for ion, values in ion_df.iterrows():
                 charge, conc = values
                 n_ions: int = np.rint(
@@ -439,13 +479,12 @@ class Builder:
                 logger.debug(
                     f"before n_atoms: {self.stack.universe.atoms.n_atoms}"
                 )
+                ion_charge += int(charge * n_ions)
                 # TODO: use ion df with actual numbers that consider charge
                 replaced += add_ions_n_mols(
                     odir=self.__tmp_outpath.name,
                     crdin=self.stack,
-                    # crdout=self.stack,
                     topin=self.stack.top,
-                    # topout=self.stack.top,
                     ion=ion,
                     charge=int(charge),
                     n_atoms=n_ions,
@@ -456,17 +495,21 @@ class Builder:
                 )
                 self.stack.reset_universe()
                 self.stack.write(self.top)
-
-            if self.args.neutral_bulk_ions is not None:
-                logger.finfo(f"\tNeutralising charge:")
-                for ion, values in self.args.neutral_bulk_ions.iterrows():
+            excess_charge = int(self.args.il_ions.clay_charge + ion_charge)
+            logger.finfo(f"\tNeutralising charge:")
+            if excess_charge != 0:
+                neutral_bulk_ions = InterlayerIons(
+                    excess_charge,
+                    ion_ratios=self.args.bulk_ions,
+                    n_ucs=1,
+                    neutral=True,
+                )
+                for ion, values in neutral_bulk_ions.df.iterrows():
                     charge, n_ions = values
                     replaced += add_ions_n_mols(
                         odir=self.__tmp_outpath.name,
                         crdin=self.stack,
-                        # crdout=self.stack,
                         topin=self.stack.top,
-                        # topout=self.stack.top,
                         ion=ion,
                         charge=int(charge),
                         n_atoms=n_ions,
@@ -478,18 +521,6 @@ class Builder:
                     logger.finfo(f"\t\tAdded {n_ions} {ion} ions to bulk")
                     self.stack.reset_universe()
                     self.stack.write(self.top)
-            # replaced: int = add_ions_neutral(
-            #     odir=self.__tmp_outpath.name,
-            #     crdin=self.stack,
-            #     # crdout=self.stack,
-            #     topin=self.stack.top,
-            #     # topout=self.stack.top,
-            #     nion=nion,
-            #     # nq=nq,
-            #     pion=pion,
-            #     gmx_commands=self.gmx_commands
-            #     # pq=pq)
-            # )
             logger.debug(f"n_atoms: {self.stack.universe.atoms.n_atoms}")
             logger.finfo(f"\t\tReplaced {replaced} SOL molecules")
             logger.finfo(
@@ -548,10 +579,6 @@ class Builder:
                 sheet_u.dimensions[2] = (
                     sheet_u.dimensions[2] + il_u_copy.dimensions[2] + extra
                 )
-                # sheet_u.atoms.translate(
-                #     [0, 0, sheet_id * (sheet_u.dimensions[2])]
-                # )
-                # sheet_u.dimensions[2]: float = sheet_u.dimensions[2] + extra
             else:
                 sheet_u.dimensions[2] = sheet_u.dimensions[2] + (2 * extra)
             sheet_u.atoms.translate([0, 0, sheet_id * sheet_u.dimensions[2]])
@@ -564,7 +591,6 @@ class Builder:
         new_dimensions[3:] = [90.0, 90.0, 90.0]
         combined.dimensions = new_dimensions
         combined.atoms.pack_into_box(box=combined.dimensions, inplace=True)
-        # combined.atoms.write(str(crdout))
         crdout: GROFile = self.get_filename(suffix=".gro")
         if backup:
             backup_files(self.args.outpath / crdout.name)
@@ -577,7 +603,6 @@ class Builder:
         crdout.write(self.top)
         add_resnum(crdin=crdout, crdout=crdout)
         self.stack: GROFile = crdout
-        # self.stack = self.stack
         logger.finfo(f"Saved sheet stack as {self.stack.stem!r}\n")
 
     def __path_getter(self, property_name) -> GROFile:
@@ -589,20 +614,33 @@ class Builder:
 
     @property
     def stack(self) -> GROFile:
+        """Clay stack GRO filename.
+        :return: Clay stack GRO filename.
+        :rtype: GROFile"""
         return self.__path_getter("stack")
 
     @stack.setter
-    def stack(self, stack: Union[Path, str, GROFile], backup=False) -> None:
-        self.__path_setter_copy("stack", stack, backup)
+    def stack(self, stack: Union[Path, str, GROFile]) -> None:
+        """Set clay stack GRO filename.
+        :param stack: Clay stack GRO filename.
+        :type stack: Union[Path, str, GROFile]
+        :return: None"""
+        self.__path_setter_copy("stack", stack, backup=False)
 
     def write_sheet_crds(self, backup=False) -> None:
+        """Write clay sheet coordinates.
+        :param backup: Whether to back up existing files.
+        :type backup: bool
+        :return: None"""
         logger.info(get_subheader("1. Generating clay sheets."))
         for sheet_id in range(self.args.n_sheets):
             self.sheet.n_sheet: int = sheet_id
-            self.sheet.write_gro()
+            self.sheet.write_gro(backup=backup)
         self.sheet.n_sheet = None
 
     def write_sheet_top(self) -> None:
+        """Write clay sheet topology to TOP file.
+        :return: None"""
         for sheet_id in range(self.args.n_sheets):
             self.top.reset_molecules()
             self.sheet.n_sheet: int = sheet_id
@@ -617,6 +655,17 @@ class Builder:
         sheetnum: Optional[int] = None,
         tcb_spec=None,
     ) -> Union[GROFile, TOPFile]:
+        """Get filename for coordinates/topology.
+        :param solv_ion_args: solvation/ion keywords.
+        :type solv_ion_args: Any
+        :param suffix: Filename suffix.
+        :type suffix: Optional[str]
+        :param sheetnum: Sheet number.
+        :type sheetnum: Optional[int]
+        :param tcb_spec: top, center bottom unit cell type specifier.
+        :type tcb_spec: Optional[str]
+        :return: Filename.
+        :rtype: Union[GROFile, TOPFile]"""
         if sheetnum is not None:
             sheetnum: str = f"_{int(sheetnum)}"
         else:
@@ -643,12 +692,9 @@ class Builder:
             suffix: str = f".{suffix}"
         except AttributeError:
             suffix: str = ""
-        # global __tmp_outpath
-        # __tmp_outpath = tempfile.TemporaryDirectory(dir=self.args.outpath)
         logger.debug(
             f"{self.__tmp_outpath.name} exists: {Path(self.__tmp_outpath.name).is_dir()}"
         )
-        # self.__tempfile = tempfile.NamedTemporaryFile(dir=outpath, delete=False)
         path: Union[TOPFile, GROFile] = FileFactory(
             f"{self.__tmp_outpath.name}/{fstem}{suffix}"
         )
@@ -657,10 +703,6 @@ class Builder:
     @property
     def il_solv(self) -> GROFile:
         return self.__path_getter("il_solv")
-        # if self.__il_solv is not None:
-        #     return self.__il_solv
-        # else:
-        #     logger.debug(f'No solvation specified')
 
     @il_solv.setter
     def il_solv(self, il_solv: Union[Path, str, GROFile]) -> None:
@@ -693,14 +735,8 @@ class Builder:
         setattr(self, f"__{property_name}", file)
 
     def add_il_ions(self) -> None:
-        # if self.il_solv is None:
-        #     self.solvate_clay_sheets()
-        logger.finfo(
-            "Adding interlayer ions:", initial_linebreak=True
-        )  # to {self.il_solv.name!r}')
+        logger.finfo("Adding interlayer ions:", initial_linebreak=True)
         infile: GROFile = self.il_solv
-        # outfile = self.get_filename('solv', 'ions', suffix='gro')
-        # import tempfile
         with tempfile.NamedTemporaryFile(
             suffix=self.il_solv.suffix
         ) as temp_outfile:
@@ -729,7 +765,6 @@ class Builder:
                                 [*self.sheet.dimensions, 90, 90, 90]
                             )
                             ion_u.atoms.positions = np.zeros((3,))
-                            # ion_u = insert_u.select_atoms(f'resname {ion}')
                             ion_u.atoms.write(ion_gro.name)
                             # determine positions for adding ions
                             with tempfile.NamedTemporaryFile(
@@ -769,22 +804,8 @@ class Builder:
             self.il_solv: GROFile = infile
 
     def center_clay_in_box(self) -> None:
-        # if self.__box_ext is True:
         center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
         self.stack.reset_universe()
-        # if make_solvent_whole:
-        #     stack_u = self.stack.universe
-        #     if (
-        #         "SOL" in stack_u.residues.resnames
-        #         or "iSL" in stack_u.residues.resnames
-        #     ):
-        #         ext_sol = stack_u.select_atoms("resname SOL")
-        #         ext_sol = select_outside_clay_stack(ext_sol, self.clay)
-        #         for residue in ext_sol.residues:
-        #             residue.atoms.guess_bonds()
-        #             assert len(residue.atoms.bonds) == 2
-        #         sol = ext_sol
-        #         sol.positions = sol.unwrap(compound="residues")
 
 
 class Sheet:
@@ -856,7 +877,6 @@ class Sheet:
     @property
     def uc_array(self) -> NDArray:
         uc_array: NDArray = np.repeat(self.uc_ids, self.uc_numbers)
-        # self.random_generator.shuffle(uc_array)  # self.__uc_array)
         return sorted(uc_array)
 
     @property
@@ -1053,36 +1073,18 @@ class Solvent:
     def write(
         self, spc_name: GROFile, topology: Optional[TopologyConstructor] = None
     ) -> None:
+        """Write solvent sheet to GRO file
+        :param spc_name: GROFile object or path to GRO file
+        :param topology: TopologyConstructor object
+        :return: None
+        """
         if spc_name.__class__.__name__ != "GROFile":
-            spc_gro: GROFile = GROFile(spc_name)  # .with_suffix('.gro')
+            spc_gro: GROFile = GROFile(spc_name)
         else:
             spc_gro: GROFile = spc_name
         spc_top: TOPFile = spc_gro.top
         spc_gro.universe = Universe.empty(n_atoms=0)
         spc_gro.write(topology=topology)
-
-        # if topology.__class__.__name__ == 'TopologyConstructor':
-        #     topology.write(spc_topname)
-        # elif topology.__class__.__name__ == 'TOPFile':
-        #     spc_topname = str(topology.resolve())
-        # dr = [self.x_dim / 10, self.y_dim / 10, self._z_dim / 20]
-        # with tempfile.NamedTemporaryFile(
-        #         suffix=".dat"
-        # ) as posfile:
-        #     write_insert_dat(
-        #         n_mols=self.n_mols, save=posfile.name, posz=self._z_dim / 20
-        #     )
-        #     assert Path(posfile.name).is_file()
-
-        # solv, out  = self.gmx_commands.run_gmx_insert_mols(
-        #     f=spc_gro,
-        #     ci= FF / 'spc216.gro',
-        #     ip=posfile.name,
-        #     nmol = self.n_mols,
-        #     o=spc_gro,
-        #     dr="{} {} {}".format(*dr),
-        #     box=f"{self.x_dim / 10} {self.y_dim / 10} {self._z_dim / 10}"
-        # )
         logger.finfo(f"Adding interlayer solvent:")
         while True:
             if self._z_padding > 5:
@@ -1124,7 +1126,10 @@ class Solvent:
         self.__top: TopologyConstructor = topology
 
     def check_solvent_nummols(self, solvate_stderr: str) -> None:
-        """Find number of inserted water molecules from GROMAX stderr output"""
+        """Find number of inserted water molecules from GROMAX stderr output
+        :param solvate_stderr: GROMACS solvate stderr output
+        :type solvate_stderr: str
+        :return: None"""
         added_wat: str = re.search(
             r"(?<=Number of solvent molecules:)\s+(\d+)", solvate_stderr
         ).group(1)

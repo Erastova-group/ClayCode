@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+r""":mod:`ClayCode.siminp.writer` --- GROMACS input file writer
+==============================================================
+"""
 from __future__ import annotations
 
 import logging
@@ -30,6 +35,7 @@ from ClayCode.core.classes import (
     ForceField,
     GROFile,
     MDPFile,
+    TOPFile,
     dict_to_mdp,
     get_mdp_data_dict_function_decorator,
     get_mdp_data_dict_method_decorator,
@@ -46,13 +52,13 @@ from ClayCode.core.consts import (
     exec_date,
     exec_time,
 )
-from ClayCode.core.lib import generate_restraints, select_clay
+from ClayCode.core.lib import add_resnum, generate_restraints, select_clay
 from ClayCode.core.utils import (
     get_file_or_str,
     get_search_str,
     property_exists_checker,
 )
-from ClayCode.siminp.types import (
+from ClayCode.siminp.sitypes import (
     DefaultGMXRunType,
     GMXRunType,
     NondefaultGMXRun,
@@ -71,6 +77,7 @@ def add_kwargs(
         "DSpaceRun",
         "EQRunFixed",
         "EQRunRestrained",
+        "OtherRun",
     ], f"Wrong instance type: {instance.__class__.__name__}, expected {NondefaultGMXRun}"
     if n_args is None:
         n_args = len(instance._options)
@@ -97,6 +104,7 @@ class GMXRun(UserDict, ABC):
         itop: Optional[PathOrStr] = None,
         deffnm: Optional[str] = None,
         odir: Optional[PathOrStr] = None,
+        **kwargs,
     ):
         self._top = itop
         self._gro = None
@@ -112,9 +120,6 @@ class GMXRun(UserDict, ABC):
         self.run_id = run_id
         if odir is None:
             odir = self.name
-        else:
-            odir = Dir(odir)
-            odir = odir / self.name
         self.odir = Dir(odir)
         if deffnm is None:
             self.deffnm = name
@@ -126,15 +131,20 @@ class GMXRun(UserDict, ABC):
 
     @gro.setter
     def gro(self, gro: GROFile):
-        self._gro = GROFile(gro)
+        try:
+            add_resnum(crdin=gro, crdout=gro)
+        except FileNotFoundError:
+            pass
+        finally:
+            self._gro = GROFile(gro)
 
     @property
     def top(self):
         return self._top
 
     @top.setter
-    def top(self, top: GROFile):
-        self._top = GROFile(top)
+    def top(self, top: TOPFile):
+        self._top = TOPFile(top)
 
     @property
     def odir(self):
@@ -162,14 +172,17 @@ class GMXRun(UserDict, ABC):
     def get_run_command(self, gmx_alias="gmx"):
         if self.cpt is not None:
             cpt_str_1 = f" -t {self.cpt}"
-            cpt_str_2 = f" -cpi {self.cpt}"
+            # cpt_str_2 = f" -cpi {self.cpt}"
         else:
             cpt_str_1 = ""
-            cpt_str_2 = ""
-
+        cpt_str_2 = ""
+        # if hasattr(self, 'restraints_file'):
+        #     restraints_str = f" -r {self.gro}"
+        # else:
+        restraints_str = ""
         return (
             f"\n# {self.run_id}: {self._name}:\n"
-            f'{gmx_alias} grompp -f {self.mdp} -c {self.gro} -p {self.top} -o {self.outname.with_suffix(".tpr")} -pp {self.outname.with_suffix(".top")}{cpt_str_1}\n'
+            f'{gmx_alias} grompp -f {self.mdp} -c {self.gro} -p {self.top} -o {self.outname.with_suffix(".tpr")}{cpt_str_1}{restraints_str}\n'
             f"{gmx_alias} mdrun -s {self.outname.with_suffix('.tpr')} -v -deffnm {self.outname}{cpt_str_2}\n"
         )
 
@@ -193,12 +206,15 @@ class GMXRun(UserDict, ABC):
             with open(self.top, "r+") as top_file:
                 top_str = top_file.read()
                 top_str = re.sub(
-                    r"(^\s*\[ system \])",
-                    rf'\n; Include position restraints\n#include "{outfile.name}"\n\1',
+                    r"(.*)(^\s*\[ system \].*)",
+                    "\1\n; Include position restraints\n#include "
+                    + f"{outfile.name}"
+                    + "\n\2",
                     top_str,
                     flags=re.MULTILINE | re.DOTALL,
                 )
                 top_file.write(top_str)
+            self.restraints_file = outfile
 
     def add_freeze(self):
         replace = True
@@ -218,13 +234,13 @@ class GMXRun(UserDict, ABC):
                     "freezegrps": np.unique(
                         freeze_atoms.residues.resnames
                     ).tolist(),
-                    "freezedims": ["Y", "Y", "Y"],
+                    "freezedim": ["Y", "Y", "Y"],
                 },
                 replace=replace,
             )
             replace = False
 
-    def process_mdp(self):
+    def process_mdp(self, **kwargs):
         for item in self._options:
             process_function = getattr(self, f"add_{item.lower()}")
             process_function()
@@ -461,7 +477,7 @@ class EQRunFixed(GMXRun):
     #     self.mdp.add(
     #         {
     #             "freezegrps": np.unique(fixed_atoms.residues.resnames).tolist(),
-    #             "freezedims": ["Y", "Y", "Y"],
+    #             "freezedim": ["Y", "Y", "Y"],
     #         },
     #         replace=True,
     #     )
@@ -518,14 +534,33 @@ class EQRun(GMXRun):
         add_kwargs(self, **kwargs)
 
 
+class OtherRun(GMXRun):
+    _options = ["nsteps"]
+    _default_mdp_key = None
+
+    def __init__(
+        self,
+        run_id: int,
+        name: str,
+        igro=None,
+        itop=None,
+        deffnm=None,
+        odir=None,
+        **kwargs,
+    ):
+        super().__init__(
+            name=name,
+            run_id=run_id,
+            igro=igro,
+            itop=itop,
+            deffnm=deffnm,
+            odir=odir,
+        )
+        add_kwargs(self, **kwargs)
+
+
 class DSpaceRun(GMXRun):
-    _options = [
-        "d_space",
-        "remove_steps",
-        "sheet_wat",
-        "uc_wat",
-        "percent_wat",
-    ]
+    _options = ["d_space", "nsteps", "sheet_wat", "uc_wat", "percent_wat"]
     _default_mdp_key = "D-SPACE"
 
     def __init__(
@@ -548,6 +583,32 @@ class DSpaceRun(GMXRun):
         )
         add_kwargs(self, n_args=3, **kwargs)
 
+    def process_kwargs(self, gro: GROFile):
+        wat_options = 0
+        for water_removal_option in ["sheet_wat", "uc_wat", "percent_wat"]:
+            if hasattr(self, water_removal_option):
+                wat_options += 1
+                if wat_options > 1:
+                    raise ValueError(f"Only one water removal option allowed")
+                if water_removal_option == "sheet_wat":
+                    self.sheet_wat = np.rint(self.sheet_wat)
+                elif water_removal_option == "uc_wat":
+                    u = add_resnum(crdin=gro, crdout=gro)
+                    clay = select_clay(u)
+                    n_ucs = 0
+                    res_id = clay[0].resid - 1
+                    for residue in clay.residues:
+                        if res_id == residue.resid - 1:
+                            n_ucs += 1
+                            res_id = residue.resid
+                        else:
+                            break
+                    self.sheet_wat = np.rint(n_ucs * self.uc_wat)
+
+    def process_mdp(self, gro: GROFile, **kwargs):
+        self.process_kwargs(gro)
+        self.add_nsteps()
+
 
 class GMXRunFactory:
     _run_types = (
@@ -557,7 +618,7 @@ class GMXRunFactory:
         ("EQ_(NVT|NpT)_R", EQRunRestrained),
         ("D-SPACE", DSpaceRun),
     )
-    _default = GMXRun
+    _default = OtherRun
 
     @classmethod
     def init_subclass(cls, name: str, run_id: int, **kwargs) -> GMXRunType:
@@ -809,22 +870,36 @@ class MDPRunGenerator:
                     run.top = new_top
                     run.cpt = prev_cpt
                     run.gro = init_gro
+                if run.__class__.__name__ == "DSpaceRun":
+                    run_name = f"{run.name}_NpT"
+                else:
+                    run_name = run.name
                 run.mdp: MDPFile = self.write_mdp_options(
-                    run.name, outpath=run.odir
+                    run_name, outpath=run.odir
                 )
-                run.process_mdp()
+                run.process_mdp(gro=init_gro)
                 if init_data_copied:
                     run.gro = prev_outname.with_suffix(".gro")
                 else:
                     init_data_copied = True
-                if not re.fullmatch(
+                prev_cpt = None
+                if re.fullmatch(
                     f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
                 ):
-                    prev_cpt = prev_outname.with_suffix(".cpt")
+                    pass
                 else:
-                    prev_cpt = None
+                    prev_cpt = run.outname.with_suffix(".cpt")
+                    if prev_em:
+                        run.mdp.add({"gen-vel": "yes"}, replace=True)
+                    else:
+                        # prev_cpt = self.outname.with_suffix(".cpt")
+                        run.mdp.add({"gen-vel": "no"}, replace=True)
+                run.mdp.write_prms(run.mdp.string, all=True)
                 scriptfile.write(run.get_run_command(self._gmx_alias))
                 prev_outname = run.outname
+                prev_em = re.fullmatch(
+                    f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
+                )
         print("done")
 
     def write_mdp_options(self, run_name: str, outpath: Dir) -> MDPFile:

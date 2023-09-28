@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
+# -*- coding: UTF-8 -*-
+r""":mod:`ClayCode.core.lib` --- Clay-specific utilities
+======================================================
+"""
+from __future__ import annotations
+
 import logging
 import os
 import pathlib as pl
 import pickle as pkl
 import re
 import shutil
-import sys
 import tempfile
-import textwrap
 from functools import partial, update_wrapper, wraps
 from pathlib import Path, PosixPath
 from typing import (
@@ -37,7 +41,6 @@ from ClayCode.core.consts import (
     CLAYFF_AT_TYPES,
     DATA,
     FF,
-    IONS,
     SOL,
     SOL_DENSITY,
     UCS,
@@ -49,7 +52,7 @@ from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
 from numpy.typing import NDArray
 
-tpr_logger = logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
+logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
     level=logging.WARNING
 )
 
@@ -81,12 +84,10 @@ __all__ = [
 def init_temp_inout(
     inf: Union[str, Path],
     outf: Union[str, Path],
-    new_tmp_dict: Dict[Union[Literal["crd"], Literal["top"]], bool],
-    which=Union[Literal["crd"], Literal["top"]],
+    new_tmp_dict: Dict[Literal["crd", "top"], bool],
+    which=Literal["crd", "top"],
 ) -> Tuple[
-    Union[str, Path],
-    Union[str, Path],
-    Dict[Union[Literal["crd"], Literal["top"]], bool],
+    Union[str, Path], Union[str, Path], Dict[Literal["crd", "top"], bool]
 ]:
     inp = Path(inf)
     outp = Path(outf)
@@ -111,7 +112,7 @@ def init_temp_inout(
 
 def fix_gro_residues(crdin: Union[Path, str], crdout: Union[Path, str]):
     u = mda.Universe(crdin)
-    if np.unique(u.residues.resnums).tolist() == [1]:
+    if np.unique(u.residues.resnum).tolist() == [1]:
         u = add_resnum(crdin=crdin, crdout=crdout)
     if "iSL" not in u.residues.resnames:
         u = rename_il_solvent(crdin=crdout, crdout=crdout)
@@ -119,6 +120,8 @@ def fix_gro_residues(crdin: Union[Path, str], crdout: Union[Path, str]):
 
 
 def temp_file_wrapper(f: Callable):
+    """Decorator to create temporary output files for use in function."""
+
     @wraps(f)
     def wrapper(**kwargs):
         kwargs_dict = locals()["kwargs"]
@@ -329,7 +332,6 @@ def select_outside_clay_stack(
         f"'atom_group': Selected {atom_group.n_atoms} atoms of names: {np.unique(atom_group.names)} "
         f"(residues: {np.unique(atom_group.resnames)})"
     )
-    # atom_group = atom_group.residues.atoms
     return atom_group
 
 
@@ -352,6 +354,20 @@ def save_selection(
     pdbqt=False,
     backup=False,
 ):
+    """Save atom groups to coordinates, trajectory and optionally PDBQT file.
+    :param outname: output filename
+    :type outname: Union[str, Path]
+    :param atom_groups: list of atom groups
+    :type atom_groups: List[mda.AtomGroup]
+    :param ndx: write index file, defaults to False
+    :type ndx: bool, optional
+    :param traj: trajectory file extension, defaults to ".trr"
+    :type traj: str, optional
+    :param pdbqt: write PDBQT file, defaults to False
+    :type pdbqt: bool, optional
+    :param backup: backup existing files, defaults to False
+    :type backup: bool, optional
+    """
     ocoords = Path(outname).with_suffix(".gro").resolve()
     opdb = Path(outname).with_suffix(".pdbqt").resolve()
     logger.finfo(f"Writing coordinates and trajectory ({traj!r})")
@@ -630,8 +646,6 @@ def get_self_dist(
     :type ag_pos: NDArray[np.float64]
     distances: result array of shape (len(ag_pos), len(ref_pos), 3)
     :type distances: NDArray[np.float64]
-    :param box: Timestep dimensions array of shape (6, )
-    :type box: NDArray[np.float64]
     """
     for atom_id, atom_pos in enumerate(ag_pos):
         distances[atom_id, ...] = np.where(
@@ -659,6 +673,7 @@ def select_solvent(
 
 
 def update_universe(f):
+    """Decorator to update universe after function call"""
     wraps(f)
 
     def wrapper(
@@ -681,6 +696,16 @@ def get_n_mols(
     solvent: str = SOL,
     density: float = SOL_DENSITY,  # g/dm^3
 ):
+    """Calculate number of molecules to add to reach target concentration.
+    :param conc: target concentration in mol/L
+    :type conc: Union[float, int]
+    :param u: MDAnalysis universe
+    :type u: Universe
+    :param solvent: solvent residue name, defaults to SOL
+    :type solvent: str, optional
+    :param density: solvent density in g/dm^3, defaults to SOL_DENSITY
+    :type density: float, optional
+    :return: number of molecules to add"""
     sol = u.select_atoms(f"resname {solvent}")
     m = np.sum(sol.masses)  # g
     V = m / density  # L
@@ -712,24 +737,14 @@ def write_insert_dat(
             r = file.read()
 
 
-@update_universe
-def center_clay(
-    u: Universe,
-    crdout: Union[Path, str],
-    uc_name: Optional[str],
-    other_resnames=" ".join(IONS),
-):
-    from MDAnalysis.transformations.translate import center_in_box
-    from MDAnalysis.transformations.wrap import wrap
-
-    if uc_name is None:
-        clay = u.select_atoms(f"not resname SOL iSL {other_resnames}")
-    else:
-        clay = u.select_atoms(f"resname {uc_name}*")
-    for ts in u.trajectory:
-        ts = center_in_box(clay, wrap=True)(ts)
-        ts = wrap(u.atoms)(ts)
-    u.atoms.write(crdout)
+def get_n_ucs(universe):
+    """Get number of unit cells per sheet.
+    :param universe: MDAnalysis universe
+    :type universe: MDAnalysis.Universe
+    :return: number of unit cells
+    :rtype: int"""
+    isl = universe.select_atoms("resname iSL")
+    ions = universe.select_atoms(f"resname {' '.join(get_ion_list())}")
 
 
 @temp_file_wrapper
@@ -794,8 +809,6 @@ def add_ions_n_mols(
     :rtype: int
     """
     logger.debug(f"adding {n_atoms} {ion} ions to {crdin}")
-    # mdp = gmx_commands.get_mdp_parameter_file(run_type='GENION') #/ "mdp_prms.mdp"  # , "genion.mdp"
-    # assert mdp.exists(), f"{mdp.resolve()} does not exist"
     odir = Path(odir).resolve()
     assert odir.is_dir()
     tpr = odir / "add_ions.tpr"
@@ -851,7 +864,7 @@ def add_ions_n_mols(
         # rename_il_solvent(crdin=crdin, crdout=crdin)
     else:
         raise RuntimeError(f"No index file {ndx.name} created!")
-        replaced = []
+        # replaced = []
     return len(replaced)
 
 
@@ -891,8 +904,6 @@ def add_ions_neutral(
     :rtype: int
     """
     logger.debug(f"Neutralising with {pion} and {nion}")
-    # mdp = MDP / gmx_commands.version /  "mdp_prms.mdp" # "genion.mdp"
-    # assert mdp.exists(), f"{mdp.resolve()} does not exist"
     odir = Path(odir).resolve()
     assert odir.is_dir()
     tpr = odir / "neutral.tpr"
@@ -944,7 +955,18 @@ def _remove_excess_gro_ions(
     crdout: Union[Path, str],
     n_ions: int,
     ion_type: str,
-) -> None:
+) -> Universe:
+    """Remove excess ions from GRO file.
+    :param u: MDAnalysis Universe
+    :type u: Universe
+    :param crdout: output coordinates filename
+    :type crdout: Union[Path, str]
+    :param n_ions: number of ions to remove
+    :type n_ions: int
+    :param ion_type: ion type
+    :type ion_type: str
+    :return: MDAnalysis Universe
+    """
     last_sol_id = u.select_atoms("resname SOL")[-1].index
     ions = u.select_atoms(f"resname {ion_type}")
     remove_ions = u.atoms.select_atoms(
@@ -964,6 +986,16 @@ def _remove_excess_top_ions(
     n_ions: int,
     ion_type: str,
 ) -> None:
+    """Remove excess ions from topology file.
+    :param topin: input topology filename
+    :type topin: Union[Path, str]
+    :param topout: output topology filename
+    :type topout: Union[Path, str]
+    :param n_ions: number of ions to remove
+    :type n_ions: int
+    :param ion_type: ion type
+    :type ion_type: str
+    """
     with open(topin, "r") as topfile:
         topstr = topfile.read()
     ion_matches = re.search(
@@ -1020,12 +1052,19 @@ def rename_il_solvent(
 
 @temp_file_wrapper
 def add_resnum(crdin: Union[Path, str], crdout: Union[Path, str]) -> Universe:
+    """Add residue numbers to GRO file.
+    :param crdin: input coordinates filename
+    :type crdin: GROFile
+    :param crdout: output corrdiantes filename
+    :type crdout: GROFile
+    :return: MDAnalysis Universe
+    :rtype: Universe
+    """
     u = Universe(str(crdin))
     logger.debug(f"Adding residue numbers to:\n{str(crdin.resolve())!r}")
     res_n_atoms = get_system_n_atoms(crds=u, write=False)
     atoms: MDAnalysis.AtomGroup = u.atoms
     for i in np.unique(atoms.residues.resnames):
-        # print(i)
         logger.debug(f"Found residues: {i} - {res_n_atoms[i]} atoms")
     res_idx = 1
     first_idx = 0
@@ -1126,6 +1165,17 @@ update_wrapper(get_ion_charges, ion_itp)
 
 
 def get_ion_prms(prm_str: str, **kwargs):
+    """Get parameters of a given type for ions.
+    :param prm_str: parameter to get
+    :type prm_str: str
+    :param force_update: force update of parameters
+    :type force_update: bool
+    :param write: write parameters to file
+    :type write: bool
+    :param name: name of parameter file
+    :type name: Optional[str]
+    :return: parameter dictionary
+    :rtype: Dict[str, Union[float, int]]"""
     if prm_str == "charges":
         prm_dict = get_ion_charges(**kwargs)
     elif prm_str == "n_atoms":
@@ -1135,7 +1185,31 @@ def get_ion_prms(prm_str: str, **kwargs):
     return prm_dict
 
 
+def get_ion_list() -> List[str]:
+    """Get list of ion resnames from ions.itp file
+    :return: list of ion resnames
+    :rtype: List[str]
+    """
+    ions = get_ion_charges()
+    ion_list = list(ions.keys())
+    return ion_list
+
+
 def get_clay_prms(prm_str: str, uc_name: str, uc_path=UCS, force_update=False):
+    """Get parameters of a given type for clay unit cells.
+    :param prm_str: parameter to get
+    :type prm_str: str
+    :param uc_name: name of unit cell
+    :type uc_name: str
+    :param force_update: force update of parameters
+    :type force_update: bool
+    :param write: write parameters to file
+    :type write: bool
+    :param name: name of parameter file
+    :type name: Optional[str]
+    :return: parameter dictionary
+    :rtype: Dict[str, Union[float, int]]
+    """
     prm_func = PRM_METHODS[prm_str]
     prm_file = DATA / f"{uc_name.upper()}_{prm_str}.pkl"
     if not prm_file.is_file() or force_update is True:
@@ -1165,6 +1239,17 @@ def get_sol_prms(
     include_dir: Union[str, pl.Path] = FF,
     force_update=False,
 ):
+    """Get parameters of a given type for solvent molecules.
+    :param prm_str: parameter to get
+    :type prm_str: str
+    :param force_update: force update of parameters
+    :type force_update: bool
+    :param write: write parameters to file
+    :type write: bool
+    :param name: name of parameter file
+    :type name: Optional[str]
+    :return: parameter dictionary
+    :rtype: Dict[str, Union[float, int]]"""
     prm_func = PRM_METHODS[prm_str]
     charge_file = DATA / f"SOL_{prm_str}.pkl"
     if not charge_file.is_file() or (force_update is True):
@@ -1216,7 +1301,21 @@ get_aa_n_atoms = partial(get_aa_prms, prm_str="n_atoms")
 update_wrapper(get_aa_n_atoms, "n_atoms")
 
 
-def get_all_prms(prm_str, force_update=True, write=True, name=None):
+def get_all_prms(
+    prm_str, force_update=True, write=True, name=None
+) -> Dict[str, Union[float, int]]:
+    """Get parameters of a given type for all systems.
+    :param prm_str: parameter to get
+    :type prm_str: str
+    :param force_update: force update of parameters
+    :type force_update: bool
+    :param write: write parameters to file
+    :type write: bool
+    :param name: name of parameter file
+    :type name: Optional[str]
+    :return: parameter dictionary
+    :rtype: Dict[str, Union[float, int]]
+    """
     if name is not None:
         namestr = f"{name}_"
     else:
@@ -1254,7 +1353,6 @@ def get_all_prms(prm_str, force_update=True, write=True, name=None):
                     prm_str=prm_str, aa_name=aa, force_update=force_update
                 )
             )
-        # UCS: Path
         clay_types = UCS.glob(r"[A-Z]*[0-9]*")
         clay_dict = {}
         for uc in clay_types:
@@ -1285,6 +1383,18 @@ update_wrapper(get_all_n_atoms, "n_atoms")
 def get_system_prms(
     prm_str, crds: Union[str, Path, Universe], write=True, force_update=True
 ) -> Union[str, pd.Series, None]:
+    """Get system parameters (charges, atoms per molecule) for a coordinate file.
+    :param prm_str: parameter to get
+    :type prm_str: str
+    :param crds: coordinate file
+    :type crds: Union[str, Path, Universe]
+    :param write: write parameters to file
+    :type write: bool
+    :param force_update: force update of parameters
+    :type force_update: bool
+    :return: system parameters
+    :rtype: Union[str, pd.Series, None]
+    """
     if type(crds) == Universe:
         u = crds
         name = "universe"
@@ -1328,6 +1438,18 @@ def add_mols_to_top(
     n_mols: int,
     include_dir,
 ):
+    """Add specified number of `insert` molecules to topology.
+    :param topin: input topology filename
+    :type topin: Union[str, pl.Path]
+    :param topout: output topology filename
+    :type topout: Union[str, pl.Path]
+    :param insert: molecule to insert
+    :type insert: Union[None, str, pl.Path]
+    :param n_mols: number of molecules to insert
+    :type n_mols: int
+    :param include_dir: directory containing force field files
+    :type include_dir: Union[str, pl.Path]
+    :return: None"""
     if n_mols != 0:
         itp_path = pl.Path(insert).parent.resolve()
         itp = pl.Path(insert).stem
@@ -1363,7 +1485,15 @@ def add_mols_to_top(
 
 def remove_replaced_SOL(
     topin: Union[str, pl.Path], topout: Union[str, pl.Path], n_mols: int
-):
+) -> None:
+    """Remove specified number of SOL molecules from topology.
+    :param topin: input topology filename
+    :type topin: str
+    :param topout: output topology filename
+    :type topout: str
+    :param n_mols: number of SOL molecules to remove
+    :type n_mols: int
+    :return: None"""
     if n_mols > 0:
         with open(topin, "r") as topfile:
             topstr = topfile.read()
@@ -1402,11 +1532,47 @@ def remove_replaced_SOL(
 def center_clay_universe(
     u: mda.Universe, crdout: Union[str, Path], uc_name: Optional[str]
 ) -> None:
+    """Center clay unit cell in box and wrap coordinates
+    :param u: MDAnalysis Universe
+    :type u: mda.Universe
+    :param crdout: output coordinates filename
+    :type crdout: str
+    :param uc_name: unit cell name
+    :type uc_name: str
+    :return: None"""
     from MDAnalysis.transformations.translate import center_in_box
     from MDAnalysis.transformations.wrap import wrap
 
     if uc_name is None:
-        clay = u.select_atoms("not resname SOL iSL" + " ".join(IONS))
+        clay = u.select_atoms("not resname SOL iSL" + " ".join(get_ion_list()))
+    else:
+        clay = u.select_atoms(f"resname {uc_name}*")
+    for ts in u.trajectory:
+        ts = center_in_box(clay, wrap=True)(ts)
+        ts = wrap(u.atoms)(ts)
+    u.atoms.write(crdout)
+
+
+@update_universe
+def center_clay(
+    u: Universe,
+    crdout: Union[Path, str],
+    uc_name: Optional[str],
+    other_resnames=" ".join(get_ion_list()),
+):
+    """Center clay unit cell in box and wrap coordinates
+    :param u: MDAnalysis Universe
+    :type u: mda.Universe
+    :param crdout: output coordinates filename
+    :type crdout: str
+    :param uc_name: unit cell name
+    :type uc_name: str
+    :return: None"""
+    from MDAnalysis.transformations.translate import center_in_box
+    from MDAnalysis.transformations.wrap import wrap
+
+    if uc_name is None:
+        clay = u.select_atoms(f"not resname SOL iSL {other_resnames}")
     else:
         clay = u.select_atoms(f"resname {uc_name}*")
     for ts in u.trajectory:
@@ -1456,23 +1622,34 @@ def add_ions_conc(
     conc: float,
     gmx_commands,
 ):
+    """Add ions to system at specified concentration.
+    :param odir: output directory
+    :type odir: Path
+    :param crdin: input coordinate filename
+    :type crdin: Path
+    :param crdout: output coordinate filename
+    :type crdout: Path
+    :param topin: input topology filename
+    :type topin: Path
+    :param topout: output topology filename
+    :type topout: Path
+    :param ion: ion name
+    :type ion: str
+    :param ion_charge: ion charge
+    :type ion_charge: float
+    :param conc: ion concentration
+    :type conc: float
+    :return: number of replaced molecules
+    :rtype: int
+    """
     logger.debug(f"Adding {conc} mol/L {ion}")
-    # mdp = MDP / gmx_commands.version / "mdp_prms.mdp" # "genion.mdp"
-    # assert mdp.exists(), f"{mdp.resolve()} does not exist"
     odir = Path(odir).resolve()
     assert odir.is_dir()
-    # make_opath = lambda p: odir / method"{p.stem}.{p.suffix}"
     tpr = odir / "conc.tpr"
     ndx = odir / "conc.ndx"
-    # isl = grep_file(crdin, 'iSL')
     shutil.copy(crdin, crdout)
     gmx_commands.run_gmx_make_ndx(f=crdout, o=ndx)
     if ndx.is_file():
-        # if topin.resolve() == topout.resolve():
-        #     topout = topout.parent / method"{topout.stem}_n.top"
-        #     otop_copy = True
-        # else:
-        #     otop_copy = False
         gmx_commands.run_gmx_grompp(
             c=crdout,
             p=topin,
@@ -1484,13 +1661,6 @@ def add_ions_conc(
             # renum="",
             run_type="GENION",
         )
-        # err = search_gmx_error(out)
-        # err = re.search(r"error|exception|invalid", out, flags=re.IGNORECASE|re.MULTILINE)
-        # if err is not None:
-        #     raise RuntimeError(f"GROMACS raised an error!")
-        #     replaced = []
-        # else:
-        # logger.debug(f"gmx grompp completed successfully.")
         err, out = gmx_commands.run_gmx_genion_conc(
             s=tpr,
             p=topin,
@@ -1500,27 +1670,12 @@ def add_ions_conc(
             iq=ion_charge,
             conc=conc,
         )
-        # err = search_gmx_error(out)
-        # if err is not None:
-        # if not topout.is_file():
-        #     logger.error(f"gmx genion raised an error!")
-        #     raise RuntimeError(f'GROMACS raised an error!')
-        # else:
-        #     logger.debug(f"gmx genion completed successfully.")
-        # add_resnum(crdname=crdin, crdout=crdin)
-        # rename_il_solvent(crdname=crdin, crdout=crdin)
-        # isl = grep_file(crdin, 'iSL')
-        # if otop_copy is True:
-        #     shutil.move(topout, topin)
         replaced = re.findall(
             "Replacing solvent molecule", err, flags=re.MULTILINE
         )
         logger.finfo(
             f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}"
         )
-        # add_resnum(crdin=crdout, crdout=crdout)
-        # rename_il_solvent(crdin=crdout, crdout=crdout)
-        # shutil.move('processed.top', topin)
     else:
         logger.error(f"No index file {ndx.name} created!")
         replaced = []
@@ -1566,6 +1721,12 @@ def run_em(
     """
     Run an energy minimisation using gmx and
     return convergence information if successful.
+    :param mdp_prms: mdp parameters
+    :type mdp_prms: Optional[Dict[str, str]]
+    :param freeze_dims: Freeze dimensions
+    :type freeze_dims: Optional[Union[List[Union[Literal["Y"], Literal["N"]]], bool]]
+    :param freeze_grps: Freeze groups
+    :type freeze_grps: Optional[Union[List[Union[Literal["Y"], Literal["N"]]], bool]]
     :param mdp: mdp parameter file path
     :type mdp: Union[Path, str]
     :param crdin: Input coordinate file name
@@ -1578,12 +1739,11 @@ def run_em(
     :type odir: Path
     :param outname: Default stem for output files
     :type outname: str
+    :param gmx_commands: gmx_commands object
+    :type gmx_commands: GMXCommands
     :return: Convergence information message
     :rtype: Union[str, None]
     """
-    # if not pl.Path(mdp).is_file():
-    #     mdp = MDP / mdp
-    # assert mdp.is_file()
     logger.debug("# MINIMISING ENERGY")
     outname = (Path(odir) / outname).resolve()
     topout = outname.with_suffix(".top")
@@ -1633,7 +1793,6 @@ def run_em(
                 .group(0)
                 .strip("\n")
             )
-            # logger.finfo(f"Fmax: {fmax}, reached in {n_steps} steps")
             logger.info(f"{final_str}\n")
             logger.debug(f"Output written to {outname.name!r}")
             conv = (
@@ -1648,6 +1807,3 @@ def run_em(
     else:
         conv = False
     return conv
-
-
-# mdp_to_dict(MDP / 'em_fix.mdp')

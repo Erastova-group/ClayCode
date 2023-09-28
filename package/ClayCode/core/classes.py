@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
+""":mod:`ClayCode.core.classes` --- ClayCode classes
+===================================================
+"""
 from __future__ import annotations
 
 import logging
@@ -491,7 +494,7 @@ class File(BasicPath):
     def _get_filetype(self, suffix: str):
         suffix = suffix.strip(".")
         if suffix != self.suffix.strip("."):
-            return PathFactory(self.with_suffix(suffix))
+            return PathFactory(self.with_suffix(f".{suffix}"))
         else:
             return self
 
@@ -1093,8 +1096,11 @@ class ITPFile(File):
     def __init__(self, *args, **kwargs):
         # check if file exists
         super(ITPFile, self).__init__(*args, **kwargs)
-        self._string = self.process_string(self.read_text())
-        self.__string = self.read_text()
+        if self.is_file():
+            self._string = self.process_string(self.read_text())
+            self.__string = self.read_text()
+        else:
+            self.touch()
         if self.parent.suffix == ".ff":
             self.ff = self.parent.name
         self.__reset()
@@ -1483,7 +1489,7 @@ class GROFile(File):
 
     @property
     def top(self):
-        return TOPFile(self.with_suffix(".top"))
+        return TOPFile(self.with_suffix(".top"), check=False)
 
 
 class MDPFile(File):
@@ -1542,7 +1548,7 @@ class MDPFile(File):
     def to_dict(self):
         return mdp_to_dict(self)
 
-    @key_match_decorator("parameters")
+    @key_match_decorator("_allowed_prms")
     @get_mdp_data_dict_method_decorator
     def add(
         self, other: Union[Dict[str, str], MDPFile], search_str, replace=True
@@ -1555,17 +1561,22 @@ class MDPFile(File):
         for k, v in other.items():
             if k.lower() == "freezegrps":
                 freezegrps = v
-            elif k.lower() == "freezedims":
+            elif k.lower() == "freezedim":
                 freezedims = v
-            elif not re.search(
-                k, search_str, flags=re.IGNORECASE | re.MULTILINE
-            ):
-                new_string = add_new_mdp_parameter(k, v, new_string)
-            else:
-                if replace:
-                    new_string = set_mdp_parameter(k, v, new_string)
+            elif re.search(k, search_str, flags=re.IGNORECASE | re.MULTILINE):
+                if not re.search(
+                    f"{k}\s*=", new_string, flags=re.IGNORECASE | re.MULTILINE
+                ):
+                    new_string = add_new_mdp_parameter(k, v, new_string)
                 else:
-                    new_string = add_mdp_parameter(k, v, new_string)
+                    if replace:
+                        new_string = set_mdp_parameter(k, v, new_string)
+                    else:
+                        new_string = add_mdp_parameter(k, v, new_string)
+            else:
+                logger.finfo(
+                    f'Invalid parameter {k} for GROMACS version {self.gmx_version if self.gmx_version else "unknown"}'
+                )
         if freezegrps is not None and freezegrps != [] and freezegrps != "":
             new_string = set_mdp_freeze_groups(
                 file_or_str=new_string,
@@ -1621,11 +1632,20 @@ class MDPFile(File):
     def string(self, string):
         if string != self._string:
             self._string = None
-            self.write_text(string)
+            self.write_prms(text=string, all=True)
             self._parameters = None
 
+    def write_prms(self, text: str, all: bool = False):
+        if all:
+            self.write_text(text)
+        else:
+            text = re.sub(
+                r'^.+?=["\'\s]+(\n|\Z)', "", text, flags=re.MULTILINE
+            )
+            self.write_text(text)
 
-class TOPFile(File):
+
+class TOPFile(ITPFile):
     _suffix = ".top"
 
     def __init__(self, *args, **kwargs):
@@ -2094,7 +2114,7 @@ class PathFactory(BasicPath):
         self = super().__new__(cls._default, *args, **kwargs)
         if self.is_dir():
             self = DirFactory(*args, **kwargs)
-        elif self.is_file():
+        elif self.is_file() or self.suffix != "":
             self = FileFactory(*args, **kwargs)
         else:
             pass
@@ -2343,7 +2363,10 @@ def add_new_mdp_parameter(
     parameter, value, mdp_str, searchex="[A-Za-z0-9 ._,]*?"
 ) -> str:
     value = mdp_value_formatter(value)
-    mdp_str += f"\n{parameter:<25} = {value}"
+    mdp_str = (
+        re.sub(r"(.*)\n?\Z", r"\1", mdp_str, flags=re.MULTILINE)
+        + f"\n{parameter:<25} = {value}"
+    )
     return mdp_str
 
 

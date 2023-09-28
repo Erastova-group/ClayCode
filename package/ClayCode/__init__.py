@@ -4,19 +4,14 @@ from __future__ import annotations
 import logging
 import warnings
 
-# from Bio import BiopythonDeprecationWarning
-
-
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-# warnings.filterwarnings("ignore", category=BiopythonDeprecationWarning)
 
 from ClayCode.core import (
     ArgsFactory,
     BasicPath,
     BasicPathList,
     BuildArgs,
-    ClayCodeLogger,
     Definition,
     Dir,
     DirFactory,
@@ -52,9 +47,6 @@ from ClayCode.core import (
     YAMLFile,
     parser,
 )
-
-logging.setLoggerClass(ClayCodeLogger)
-
 from ClayCode.core.cctypes import (
     AnyDict,
     AnyDir,
@@ -67,6 +59,7 @@ from ClayCode.core.cctypes import (
     StrOrListDictOf,
     StrOrListOf,
 )
+from ClayCode.core.log import ClayCodeLogger
 
 __all__ = [
     "ClayCodeLogger",
@@ -119,5 +112,5 @@ __all__ = [
     "DirFactory",
     "FileFactory",
 ]
-
 logging.setLoggerClass(ClayCodeLogger)
+# from Bio import BiopythonDeprecationWarning

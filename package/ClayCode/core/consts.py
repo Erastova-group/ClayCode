@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+r""":mod:`ClayCode.core.consts` --- Constants
+============================================
+"""
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 import yaml
 from caseless_dictionary import CaselessDict
@@ -28,6 +31,11 @@ __all__ = [
     "USER_CLAYS",
     "MDP_DEFAULTS",
     "ITP_KWDS",
+    "LINE_LENGTH",
+    "CLAYFF_AT_TYPES",
+    "CLAYFF_AT_CHARGES",
+    "TABSIZE",
+    "ANGSTROM",
 ]
 
 DATA = files("ClayCode.data.data")
@@ -147,7 +155,7 @@ MDP_KWDS = {}
 TOP_KWDS = ITP_KWDS
 
 
-def set_globals() -> Dict[str, Dict[str, str]]:
+def set_globals() -> Dict[str, Dict[str, Any]]:
     """
     Combine '*._KWD' dictionaries and add datatype mapping
     :return: Combined keyword dictionary
@@ -156,8 +164,13 @@ def set_globals() -> Dict[str, Dict[str, str]]:
     import re
 
     combined_dict = {}
-    global_dict = lambda key: globals()[key]
-    del_global = lambda key: globals().__delitem__(key)
+
+    def global_dict(global_key: str) -> Dict[str, Any]:
+        return globals()[global_key]
+
+    def del_global(global_key: str):
+        globals().__delitem__(global_key)
+
     kwds = sorted(
         re.findall(r"[A-Z]+_KWDS", " ".join(globals().keys())), reverse=True
     )
@@ -175,7 +188,7 @@ def set_globals() -> Dict[str, Dict[str, str]]:
 
 KWD_DICT = set_globals()
 
-with open(MDP / "defaults.yaml", "r") as yaml_file:
+with open(MDP / "defaults.yaml", "r+") as yaml_file:
     MDP_DEFAULTS = yaml.safe_load(yaml_file)
     for k, v in MDP_DEFAULTS.items():
         MDP_DEFAULTS[k] = CaselessDict({ki: vi for ki, vi in v.items()})

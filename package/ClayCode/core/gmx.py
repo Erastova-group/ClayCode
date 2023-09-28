@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+r""":mod:`ClayCode.core.gmx` --- GROMACS commands
+=================================================
+"""
+
 from __future__ import annotations
 
 import copy
@@ -11,7 +17,7 @@ import tempfile
 import warnings
 from functools import cached_property, update_wrapper, wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 from ClayCode.builder.utils import select_input_option
@@ -21,13 +27,8 @@ from ClayCode.core.classes import (
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
-from ClayCode.core.consts import ANGSTROM, LINE_LENGTH, MDP, MDP_DEFAULTS
-from ClayCode.core.utils import (
-    SubprocessProgressBar,
-    execute_shell_command,
-    get_header,
-    get_subheader,
-)
+from ClayCode.core.consts import ANGSTROM, MDP, MDP_DEFAULTS
+from ClayCode.core.utils import SubprocessProgressBar, execute_shell_command
 
 DEFAULT_GMX = "gmx"
 
@@ -42,6 +43,8 @@ __all__ = [
 
 
 def add_gmx_args(f):
+    """Add :class:`GMXCommands` to instance if not already present"""
+
     @wraps(f)
     def wrapper(
         instance, *args, gmx_commands=None, gmx_alias=DEFAULT_GMX, **kwargs
@@ -61,6 +64,8 @@ def add_gmx_args(f):
 
 
 def gmx_command_wrapper(f):
+    """Pass :class:`GMXCommands` to function if not already specified"""
+
     @wraps(f)
     def wrapper(*args, gmx_commands=None, gmx_alias=DEFAULT_GMX, **kwargs):
         if gmx_commands is not None:
@@ -76,7 +81,20 @@ def gmx_command_wrapper(f):
 
 
 class GMXCommands:
-    def __init__(self, gmx_alias="gmx", mdp_template=None, mdp_defaults={}):
+    """Class for running GROMACS commands"""
+
+    def __init__(
+        self, gmx_alias="gmx", mdp_template=None, mdp_defaults={}
+    ) -> None:
+        """Initialise GMXCommands instance.
+        :param gmx_alias: GROMACS bash alias, defaults to "gmx"
+        :type gmx_alias: str, optional
+        :param mdp_template: MDP template file, defaults to None
+        :type mdp_template: str, optional
+        :param mdp_defaults: MDP defaults, defaults to {}
+        :type mdp_defaults: dict, optional
+        :return: None
+        """
         self.gmx_alias = gmx_alias
         _ = self.gmx_header
         try:
@@ -89,32 +107,49 @@ class GMXCommands:
         logger.finfo(f"{self.gmx_info}", initial_linebreak=True)
 
     @property
-    def mdp_defaults(self):
+    def mdp_defaults(self) -> Dict[str, Any]:
+        """Default MDP options for GROMACS version
+        :return: MDP defaults
+        :rtype: Dict[str, Any]"""
         if self._mdp_defaults:
             return self._mdp_defaults
         else:
             return MDP_DEFAULTS[int(self.version)]
 
     @property
-    def default_mdp_file(self):
-        return MDP / self.version / "mdp_prms.mdp"
+    def default_mdp_file(self) -> MDPFile:
+        """File with default MDP options for GROMACS version
+        :return: MDP file
+        :rtype: MDPFile"""
+        return MDPFile(MDP / self.version / "mdp_prms.mdp")
 
     @property
-    def mdp_string(self):
+    def mdp_string(self) -> str:
+        """String with default MDP options for GROMACS version
+        :return: MDP string
+        :rtype: str"""
         if self.mdp_template is not None:
             with open(self.mdp_template) as mdp_file:
                 mdp_str = mdp_file.read()
             return mdp_str
 
     @property
-    def mdp_template(self):
+    def mdp_template(self) -> MDPFile:
+        """Template for MDP options file
+        :return: MDP template
+        :rtype: MDPFile"""
         if self._mdp_template:
-            return self._mdp_template
+            return MDPFile(self._mdp_template)
         else:
-            return self.default_mdp_file
+            return MDPFile(self.default_mdp_file)
 
     @mdp_template.setter
-    def mdp_template(self, mdp_filename):
+    def mdp_template(self, mdp_filename: str) -> None:
+        """Set template for MDP options file
+        :param mdp_filename: MDP template filename
+        :type mdp_filename: str
+        :return: None
+        """
         try:
             self._mdp_template = Path(mdp_filename).with_suffix(".mdp")
             assert (
@@ -130,9 +165,22 @@ class GMXCommands:
         mdp_file: Optional[str] = None,
         mdp_prms: Optional[Dict[str, str]] = None,
         run_type: Optional[str] = None,
-        freeze_dims: Optional[List[str]] = None,
+        freeze_dims: Optional[Union[str, List[str]]] = None,
         freeze_grps: Optional[List[str]] = None,
     ):
+        """Write MDP options file.
+        `mdp_prms can be all valid MDP options for
+        :param mdp_file: MDP options filename, defaults to None
+        :type mdp_file: str, optional
+        :param mdp_prms: MDP options dictionary, defaults to None
+        :type mdp_prms: Dict[str, str], optional
+        :param run_type: GROMACS run type, defaults to None
+        :type run_type: str, optional
+        :param freeze_dims: Dimensions to freeze, defaults to None
+        :type freeze_dims: Union[str, List[str]], optional
+        :param freeze_grps: Groups to freeze, defaults to None
+        :type freeze_grps: List[str], optional
+        """
         mdp_temp_file = True
         if mdp_file:
             file = Path(mdp_file).with_suffix(".mdp")
@@ -400,7 +448,7 @@ class GMXCommands:
             "po": "mdout.mdp",
             "pp": "processed.top",
             "o": "topol.tpr",
-            "maxwarn": 2,
+            "maxwarn": 0,
             "renum": "",
         },
         opt_args_list=["ndx", "v", "nov", "renum", "norenum", "t"],

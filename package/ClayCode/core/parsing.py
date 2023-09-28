@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+r""":mod:`ClayCode.core.parsing` --- Argument parsing module"""
+
 from __future__ import annotations
 
 import copy
@@ -30,9 +33,6 @@ from ClayCode.core.utils import (
 )
 from ClayCode.data.ucgen import UCWriter
 from ClayCode.siminp.writer import GMXRunFactory, MDPRunGenerator
-
-"""Argument parsing module"""
-
 
 __all__ = {
     "ArgsFactory",
@@ -412,7 +412,6 @@ def read_yaml_path_decorator(*path_args):
                 self.__yaml_data = parse_yaml(
                     file, enumerate_duplicates=enumerate_duplicates
                 )
-                print("self.__yaml_data")
             logger.finfo(f"Reading {file.name!r}:\n")
             for k, v in self.__yaml_data.items():
                 if k in self._arg_names:
@@ -952,14 +951,6 @@ class BuildArgs(_Args):
         self._bulk_ions = BulkIons(
             self.bulk_ions, self._build_defaults["BULK_IONS"]
         )
-        tot_charge = self.match_charge["tot"]
-        if not np.isclose(tot_charge, 0.0):
-            self._neutral_bulk_ions = InterlayerIons(
-                tot_charge,
-                ion_ratios=self.bulk_ions,
-                n_ucs=self.sheet_n_cells,
-                neutral=True,
-            )
 
     @property
     def bulk_ion_conc(self) -> float:
@@ -995,16 +986,16 @@ class BuildArgs(_Args):
             .values
         )
 
-    @cached_property
-    def neutral_bulk_ions(self) -> Union[pd.DataFrame, None]:
-        """Number of bulk ions to neutralise excess charge.
-        :rtype: pd.DataFrame or None"""
-        try:
-            neutral_df = self._neutral_bulk_ions.df
-        except AttributeError:
-            neutral_df = None
-        finally:
-            return neutral_df
+    # @cached_property
+    # def neutral_bulk_ions(self) -> Union[pd.DataFrame, None]:
+    #     """Number of bulk ions to neutralise excess charge.
+    #     :rtype: pd.DataFrame or None"""
+    #     try:
+    #         neutral_df = self._neutral_bulk_ions.df
+    #     except AttributeError:
+    #         neutral_df = None
+    #     finally:
+    #         return neutral_df
 
     @property
     def n_il_ions(self) -> Dict[str, int]:
@@ -1157,7 +1148,6 @@ class SiminpArgs(_Args):
                     run_specs.pop(match)
             non_matches = [(k, k, v) for k, v in sorted(run_specs.items())]
             for run_name, run_match, run_options in [*matches, *non_matches]:
-                print(run_name)
                 run_id += 1
                 if run_id == 1:
                     self.mdp_generator.add_run(
@@ -1392,5 +1382,4 @@ class ArgsFactory:
             _cls = cls._options[option]
         except KeyError:
             raise KeyError(f"{option!r} is not known!")
-        # print(_cls)
         return _cls(data, debug_run=debug_run)

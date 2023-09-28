@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+r""":mod:`ClayCode.core.utils` --- Utility functions
+===================================================
+"""
 from __future__ import annotations
 
 import logging
@@ -30,7 +33,7 @@ from numpy.typing import ArrayLike, NDArray
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.simplefilter("ignore")
-sys.stdout.reconfigure(encoding="utf-8")
+# sys.stdout.reconfigure(encoding="utf-8")
 
 __all__ = [
     "remove_files",
@@ -298,6 +301,15 @@ def select_named_file(
     searchlist: List[str] = ["*"],
     how: Literal["latest", "largest"] = "latest",
 ) -> Union[None, Path]:
+    """Select latest or largest file in `path` directory.
+    Must contain `searchstr` in filename and suffix `suffix`.
+    Filter results by `searchlist`.
+    :param path: path to directory
+    :param searchstr: string to search for in filename
+    :param suffix: suffix of file to select
+    :param searchlist: list of strings to search for in filename
+    :param how: how to select file
+    :return: selected file"""
     path = Path(path)
     if suffix is None:
         suffix = ""
@@ -357,7 +369,13 @@ def select_file(
     suffix=None,
     how: Literal["latest", "largest"] = "latest",
 ) -> Union[None, Path]:
-    """Select file from path."""
+    """Select latest or largest file in `path` directory.
+    Must contain `searchstr` in filename and suffix `suffix`.
+    :param path: path to directory
+    :param searchstr: string to search for in filename
+    :param suffix: suffix of file to select
+    :param how: how to select file
+    :return: selected file"""
     check_func_dict = {
         "latest": lambda x: x.st_mtime,
         "largest": lambda x: x.st_size,
@@ -399,7 +417,7 @@ def select_file(
     return last_file
 
 
-def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]) -> np.array:
+def get_pd_idx_iter(idx: pd.MultiIndex, name_sel: List[str]) -> NDArray:
     """Get product of index levels with names in `name_sel`.
     :param idx: index
     :param name_sel: list of index level names
