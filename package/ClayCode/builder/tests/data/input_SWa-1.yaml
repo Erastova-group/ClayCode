@@ -14,9 +14,9 @@ SYSNAME: SWa-1
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
-# load - sheet coordinates or unit cell sequences are loaded from existent .gro or .npy files
+# load - sheet coordinates or unit cell sequences are loaded from existent ._gro or .npy files
 # load: [X, Y]
-# with X - 'np' or 'gro', Y - '.npy' or '.gro' filename
+# with X - 'np' or '_gro', Y - '.npy' or '._gro' filename
 # False - no clay model is constructed
 
 BUILD: new

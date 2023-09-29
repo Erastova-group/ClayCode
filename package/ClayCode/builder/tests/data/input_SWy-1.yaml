@@ -14,15 +14,15 @@ SYSNAME: SWy-1
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
-# load - sheet coordinates or unit cell sequences are loaded from existent .gro or .npy files
+# load - sheet coordinates or unit cell sequences are loaded from existent ._gro or .npy files
 # load: [X, Y]
-# with X - 'np' or 'gro', Y - '.npy' or '.gro' filename
+# with X - 'np' or '_gro', Y - '.npy' or '._gro' filename
 # False - no clay model is constructed
 
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: package/ClayCode/builder/tests/data/exp_non.csv
+CLAY_COMP: exp_non.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
