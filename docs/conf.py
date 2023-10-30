@@ -16,7 +16,7 @@ release = '0.1.1'
 
 extensions = []
 
-templates_path = ['source/_templates']
+templates_path = []
 exclude_patterns = []
 
 
@@ -25,4 +25,4 @@ exclude_patterns = []
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'alabaster'
-html_static_path = ['source/_static']
+html_static_path = []
