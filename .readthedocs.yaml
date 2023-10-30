@@ -27,6 +27,6 @@ formats:
 python:
   install:
     - requirements: docs/requirements.txt
-      method: pip
+    - method: pip
       extra_requirements: pyproject.toml
 
