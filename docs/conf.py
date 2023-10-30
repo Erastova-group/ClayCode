@@ -9,6 +9,7 @@
 project = 'ClayCode'
 copyright = '2023, Hannah Pollak'
 author = 'Hannah Pollak'
+version = '0.1.1'
 release = '0.1.1'
 
 # -- General configuration ---------------------------------------------------
