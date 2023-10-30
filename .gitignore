@@ -22,7 +22,7 @@ var/
 wheels/
 pip-wheel-metadata/
 share/python-wheels/
-*/*.egg-info/
+*.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
@@ -121,7 +121,6 @@ venv.bak/
 
 # Rope project settings
 .ropeproject
-
 
 # mypy
 .mypy_cache/
