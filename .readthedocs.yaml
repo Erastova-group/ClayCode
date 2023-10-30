@@ -28,5 +28,4 @@ python:
   install:
     requirements: docs/requirements.txt
     method: pip
-      extra_requirements:
-        - pyproject.toml
+      extra_requirements: pyproject.toml
