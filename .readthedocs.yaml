@@ -26,7 +26,7 @@ formats:
 # See https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
 python:
   install:
-    - requirements: docs/requirements.txt
-    - method: pip
+    requirements: docs/requirements.txt
+    method: pip
       extra_requirements:
         - pyproject.toml
