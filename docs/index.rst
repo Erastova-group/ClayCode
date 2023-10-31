@@ -1,5 +1,5 @@
 .. using logo instead of a Title
-.. image:: docs/images/Logo.png
+.. image:: images/Logo.png
    :alt ClayCode logo
    :align: center
 
