@@ -1,6 +1,6 @@
 .. using logo instead of a Title
 .. image:: ./images/Logo.png
-   :alt ClayCode logo
+   :alt: ClayCode logo
    :align: center
 
 .. buttons under heading
