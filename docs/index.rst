@@ -1,7 +1,7 @@
 .. using logo instead of a Title
 .. image:: docs/images/Logo.png
    :alt ClayCode logo
-   :align: centre
+   :align: center
 
 .. buttons under heading
 |Project Status: Active| |License: MIT|
