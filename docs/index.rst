@@ -1,5 +1,5 @@
 .. using logo instead of a Title
-.. image:: ./images/Logo.png
+.. image:: images/Logo.png
    :alt: ClayCode logo
    :align: center
 
@@ -32,7 +32,7 @@ Comprehensive information on how to use ClayCode
 ----------------
 Practical step-by-step how-to guides
 
-:API:`API`
+:ref:`API`
 ----------
 Technical documentation for developers
 
