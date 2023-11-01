@@ -1,7 +1,14 @@
-.. using logo instead of a Title
+.. title:: Home
+
+
 .. image:: images/Logo.png
    :alt: ClayCode logo
    :align: center
+   
+.. blank lines to space out heading
+
+|
+|
    
 .. description of claycode
 
@@ -23,7 +30,7 @@ Source Code
 
 The source code is available on `GitHub`_.
 
-**Report bugs and give sugestions** for future improvements and new features via an `issue`_.
+**Report bugs and give suggestions** for future improvements and new features via an `issue`_.
 
 **Have you added new functionality to the code, or assigned new clay unit cells?** Please share with the wider community by `forking this project`_ and submitting a `pull request`_. Learn more how to contribute `here`_.
 
@@ -35,9 +42,10 @@ The source code is available on `GitHub`_.
 
 Citing ClayCode
 ================
+|License: MIT|
 ClayCode is developed by Hannah Pollak, Matteo Degiacomi and Valentina Erastova, University of Edinburgh, 2023.
 
-Claycode is published under the `MIT License`_ |License: MIT|
+Claycode is published under the `MIT License`_
 
 .. _`MIT License`: https://github.com/Erastova-group/ClayCode/blob/main/LICENSE.txt
 .. |License: MIT| image:: https://img.shields.io/badge/License-MIT-yellow.svg
