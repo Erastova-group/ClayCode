@@ -20,19 +20,12 @@ The ClayCode :ref:`User Guide <user_guide>` provides an overview on how use the 
 
 Source Code
 ===========
-|Project Status: Active| |GitHub commit activity (branch)| |GitHub issues| |GitHub pull requests|
-
-.. |Project Status: Active| image:: https://www.repostatus.org/badges/latest/active.svg
-   :target: https://www.repostatus.org/#active
-.. |GitHub commit activity (branch)| image:: https://img.shields.io/github/commit-activity/m/Erastova-group/ClayCode
-.. |GitHub issues| image:: https://img.shields.io/github/issues/Erastova-group/ClayCode
-.. |GitHub pull requests| image:: https://img.shields.io/github/issues-pr/Erastova-group/ClayCode
-
 The source code is available on `GitHub`_.
 
 **Report bugs and give suggestions** for future improvements and new features via an `issue`_.
 
 **Have you added new functionality to the code, or assigned new clay unit cells?** Please share with the wider community by `forking this project`_ and submitting a `pull request`_. Learn more how to contribute `here`_.
+|Project Status: Active| |GitHub commit activity (branch)| |GitHub issues| |GitHub pull requests| |License: MIT|
 
 .. _`GitHub`: https://github.com/Erastova-group/ClayCode/tree/main
 .. _`issue`: https://github.com/Erastova-group/ClayCode/issues
@@ -40,16 +33,23 @@ The source code is available on `GitHub`_.
 .. _`pull request`: https://github.com/Erastova-group/ClayCode/pulls
 .. _`here`: https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
-Citing ClayCode
-================
-|License: MIT|
-ClayCode is developed by Hannah Pollak, Matteo Degiacomi and Valentina Erastova, University of Edinburgh, 2023.
-
-Claycode is published under the `MIT License`_
-
-.. _`MIT License`: https://github.com/Erastova-group/ClayCode/blob/main/LICENSE.txt
+.. |Project Status: Active| image:: https://www.repostatus.org/badges/latest/active.svg
+   :target: https://www.repostatus.org/#active
+.. |GitHub commit activity (branch)| image:: https://img.shields.io/github/commit-activity/m/Erastova-group/ClayCode
+.. |GitHub issues| image:: https://img.shields.io/github/issues/Erastova-group/ClayCode
+.. |GitHub pull requests| image:: https://img.shields.io/github/issues-pr/Erastova-group/ClayCode
 .. |License: MIT| image:: https://img.shields.io/badge/License-MIT-yellow.svg
    :target: https://opensource.org/licenses/MIT
+
+
+Citing ClayCode
+================
+
+ClayCode is developed by Hannah Pollak, Matteo Degiacomi and Valentina Erastova, University of Edinburgh, 2023.
+
+Claycode is published under the `MIT License`_.
+
+.. _`MIT License`: https://github.com/Erastova-group/ClayCode/blob/main/LICENSE.txt
 
 Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulation in Gromacs", DOI: XXX
 
