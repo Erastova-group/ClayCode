@@ -4,9 +4,11 @@
    :align: center
    
 .. description of claycode
+
 **ClayCode** generates clay mineral structures based upon their natural partially occupied unit cell compositions and assigns ClayFF forecefield parameters, generating all the input files ready for simulation with Gromacs software.
 
 .. outline of docs
+
 The ClayCode :ref:`User Guide <user_guide>` provides an overview on how use the package, with comprehensive information on the input and output files. For installating claycode and its dependencies see the :ref:`Installation Guide <installation>`. There are also partical step-by-step :ref:`Tutorials <tutorials>` using various clay types as examples. More detailed :ref:`technical documentation <API_docs>` is supplied for developers.
 
 Source Code
@@ -57,6 +59,7 @@ Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulatio
    :caption: User Guide
    :hidden:
    
+   ./user_guide/user_guide.rst
    ./user_guide/data_files
    ./user_guide/modules
    ./user_guide/input_files
@@ -67,6 +70,7 @@ Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulatio
    :caption: Tutorials
    :hidden:
    
+   ./tutorials/tutorials.rst
    ./tutorials/montmorillonite
    ./tutorials/illite
    ./tutorials/pyrophylite
