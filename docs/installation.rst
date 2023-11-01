@@ -7,11 +7,13 @@ Installation
 Dependencies
 -------------
 
-ClayCode is compatible with UNIX operating systems and requires `python`_ version :math:`\geq`3.9, `pipx`_ and a local `GROMACS`_ installation. It relies on the following python libraries:
+ClayCode is compatible with UNIX operating systems and requires `python`_ version :math:`\geq3.9`, `pipx`_ and a local `GROMACS`_ installation. It relies on the following python libraries:
 
- - `NumPy`_ (:math:`\geq`1.21.2)
- - `Pandas`_ (:math:`\geq`1.3.4)
- - `MDAnalysis`_ (:math:`\geq`2.0.0)
+ - `NumPy`_ (:math:`\geq 1.21.2`)
+
+ - `Pandas`_ (:math:`\geq 1.3.4`)
+
+ - `MDAnalysis`_ (:math:`\geq 2.0.0`)
 
 
 .. _`python`: https://docs.python.org/3/using/index.html
