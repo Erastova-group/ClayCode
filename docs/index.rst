@@ -2,39 +2,12 @@
 .. image:: images/Logo.png
    :alt: ClayCode logo
    :align: center
-
-.. buttons under heading
-|Project Status: Active| |License: MIT|
-
-.. |Project Status: Active| image:: https://www.repostatus.org/badges/latest/active.svg
-   :target: https://www.repostatus.org/#active
-.. |License: MIT| image:: https://img.shields.io/badge/License-MIT-yellow.svg
-   :target: https://opensource.org/licenses/MIT
    
 .. description of claycode
 **ClayCode** generates clay mineral structures based upon their natural partially occupied unit cell compositions and assigns ClayFF forecefield parameters, generating all the input files ready for simulation with Gromacs software.
 
-
-Documentation
-==============
-
 .. outline of docs
- 
-:ref:`Quickstart`
-------------------
-Installing and running ClayCode
-
-:ref:`User Guide`
-------------------
-Comprehensive information on how to use ClayCode
-
-:ref:`Tutorials`
-----------------
-Practical step-by-step how-to guides
-
-:ref:`API`
-----------
-Technical documentation for developers
+The ClayCode :ref:`User Guide <user_guide>` provides an overview on how use the package, with comprehensive information on the input and output files. For installating claycode and its dependencies see the :ref:`Installation Guide <installation>`. There are also partical step-by-step :ref:`Tutorials <tutorials>` using various clay types as examples. More detailed :ref:`technical documentation <API_docs>` is supplied for developers.
 
 Source Code
 ===========
@@ -58,9 +31,15 @@ The source code is available on `GitHub`_.
 .. _`pull request`: https://github.com/Erastova-group/ClayCode/pulls
 .. _`here`: https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
-Citation
-========
+Citing ClayCode
+================
 ClayCode is developed by Hannah Pollak, Matteo Degiacomi and Valentina Erastova, University of Edinburgh, 2023.
+
+Claycode is published under the `MIT License`_ |License: MIT|
+
+.. _`MIT License`: https://github.com/Erastova-group/ClayCode/blob/main/LICENSE.txt
+.. |License: MIT| image:: https://img.shields.io/badge/License-MIT-yellow.svg
+   :target: https://opensource.org/licenses/MIT
 
 Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulation in Gromacs", DOI: XXX
 
@@ -70,7 +49,7 @@ Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulatio
    :hidden:
    
    Home <self>
-   quickstart
+   installation
    API_docs
 
 .. toctree::
@@ -81,7 +60,6 @@ Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulatio
    ./user_guide/data_files
    ./user_guide/modules
    ./user_guide/input_files
-   ./user_guide/adding_unit_cells
    ./user_guide/output_files
    
 .. toctree::
@@ -96,7 +74,5 @@ Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulatio
    ./tutorials/fe_smectite
    ./tutorials/kaolinite
    ./tutorials/ldh
-   
-   
    
    
