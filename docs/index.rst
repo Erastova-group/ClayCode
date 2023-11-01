@@ -25,6 +25,7 @@ The source code is available on `GitHub`_.
 **Report bugs and give suggestions** for future improvements and new features via an `issue`_.
 
 **Have you added new functionality to the code, or assigned new clay unit cells?** Please share with the wider community by `forking this project`_ and submitting a `pull request`_. Learn more how to contribute `here`_.
+
 |Project Status: Active| |GitHub commit activity (branch)| |GitHub issues| |GitHub pull requests| |License: MIT|
 
 .. _`GitHub`: https://github.com/Erastova-group/ClayCode/tree/main
