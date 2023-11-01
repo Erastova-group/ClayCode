@@ -8,7 +8,6 @@
 .. blank lines to space out heading
 
 |
-|
    
 .. description of claycode
 
@@ -70,7 +69,6 @@ Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulatio
    
    ./user_guide/user_guide.rst
    ./user_guide/data_files
-   ./user_guide/modules
    ./user_guide/input_files
    ./user_guide/output_files
    
