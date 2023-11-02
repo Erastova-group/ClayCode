@@ -11,7 +11,7 @@
    
 .. description of claycode
 
-**ClayCode** generates clay mineral structures based upon their natural partially occupied unit cell compositions and assigns ClayFF forecefield parameters, generating all the input files ready for simulation with Gromacs software.
+**ClayCode** generates clay mineral structures based upon their natural partially occupied unit cell compositions and assigns ClayFF forcefield parameters, generating all the input files ready for simulation with Gromacs software.
 
 .. outline of docs
 
@@ -23,7 +23,7 @@ The source code is available on `GitHub`_.
 
 **Report bugs and give suggestions** for future improvements and new features via an `issue`_.
 
-**Have you added new functionality to the code, or assigned new clay unit cells?** Please share with the wider community by `forking this project`_ and submitting a `pull request`_. Learn more how to contribute `here`_.
+**Have you added new functionality to the code, or assigned new clay unit cells?** Please share with the wider community by `forking this project`_ and submitting a `pull request`_. Learn more on how to contribute `here`_.
 
 |Project Status: Active| |GitHub commit activity (branch)| |GitHub issues| |GitHub pull requests| |License: MIT|
 
