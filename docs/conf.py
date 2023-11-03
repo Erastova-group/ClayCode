@@ -50,6 +50,7 @@ mathjax_path = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?
 
 # bibtex settings
 bibtex_bibfiles = ['refs.bib']
+bibtex_reference_style = 'super'
 
 templates_path = ['_templates']
 
