@@ -20,8 +20,8 @@ The files are stored in the :code:`ClayCode/package/ClayCode/data` directory:
 Each subdirectory contains the data files of that kind where:
 
 - :code:`data/FF/` contains force field files, as dictated by GROMACS format. Currently included is: 
-   - :code:`ClayFF.ff` force fields :cite:p:`Cygan2021` :cite:p:`Cygan2004` with added Fe parameters based on personal communication with Andrey Kalinichev. The interlayer water and solvent water are also included here.
-   - :code:`Ions.ff` force fields by Pengfei Li. :cite:p:`Li2016` :cite:p:`Smith2023` The default is IOD-type, with HFE and CN also included.
+   - :code:`ClayFF.ff` force fields :cite:p:`Cygan2021, Cygan2004` with added Fe parameters based on personal communication with Andrey Kalinichev. The interlayer water and solvent water are also included here.
+   - :code:`Ions.ff` force fields by Pengfei Li. :cite:p:`Li2016, Smith2023` The default is IOD-type, with HFE and CN also included.
 - :code:`data/UCS/` contains unit cell structures in .GRO format and their corresponding topology in .ITP format with information taken from the ClayFF force field. Currently included, grouped by type, is:
    - :code:`D21` is dioctohedral 2:1
    - :code:`D11` is dioctohedral 1:1
