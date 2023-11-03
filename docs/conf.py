@@ -34,6 +34,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
+    "sphinxcontrib.bibtex",
 ]
 
 # intersphinx settings
@@ -46,6 +47,9 @@ intersphinx_disabled_domains = ["std"]
 
 # mathjax settings
 mathjax_path = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML'
+
+# bibtex settings
+bibtex_bibfiles = ['refs.bib']
 
 templates_path = ['_templates']
 
