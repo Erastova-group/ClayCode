@@ -180,3 +180,4 @@ Example UC.itp
     26 34   1     0.1    463532.808
 
 .. bibliography::
+   :style: plain
