@@ -181,4 +181,3 @@ Example UC.itp
 
 .. bibliography::
    :style: plain
-   :list: enumerated
