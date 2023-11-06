@@ -69,7 +69,8 @@ Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulatio
    
    ./user_guide/user_guide.rst
    ./user_guide/data_files
-   ./user_guide/input_files
+   ./user_guide/input_files/csv
+   ./user_guide/input_files/yaml
    ./user_guide/output_files
    
 .. toctree::
