@@ -1,0 +1,13 @@
+uc_id,base_id,substitution_sheet,substituted_atom,substitution_atom, substitution_loc,charge,n_substitutions
+01,00,T,ST2,AT2,t,-1.0,1
+02,00,T,ST4,AT4,t,-1.0,1
+03,00,T,ST6,AT6,b,-1.0,1
+04,00,T,ST8,AT8,b,-1.0,1
+05,00,T,ST2,FET2,t,-1.0,1
+06,00,T,ST4,FET4,t,-1.0,1
+07,00,T,ST6,FET6,b,-1.0,1
+08,00,O,FEO4,AO4,other,-0.0,1
+09,00,O,FEO2,AO2,other,-0.0,1
+10,00,O,FEO4,FE24,other,-1.0,1
+11,00,O,FEO2,MGO2,other,-1.0,1
+14,00,T,ST2,AT2,t,-1.0,1

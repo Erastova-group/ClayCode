@@ -54,14 +54,14 @@ from ClayCode.core.cctypes import (
     StrOrListDictOf,
     StrOrListOf,
 )
-from ClayCode.core.consts import FF, ITP_KWDS
-from ClayCode.core.consts import KWD_DICT as _KWD_DICT
-from ClayCode.core.consts import MDP_DEFAULTS
 from ClayCode.core.utils import (
     get_file_or_str,
     get_search_str,
     select_named_file,
 )
+from ClayCode.data.consts import FF, ITP_KWDS
+from ClayCode.data.consts import KWD_DICT as _KWD_DICT
+from ClayCode.data.consts import MDP_DEFAULTS
 from MDAnalysis import AtomGroup, ResidueGroup, Universe
 from pandas.errors import EmptyDataError
 from parmed import Atom, Residue
@@ -1275,7 +1275,9 @@ class ITPFile(File):
             pd.DataFrame,
         ], f"Unexpected datatype ({type(value)}) for {key} value"
         if not isinstance(value, str):
-            new_str = value.reset_index().to_string(index=False)
+            new_str = value.reset_index().to_string(
+                index=False, float_format=lambda x: "{:.6f}".format(x)
+            )
             new_str = f"; {new_str}\n\n"
         else:
             kwd_list = ITP_KWDS[key]
@@ -1666,9 +1668,13 @@ class YAMLFile(File):
 
     @property
     def data(self):
-        if not self._data:
+        if self._data is None:
             self._data = self._read_data()
         return self._data
+
+    # @data.setter
+    # def data(self, data):
+    #     self._data = data
 
     def _read_data(self) -> Dict[Any, Any]:
         try:
@@ -1676,17 +1682,75 @@ class YAMLFile(File):
                 return yaml.safe_load(file)
         except FileNotFoundError:
             logger.warning(f"{str(self.name)!r} does not exist.")
-            return {}
+            return None
 
     def _write_data(self):
-        with open(self, "w") as file:
-            yaml.dump(self._data, file)
-        self._data = None
+        if self._data:
+            with open(self, "w") as file:
+                yaml.dump(self._data, file)
+            self._data = None
+
+    @staticmethod
+    @get_file_or_str
+    def get_data(input_string: dict):
+        # @get_file_or_str
+        # def get_dict(input_string: PathOrStr):
+        #     return input_string
+        return input_string  # get_file_or_str(lambda x: input_string)
 
     @data.setter
-    @get_file_or_str
-    def data(self, input_string: PathOrStr):
-        self._data = input_string
+    def data(self, data: Union[str, dict, PathType]):
+        data = self.get_data(data)
+        if data:
+            self._data = data
+            self._write_data()
+
+
+class CSVFile(File):
+    _suffix = ".csv"
+
+    def __init__(self, *args, **kwargs):
+        super(CSVFile, self).__init__(*args, **kwargs)
+        self._data = None
+
+    @property
+    def data(self) -> Union[pd.DataFrame, None]:
+        if self._data is None:
+            self._data = self._read_data()
+        return self._data
+
+    def _read_data(
+        self, sep=",", header: Optional[int] = 0, dtype: str = object
+    ) -> Union[pd.DataFrame, None]:
+        try:
+            with open(self, "r") as file:
+                return pd.read_csv(file, sep=sep, header=header, dtype=dtype)
+        except FileNotFoundError:
+            logger.warning(f"{str(self.name)!r} does not exist.")
+            return None
+
+    @data.setter
+    def data(self, data: pd.DataFrame):
+        if data is not None:
+            if len(data) != 0:
+                self._data = data
+                self._write_data()
+
+    def __add__(self, other):
+        data = self.data
+        if data and other:
+            other.columns = data.columns
+            other.index.names = data.index.names
+            data = data.append(other)
+        self._data = data
+        self._write_data()
+
+    def _write_data(self, index=False):
+        if self._data is not None:
+            if len(self._data) != 0:
+                self._data.to_csv(self, sep=",", index=index, header=True)
+                logger.info(f"Writing {self.name!r}")
+                self._data = None
 
 
 class Dir(BasicPath):
@@ -1709,7 +1773,7 @@ class Dir(BasicPath):
         if ext == "*":
             filelist = [file for file in self.iterdir()]
         else:
-            format_ext = lambda x: "." + x.strip(".")
+            format_ext = lambda x: "." + x.strip(".") if x != "" else x
             ext_match_list = lambda x: list(self.glob(f"*{x}"))
             if type(ext) == str:
                 ext = format_ext(ext)
@@ -1754,6 +1818,10 @@ class Dir(BasicPath):
                 self._drv, self._root, self._parts[:-1] + [name]
             )
         )
+
+    @property
+    def dirlist(self) -> DirList:
+        return DirList(self)
 
     @property
     def filelist(self) -> FileList:
@@ -1861,7 +1929,7 @@ class BasicPathList(UserList):
     def filter(
         self,
         pattern: Union[List[str], str],
-        mode: Literal["full", "parts"] = "parts",
+        mode: Literal["full", "parts", "name", "stem"] = "parts",
         keep_dims: bool = False,
         pre_reset=False,
         post_reset=False,
@@ -1969,14 +2037,15 @@ class TOPList(ITPList):
 
 
 class DirList(BasicPathList):
-    _ext = "*"
+    _ext = ""
 
     def __init__(self, path: Union[BasicPath, Dir], check=False):
         self.path = DirFactory(path)
         files = self.path._get_filelist(ext=self.__class__._ext)
         self._data = []
         for file in files:
-            self.data.append(DirFactory(file, check=check))
+            if file.is_dir():
+                self._data.append(DirFactory(file, check=check))
         self.data = self._data
 
 
@@ -2330,7 +2399,7 @@ class SimDir(Dir):
 def init_path(path, exist_ok=True):
     if not Dir(path).is_dir():
         os.makedirs(path, exist_ok=exist_ok)
-        logger.finfo(f"Creating new directory {path!r}")
+        logger.finfo(f"Creating new directory {str(path)!r}")
 
 
 def set_mdp_parameter(

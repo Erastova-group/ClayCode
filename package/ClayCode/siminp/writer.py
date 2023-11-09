@@ -32,6 +32,7 @@ from ClayCode.core.cctypes import AnyDir, PathOrStr
 from ClayCode.core.classes import (
     Dir,
     File,
+    FileFactory,
     ForceField,
     GROFile,
     MDPFile,
@@ -44,20 +45,16 @@ from ClayCode.core.classes import (
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
-from ClayCode.core.consts import (
-    FF,
-    MDP,
-    MDP_DEFAULTS,
-    USER_MDP,
-    exec_date,
-    exec_time,
-)
+from ClayCode.core.consts import exec_date, exec_time
 from ClayCode.core.lib import add_resnum, generate_restraints, select_clay
 from ClayCode.core.utils import (
     get_file_or_str,
     get_search_str,
     property_exists_checker,
+    substitute_kwds,
 )
+from ClayCode.data.consts import FF, MDP, MDP_DEFAULTS, USER_MDP
+from ClayCode.siminp.consts import DSPACE_RUN_SCRIPT, REMOVE_WATERS_SCRIPT
 from ClayCode.siminp.sitypes import (
     DefaultGMXRunType,
     GMXRunType,
@@ -101,19 +98,25 @@ class GMXRun(UserDict, ABC):
         run_id: int,
         name: str,
         igro: Optional[PathOrStr] = None,
+        icpt: Optional[PathOrStr] = None,
         itop: Optional[PathOrStr] = None,
         deffnm: Optional[str] = None,
         odir: Optional[PathOrStr] = None,
+        run_dir: Optional[PathOrStr] = None,
         **kwargs,
     ):
         self._top = itop
         self._gro = None
+        self._cpt = icpt
         if run_id == 1 and igro is None:
             raise ValueError(f"First run requires GRO file specification")
         elif igro is not None:
             self.gro = igro
             if itop is None:
                 self.top = self.gro.top
+            if icpt is None:
+                self.cpt = self.gro.with_suffix(".cpt")
+        self._options = self.__class__._options
         self._mdp = None
         self.deffnm = deffnm
         self._name = name
@@ -124,6 +127,43 @@ class GMXRun(UserDict, ABC):
         if deffnm is None:
             self.deffnm = name
         self.outname = self.odir / self.deffnm
+        if run_dir is None:
+            self._run_dir = self.odir
+        else:
+            self.run_path = Dir(run_dir)
+
+    def process_inp_files(self, file: Union[GROFile, TOPFile, None]):
+        if isinstance(file, str):
+            file = FileFactory(file)
+        if file is not None:
+            if not file.is_relative_to(self.odir):
+                new_file = self.odir.parent / file.name
+                shutil.copy2(file, new_file)
+                file = new_file
+            return file
+
+    def get_run_path(self, filename: PathOrStr):
+        if self.run_path != self.odir:
+            filename = Path(filename)
+            rel_filename = filename
+            for out_part in self.odir.parents:
+                try:
+                    rel_filename = filename.relative_to(out_part)
+                except ValueError:
+                    pass
+                else:
+                    break
+            relpath = list(out_part.parts)[-1]
+            new_rdir = ["/"]
+            for rd in self.run_path.parts:
+                if rd not in out_part.parts:
+                    new_rdir.append(rd)
+                else:
+                    rel_filename
+            new_rdir = Path(*new_rdir, relpath)
+            return new_rdir / rel_filename
+        else:
+            return filename
 
     @property
     def gro(self):
@@ -135,8 +175,34 @@ class GMXRun(UserDict, ABC):
             add_resnum(crdin=gro, crdout=gro)
         except FileNotFoundError:
             pass
-        finally:
+        else:
             self._gro = GROFile(gro)
+
+    @property
+    def cpt(self):
+        return self._cpt
+
+    @cpt.setter
+    def cpt(self, cpt: Union[PathOrStr, None]):
+        try:
+            self._cpt = File(cpt, check=False)
+        except TypeError:
+            self._cpt = None
+
+    @property
+    def run_path(self):
+        if self._run_dir.name not in [self.odir.parent.name, self.odir.name]:
+            return self._run_dir
+        else:
+            self.run_path = self._run_dir
+            return self._run_dir
+
+    @run_path.setter
+    def run_path(self, run_dir):
+        run_dir = Dir(run_dir)
+        while run_dir.name in [self.odir.parent.name, self.odir.name]:
+            run_dir = run_dir.parent
+        self._run_dir = run_dir
 
     @property
     def top(self):
@@ -171,7 +237,7 @@ class GMXRun(UserDict, ABC):
 
     def get_run_command(self, gmx_alias="gmx"):
         if self.cpt is not None:
-            cpt_str_1 = f" -t {self.cpt}"
+            cpt_str_1 = f" -t {self.get_run_path(self.cpt)}"
             # cpt_str_2 = f" -cpi {self.cpt}"
         else:
             cpt_str_1 = ""
@@ -182,8 +248,8 @@ class GMXRun(UserDict, ABC):
         restraints_str = ""
         return (
             f"\n# {self.run_id}: {self._name}:\n"
-            f'{gmx_alias} grompp -f {self.mdp} -c {self.gro} -p {self.top} -o {self.outname.with_suffix(".tpr")}{cpt_str_1}{restraints_str}\n'
-            f"{gmx_alias} mdrun -s {self.outname.with_suffix('.tpr')} -v -deffnm {self.outname}{cpt_str_2}\n"
+            f'{gmx_alias} grompp -f {self.get_run_path(self.mdp)} -c {self.get_run_path(self.gro)} -p {self.get_run_path(self.top)} -o {self.get_run_path(self.outname.with_suffix(".tpr"))}{cpt_str_1}{restraints_str}\n'
+            f"{gmx_alias} mdrun -s {self.get_run_path(self.outname.with_suffix('.tpr'))} -v -deffnm {self.get_run_path(self.outname)}{cpt_str_2}\n"
         )
 
     def add_nsteps(self):
@@ -263,8 +329,8 @@ class GMXRun(UserDict, ABC):
     def copy_inputfiles(self):
         for filetype in ["gro", "top"]:
             file = getattr(self, filetype)
-            shutil.copy(file, self.odir)
-            setattr(self, filetype, self.odir / file)
+            shutil.copy2(file, self.odir)
+            setattr(self, filetype, self.odir / file.name)
 
 
 class _GMXRunType(ABC):
@@ -426,15 +492,17 @@ class EMRun(GMXRun):
         itop=None,
         deffnm=None,
         odir=None,
+        run_dir: Optional[PathOrStr] = None,
         **kwargs,
     ):
         super().__init__(
-            name=name,
             run_id=run_id,
+            name=name,
             igro=igro,
             itop=itop,
             deffnm=deffnm,
             odir=odir,
+            run_dir=run_dir,
         )
         add_kwargs(self, **kwargs)
 
@@ -451,15 +519,17 @@ class EQRunFixed(GMXRun):
         itop=None,
         deffnm=None,
         odir=None,
+        run_dir: Optional[PathOrStr] = None,
         **kwargs,
     ):
         super().__init__(
-            name=name,
             run_id=run_id,
+            name=name,
             igro=igro,
             itop=itop,
             deffnm=deffnm,
             odir=odir,
+            run_dir=run_dir,
         )
         add_kwargs(self, **kwargs)
 
@@ -496,15 +566,17 @@ class EQRunRestrained(GMXRun):
         itop=None,
         deffnm=None,
         odir=None,
+        run_dir: Optional[PathOrStr] = None,
         **kwargs,
     ):
         super().__init__(
-            name=name,
             run_id=run_id,
+            name=name,
             igro=igro,
             itop=itop,
             deffnm=deffnm,
             odir=odir,
+            run_dir=run_dir,
         )
         add_kwargs(self, **kwargs)
 
@@ -521,15 +593,17 @@ class EQRun(GMXRun):
         itop=None,
         deffnm=None,
         odir=None,
+        run_dir: Optional[PathOrStr] = None,
         **kwargs,
     ):
         super().__init__(
-            name=name,
             run_id=run_id,
+            name=name,
             igro=igro,
             itop=itop,
             deffnm=deffnm,
             odir=odir,
+            run_dir=run_dir,
         )
         add_kwargs(self, **kwargs)
 
@@ -546,21 +620,23 @@ class OtherRun(GMXRun):
         itop=None,
         deffnm=None,
         odir=None,
+        run_dir: Optional[PathOrStr] = None,
         **kwargs,
     ):
         super().__init__(
-            name=name,
             run_id=run_id,
+            name=name,
             igro=igro,
             itop=itop,
             deffnm=deffnm,
             odir=odir,
+            run_dir=run_dir,
         )
         add_kwargs(self, **kwargs)
 
 
 class DSpaceRun(GMXRun):
-    _options = ["d_space", "nsteps", "sheet_wat", "uc_wat", "percent_wat"]
+    _options = ["d_space", "nsteps", "sheet_wat", "uc_wat"]
     _default_mdp_key = "D-SPACE"
 
     def __init__(
@@ -571,15 +647,17 @@ class DSpaceRun(GMXRun):
         itop=None,
         deffnm=None,
         odir=None,
+        run_dir: Optional[PathOrStr] = None,
         **kwargs,
     ):
         super().__init__(
-            name=name,
             run_id=run_id,
+            name=name,
             igro=igro,
             itop=itop,
             deffnm=deffnm,
             odir=odir,
+            run_dir=run_dir,
         )
         add_kwargs(self, n_args=3, **kwargs)
 
@@ -608,6 +686,53 @@ class DSpaceRun(GMXRun):
     def process_mdp(self, gro: GROFile, **kwargs):
         self.process_kwargs(gro)
         self.add_nsteps()
+
+    def get_run_command(self, gmx_alias="gmx", max_run=10):
+        shutil.copy2(REMOVE_WATERS_SCRIPT, self.odir)
+        remove_waters_script = self.get_run_path(
+            self.odir / REMOVE_WATERS_SCRIPT.name
+        )
+        dspace_run_string = File(DSPACE_RUN_SCRIPT).string
+        dspace_run_string = substitute_kwds(
+            dspace_run_string,
+            {
+                "INGRO": self.get_run_path(self.gro),
+                "OUTGRO": self.get_run_path(self.odir / self.gro.name),
+                "DSPACE": self.d_space,
+                "SHEET_WAT": self.sheet_n_wat,
+                "INTOP": self.get_run_path(self.top),
+                "ODIR": self.run_path,
+                "DSPACE": self.d_space,
+                "REMOVE_WATERS": self.sheet_n_wat,
+                "GMX": gmx_alias,
+                "MDP": self.mdp,
+                "DSPACE_SCRIPT": remove_waters_script,
+                "MAX_RUN": max_run,
+            },
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        return dspace_run_string
+
+    @property
+    def sheet_n_wat(self) -> int:
+        if hasattr(self, "sheet_wat"):
+            return np.rint(self.sheet_wat)
+        elif hasattr(self, "uc_wat"):
+            u = add_resnum(crdin=self.gro, crdout=self.gro)
+            clay = select_clay(u)
+            n_ucs = 0
+            res_id = clay[0].resid - 1
+            for residue in clay.residues:
+                if res_id == residue.resid - 1:
+                    n_ucs += 1
+                    res_id = residue.resid
+                else:
+                    break
+            return np.rint(n_ucs * self.uc_wat)
+        # elif hasattr(self, "percent_wat"):
+        #     return np.rint(self.percent_wat * self.gro.n_atoms / 100)
+        else:
+            raise ValueError(f"No water removal option specified")
 
 
 class GMXRunFactory:
@@ -807,6 +932,7 @@ class MDPRunGenerator:
         odir=None,
         deffnm=None,
         itop=None,
+        run_dir=None,
         **kwargs,
     ):
         """Add a run to the run sequence.
@@ -827,6 +953,7 @@ class MDPRunGenerator:
             deffnm=deffnm,
             odir=odir,
             run_id=run_id,
+            run_dir=run_dir,
             **kwargs,
         )
         while len(self._runs) < run_id:
@@ -835,16 +962,19 @@ class MDPRunGenerator:
 
     def write_runs(
         self,
-        odir: Union[Dir, str],
+        odir: PathOrStr,
+        run_dir: Optional[PathOrStr] = None,
         run_script_name=None,
         run_script_template=None,
         **kwargs,
     ):
         """Write the run script for the run sequence.
+        :param run_dir: Run directory
         :param odir: Output directory
         :param run_script_name: Name of the run script
         :param run_script_template: Template for the run script
         """
+        prev_em = True
         odir = Dir(odir)
         init_path(odir)
         if run_script_name is None:
@@ -854,53 +984,116 @@ class MDPRunGenerator:
                 scriptfile.write("#!/bin/bash\n")
         else:
             shutil.copy2(run_script_template, odir / run_script_name)
-        init_data_copied = False
+        # if self._runs[0].cpt is not None:
+        #     prev_em = False
+        # init_data_copied = False
         with open(odir / run_script_name, "a") as scriptfile:
-            for run in self._runs:
+            for run_id, run in enumerate(self._runs):
                 run.odir = odir
                 init_path(run.odir)
-                if not init_data_copied:
-                    run.copy_inputfiles()
-                    run.cpt = None
-                    init_top = run.top
-                    init_gro = run.gro
+                # get input gro, top, cpt files
+                if run_id == 0:
+                    try:
+                        cpt = run.gro.with_suffix(".cpt")
+                        cpt = run.process_inp_files(cpt)
+                    except AttributeError:
+                        cpt = None
+                    except FileNotFoundError:
+                        cpt = None
+                    finally:
+                        run.cpt = cpt
+                        run.gro = init_gro = run.process_inp_files(run.gro)
+                        run.top = init_top = run.process_inp_files(run.top)
                 else:
-                    new_top = run.odir / init_top.name
+                    run.gro = prev_gro
+                    new_top = run.odir / prev_top.name
                     shutil.copy2(init_top, new_top)
                     run.top = new_top
                     run.cpt = prev_cpt
-                    run.gro = init_gro
                 if run.__class__.__name__ == "DSpaceRun":
                     run_name = f"{run.name}_NpT"
+                    run.cpt = None
                 else:
                     run_name = run.name
                 run.mdp: MDPFile = self.write_mdp_options(
                     run_name, outpath=run.odir
                 )
                 run.process_mdp(gro=init_gro)
-                if init_data_copied:
-                    run.gro = prev_outname.with_suffix(".gro")
-                else:
-                    init_data_copied = True
-                prev_cpt = None
-                if re.fullmatch(
+                if not re.fullmatch(
                     f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
                 ):
-                    pass
-                else:
-                    prev_cpt = run.outname.with_suffix(".cpt")
-                    if prev_em:
+                    if run.cpt is None:
                         run.mdp.add({"gen-vel": "yes"}, replace=True)
                     else:
-                        # prev_cpt = self.outname.with_suffix(".cpt")
                         run.mdp.add({"gen-vel": "no"}, replace=True)
+                    prev_cpt = run.outname.with_suffix(".cpt")
+                else:
+                    prev_cpt = None
                 run.mdp.write_prms(run.mdp.string, all=True)
                 scriptfile.write(run.get_run_command(self._gmx_alias))
-                prev_outname = run.outname
-                prev_em = re.fullmatch(
-                    f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
-                )
-        print("done")
+                prev_gro = run.gro
+                prev_top = run.top
+
+        #
+        #
+        #         # relpath = run.odir.parts
+        #         # new_rdir = []
+        #         # for rd in run_dir.parts:
+        #         #     if rd not in run.odir.parts:
+        #         #         new_rdir.append()
+        #         #         relpath.remove(rd)
+        #         # new_rdir = Path(*new_rdir)
+        #         # relpath = Path(*relpath)
+        #         # run.run_path = new_rdir
+        #         # run.relpath = relpath
+        #         if run_id == 0:
+        #             init_gro = run.gro
+        #             init_top = run.top
+        #
+        #
+        #
+        #         if prev_em: #not init_data_copied:
+        #             # run.copy_inputfiles()
+        #             # run.cpt = None
+        #             init_top = run.top
+        #             init_gro = run.gro
+        #         else:
+        #             new_top = run.odir / init_top.name
+        #             shutil.copy2(init_top, new_top)
+        #             run.top = new_top
+        #             run.cpt = prev_cpt
+        #             run.gro = init_gro
+        #         if run.__class__.__name__ == "DSpaceRun":
+        #             run_name = f"{run.name}_NpT"
+        #         else:
+        #             run_name = run.name
+        #         run.mdp: MDPFile = self.write_mdp_options(
+        #             run_name, outpath=run.odir
+        #         )
+        #         run.process_mdp(gro=init_gro)
+        #         if init_data_copied:
+        #             run.gro = prev_outname.with_suffix(".gro")
+        #         else:
+        #             init_data_copied = True
+        #         prev_cpt = None
+        #         if re.fullmatch(
+        #             f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
+        #         ) or run.cpt is None:
+        #             pass
+        #         else:
+        #             prev_cpt = run.outname.with_suffix(".cpt")
+        #             if prev_em:
+        #                 run.mdp.add({"gen-vel": "yes"}, replace=True)
+        #             else:
+        #                 # prev_cpt = self.outname.with_suffix(".cpt")
+        #                 run.mdp.add({"gen-vel": "no"}, replace=True)
+        #         run.mdp.write_prms(run.mdp.string, all=True)
+        #         scriptfile.write(run.get_run_command(self._gmx_alias))
+        #         prev_outname = run.outname
+        #         prev_em = re.fullmatch(
+        #             f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
+        #         )
+        # print("done")
 
     def write_mdp_options(self, run_name: str, outpath: Dir) -> MDPFile:
         """Write the MDP options for the given run.

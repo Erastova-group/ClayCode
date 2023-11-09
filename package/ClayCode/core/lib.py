@@ -35,18 +35,11 @@ import numpy as np
 import pandas as pd
 from ClayCode.analysis.analysisbase import analysis_class
 from ClayCode.core.cctypes import PathType
-from ClayCode.core.classes import ForceField, GROFile, YAMLFile
-from ClayCode.core.consts import (
-    AA,
-    CLAYFF_AT_TYPES,
-    DATA,
-    FF,
-    SOL,
-    SOL_DENSITY,
-    UCS,
-)
+from ClayCode.core.classes import Dir, ForceField, GROFile, YAMLFile
+from ClayCode.core.consts import SOL, SOL_DENSITY
 from ClayCode.core.gmx import gmx_command_wrapper
 from ClayCode.core.utils import backup_files
+from ClayCode.data.consts import AA, CLAYFF_AT_TYPES, DATA, FF, UCS, USER_UCS
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
@@ -263,8 +256,8 @@ def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
 
 def select_clay(
     universe: MDAnalysis.Universe,
-    ff: ForceField = None,
-    atomtypes: List[str] = None,
+    ff: Optional[ForceField] = None,
+    atomtypes: Optional[List[str]] = None,
 ) -> MDAnalysis.AtomGroup:
     """Select clay atoms based on atom names in force field.
     :param universe: MDAnalysis universe
@@ -1051,18 +1044,23 @@ def rename_il_solvent(
 
 
 @temp_file_wrapper
-def add_resnum(crdin: Union[Path, str], crdout: Union[Path, str]) -> Universe:
+def add_resnum(
+    crdin: Union[Path, str],
+    crdout: Union[Path, str],
+    res_n_atoms: Optional[int] = None,
+) -> Universe:
     """Add residue numbers to GRO file.
     :param crdin: input coordinates filename
-    :type crdin: GROFile
+    :type crdin: GROFile, str
     :param crdout: output corrdiantes filename
     :type crdout: GROFile
     :return: MDAnalysis Universe
     :rtype: Universe
     """
     u = Universe(str(crdin))
-    logger.debug(f"Adding residue numbers to:\n{str(crdin.resolve())!r}")
-    res_n_atoms = get_system_n_atoms(crds=u, write=False)
+    logger.debug(f"Adding residue numbers to:\n{str(crdin)!r}")
+    if res_n_atoms is None:
+        res_n_atoms = get_system_n_atoms(crds=u, write=False)
     atoms: MDAnalysis.AtomGroup = u.atoms
     for i in np.unique(atoms.residues.resnames):
         logger.debug(f"Found residues: {i} - {res_n_atoms[i]} atoms")
@@ -1116,6 +1114,12 @@ PRM_INFO_DICT = {
             zip(u.atoms.moltypes, np.round(u.atoms.residues.charges, 4))
         ),
     ),
+    "masses": cast(
+        Callable[[Universe], Dict[str, float]],
+        lambda u: dict(
+            zip(u.atoms.moltypes, np.round(u.atoms.residues.masses, 4))
+        ),
+    ),
 }
 
 
@@ -1154,14 +1158,24 @@ update_wrapper(get_mol_n_atoms, "n_atoms")
 get_mol_charges = partial(get_mol_prms, prm_str="charges")
 update_wrapper(get_mol_charges, "charges")
 
-PRM_METHODS = {"charges": get_mol_charges, "n_atoms": get_mol_n_atoms}
+get_mol_masses = partial(get_mol_prms, prm_str="masses")
+update_wrapper(get_mol_charges, "masses")
+
+PRM_METHODS = {
+    "charges": get_mol_charges,
+    "n_atoms": get_mol_n_atoms,
+    "masses": get_mol_masses,
+}
 
 ion_itp = FF / "Ions.ff/ions.itp"
 get_ion_charges = partial(get_mol_charges, itp_file=ion_itp)
 update_wrapper(get_ion_charges, ion_itp)
 
 get_ion_n_atoms = partial(get_mol_n_atoms, itp_file=ion_itp)
-update_wrapper(get_ion_charges, ion_itp)
+update_wrapper(get_ion_n_atoms, ion_itp)
+
+get_ion_masses = partial(get_mol_masses, itp_file=ion_itp)
+update_wrapper(get_ion_masses, ion_itp)
 
 
 def get_ion_prms(prm_str: str, **kwargs):
@@ -1180,6 +1194,8 @@ def get_ion_prms(prm_str: str, **kwargs):
         prm_dict = get_ion_charges(**kwargs)
     elif prm_str == "n_atoms":
         prm_dict = get_ion_n_atoms(**kwargs)
+    elif prm_str == "masses":
+        prm_dict = get_ion_masses(**kwargs)
     else:
         raise KeyError(f"Unexpected parameter: {prm_str!r}")
     return prm_dict
@@ -1232,6 +1248,9 @@ update_wrapper(get_clay_charges, "charges")
 get_clay_n_atoms = partial(get_clay_prms, prm_str="n_atoms")
 update_wrapper(get_clay_n_atoms, "n_atoms")
 
+get_clay_masses = partial(get_clay_prms, prm_str="masses")
+update_wrapper(get_clay_masses, "masses")
+
 
 def get_sol_prms(
     prm_str: str,
@@ -1276,6 +1295,9 @@ update_wrapper(get_sol_charges, "charges")
 get_sol_n_atoms = partial(get_sol_prms, prm_str="n_atoms")
 update_wrapper(get_sol_n_atoms, "n_atoms")
 
+get_sol_masses = partial(get_sol_prms, prm_str="masses")
+update_wrapper(get_sol_masses, "masses")
+
 
 def get_aa_prms(prm_str: str, aa_name: str, aa_path=AA, force_update=False):
     prm_func = PRM_METHODS[prm_str]
@@ -1299,6 +1321,9 @@ update_wrapper(get_aa_charges, "charges")
 
 get_aa_n_atoms = partial(get_aa_prms, prm_str="n_atoms")
 update_wrapper(get_aa_n_atoms, "n_atoms")
+
+get_aa_masses = partial(get_aa_prms, prm_str="masses")
+update_wrapper(get_aa_masses, "masses")
 
 
 def get_all_prms(
@@ -1353,7 +1378,8 @@ def get_all_prms(
                     prm_str=prm_str, aa_name=aa, force_update=force_update
                 )
             )
-        clay_types = UCS.glob(r"[A-Z]*[0-9]*")
+        clay_types = Dir(UCS).dirlist.filter(r"[A-Z]*[0-9]*")
+        clay_types += Dir(USER_UCS).dirlist.filter(r"[A-Z]*[0-9]*")
         clay_dict = {}
         for uc in clay_types:
             uc = uc.stem
@@ -1378,6 +1404,9 @@ update_wrapper(get_all_charges, "charges")
 
 get_all_n_atoms = partial(get_all_prms, prm_str="n_atoms")
 update_wrapper(get_all_n_atoms, "n_atoms")
+
+get_all_masses = partial(get_all_prms, prm_str="masses")
+update_wrapper(get_all_masses, "masses")
 
 
 def get_system_prms(
@@ -1429,6 +1458,9 @@ update_wrapper(get_system_charges, "charges")
 
 get_system_n_atoms = partial(get_system_prms, prm_str="n_atoms")
 update_wrapper(get_system_n_atoms, "n_atoms")
+
+get_system_masses = partial(get_system_prms, prm_str="masses")
+update_wrapper(get_system_masses, "masses")
 
 
 def add_mols_to_top(

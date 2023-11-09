@@ -10,7 +10,7 @@ import os
 import re
 import shutil
 import tempfile
-from functools import cached_property
+from functools import cached_property, partialmethod
 from pathlib import Path
 from typing import Any, Callable, List, Literal, Optional, Type, Union
 
@@ -26,14 +26,7 @@ from ClayCode.core.classes import (
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
-from ClayCode.core.consts import (
-    ANGSTROM,
-    FF,
-    GRO_FMT,
-    LINE_LENGTH,
-    MDP,
-    MDP_DEFAULTS,
-)
+from ClayCode.core.consts import ANGSTROM, LINE_LENGTH
 from ClayCode.core.gmx import (
     GMXCommands,
     add_gmx_args,
@@ -46,11 +39,13 @@ from ClayCode.core.lib import (
     add_resnum,
     center_clay,
     check_insert_numbers,
+    get_system_n_atoms,
     run_em,
     select_outside_clay_stack,
     write_insert_dat,
 )
 from ClayCode.core.utils import backup_files, get_header, get_subheader
+from ClayCode.data.consts import FF, GRO_FMT, MDP, MDP_DEFAULTS
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.units import constants
 from numpy._typing import NDArray
@@ -61,6 +56,10 @@ logger = logging.getLogger(__name__)
 
 
 class Builder:
+    """Clay model builder class.
+    :param build_args: Arguments for building clay model.
+    :type build_args: Type["BuildArgs"]"""
+
     __tmp_outpath: Type[
         tempfile.TemporaryDirectory
     ] = tempfile.TemporaryDirectory()
@@ -277,9 +276,9 @@ class Builder:
         )
         logger.info(get_header(f"{self.args.name} model setup complete"))
 
-    def remove_il_solv(self, min_height=1.0) -> None:
+    def remove_il_solv(self) -> None:
         """Remove interlayer solvent if interlayer needs to have ions but no solvent.
-        :return None"""
+        :return: None"""
         logger.finfo("Removing interlayer solvent", initial_linebreak=True)
         il_u: Universe = Universe(str(self.il_solv))
         il_atoms: AtomGroup = il_u.select_atoms("not resname SOL iSL")
@@ -379,6 +378,9 @@ class Builder:
 
     @cached_property
     def __ion_sel_str(self) -> str:
+        """String of ion residue names.
+        :return: String of ion residue names.
+        :rtype: str"""
         return " ".join(self.args.ff["ions"]["atomtypes"].df["at-type"])
 
     def remove_bulk_ions(self):
@@ -534,6 +536,12 @@ class Builder:
             logger.finfo("\tSkipping bulk ion addition.")
 
     def stack_sheets(self, extra=2.0, backup=False) -> None:
+        """Stack clay sheets.
+        :param extra: Offset for stacking.
+        :type extra: float
+        :param backup: Whether to back up existing files.
+        :type backup: bool
+        :return: None"""
         try:
             il_crds: GROFile = self.il_solv
             il_u: Universe = il_crds.universe
@@ -606,6 +614,11 @@ class Builder:
         logger.finfo(f"Saved sheet stack as {self.stack.stem!r}\n")
 
     def __path_getter(self, property_name) -> GROFile:
+        """Get path to file.
+        :param property_name: Name of property.
+        :type property_name: str
+        :return: Path to file.
+        :rtype: GROFile"""
         path = getattr(self, f"__{property_name}")
         if path is not None:
             return path
@@ -702,15 +715,31 @@ class Builder:
 
     @property
     def il_solv(self) -> GROFile:
+        """Interlayer solvent GRO filename.
+        :return: Interlayer solvent GRO filename.
+        :rtype: GROFile"""
+
         return self.__path_getter("il_solv")
 
     @il_solv.setter
     def il_solv(self, il_solv: Union[Path, str, GROFile]) -> None:
+        """Set interlayer solvent GRO filename.
+        :param il_solv: Interlayer solvent GRO filename.
+        :type il_solv: Union[Path, str, GROFile]
+        :return: None"""
         self.__path_setter_copy("il_solv", il_solv)
 
     def __path_setter_copy(
         self, property_name: str, file: Union[Path, str, GROFile], backup=False
     ) -> None:
+        """Set path to file.
+        :param property_name: Name of property.
+        :type property_name: str
+        :param file: Path to file.
+        :type file: Union[Path, str, GROFile]
+        :param backup: Whether to back up existing files.
+        :type backup: bool
+        :return: None"""
         path: GROFile = getattr(self, property_name, None)
         if path is None:
             path = file
@@ -735,6 +764,8 @@ class Builder:
         setattr(self, f"__{property_name}", file)
 
     def add_il_ions(self) -> None:
+        """Add interlayer ions.
+        :return: None"""
         logger.finfo("Adding interlayer ions:", initial_linebreak=True)
         infile: GROFile = self.il_solv
         with tempfile.NamedTemporaryFile(
@@ -804,11 +835,32 @@ class Builder:
             self.il_solv: GROFile = infile
 
     def center_clay_in_box(self) -> None:
+        """Center clay in box.
+        :return: None"""
         center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
         self.stack.reset_universe()
 
 
 class Sheet:
+    """Clay sheet class.
+    :param uc_data: Unit cell data.
+    :type uc_data: UCData
+    :param uc_ids: Unit cell IDs.
+    :type uc_ids: List[int]
+    :param uc_numbers: Unit cell numbers.
+    :type uc_numbers: List[int]
+    :param x_cells: Number of unit cells in x-direction.
+    :type x_cells: int
+    :param y_cells: Number of unit cells in y-direction.
+    :type y_cells: int
+    :param fstem: Filestem.
+    :type fstem: str
+    :param outpath: Output path.
+    :type outpath: Path
+    :param n_sheet: Sheet number.
+    :type n_sheet: int
+    :return: None"""
+
     def __init__(
         self,
         uc_data: UCData,
@@ -835,8 +887,11 @@ class Sheet:
         self.__n_sheet = None
         self.n_sheet = n_sheet
         self.__random = None
+        self._res_n_atoms = None
 
     def __adjust_z_to_bbox(self):
+        """Adjust z-dimension to bounding box.
+        :return: None"""
         u_file = self.filename
         u = u_file.universe
         u.atoms.translate([0, 0, self.uc_data.bbox_z_shift])
@@ -851,6 +906,9 @@ class Sheet:
 
     @property
     def n_sheet(self) -> Union[int, None]:
+        """Sheet number.
+        :return: Sheet number.
+        :rtype: Union[int, None]"""
         if self.__n_sheet is not None:
             return self.__n_sheet
         else:
@@ -858,6 +916,10 @@ class Sheet:
 
     @n_sheet.setter
     def n_sheet(self, n_sheet: int):
+        """Set sheet number.
+        :param n_sheet: Sheet number.
+        :type n_sheet: int
+        :return: None"""
         if type(n_sheet) == int:
             self.__n_sheet: int = n_sheet
             self.__random = np.random.default_rng(n_sheet)
@@ -869,6 +931,9 @@ class Sheet:
 
     @property
     def random_generator(self) -> Union[None, np.random._generator.Generator]:
+        """Random number generator.
+        :return: Random number generator.
+        :rtype: Union[None, np.random._generator.Generator]"""
         if self.__random is not None:
             return self.__random
         else:
@@ -876,14 +941,25 @@ class Sheet:
 
     @property
     def uc_array(self) -> NDArray:
+        """Unit cell array.
+        :return: Unit cell index array.
+        :rtype: NDArray"""
         uc_array: NDArray = np.repeat(self.uc_ids, self.uc_numbers)
         return sorted(uc_array)
 
     @property
     def filename(self) -> GROFile:
+        """Sheet filename.
+        :return: Sheet filename.
+        :rtype: GROFile"""
         return self.get_filename(suffix=".gro")
 
-    def write_gro(self, backup=False) -> None:
+    def write_gro(self, backup: bool = False) -> None:
+        """Write sheet coordinates.
+        :param backup: Whether to back up existing files.
+        :type backup: bool, default=False
+        :return: None"""
+
         filename: GROFile = self.filename
         filename.description = (
             f'{self.filename.stem.split("_")[0]} sheet {self.n_sheet}'
@@ -927,7 +1003,9 @@ class Sheet:
                     )
                 )
             grofile.write(f"{self.format_dimensions(self.dimensions / 10)}\n")
-        add_resnum(crdin=filename, crdout=filename)
+        add_resnum(
+            crdin=filename, crdout=filename, res_n_atoms=self.res_n_atoms
+        )
         uc_array = self.uc_array.copy()
         self.random_generator.shuffle(uc_array)
         uc_n_atoms: NDArray = (
@@ -957,7 +1035,27 @@ class Sheet:
         filename.write()
         self.__adjust_z_to_bbox()
 
+    @property
+    def res_n_atoms(self) -> pd.Series:
+        if self._res_n_atoms is None:
+            self._res_n_atoms = self.get_system_n_atoms()
+        return self._res_n_atoms
+
+    @res_n_atoms.setter
+    def res_n_atoms(self) -> pd.Series:
+        self._res_n_atoms = self.get_system_n_atoms()
+
+    def get_system_n_atoms(self) -> pd.Series:
+        return get_system_n_atoms(crds=self.universe, write=False)
+
     def __cells_shift(self, n_cells: int, n_atoms: int) -> NDArray:
+        """Get shift for unit cells in sheet.
+        :param n_cells: Number of cells.
+        :type n_cells: int
+        :param n_atoms: Number of atoms.
+        :type n_atoms: int
+        :return: Shift.
+        :rtype: NDArray"""
         shift: NDArray = np.atleast_2d(np.arange(n_cells)).repeat(
             n_atoms, axis=1
         )
@@ -965,19 +1063,38 @@ class Sheet:
 
     @staticmethod
     def format_dimensions(dimensions: NDArray) -> str:
+        """Format dimension string for GRO file.
+        :param dimensions: Dimensions.
+        :type dimensions: NDArray
+        :return: Formatted dimensions.
+        :rtype: str"""
         return "".join([f"{dimension:12.4f}" for dimension in dimensions])
 
     @cached_property
     def uc_dimensions(self) -> NDArray:
+        """Unit cell dimensions.
+        :return: Unit cell dimensions.
+        :rtype: NDArray"""
+
         return self.uc_data.dimensions
 
     @property
     def universe(self) -> Universe:
-        return Universe(str(self.get_filename(suffix=".gro")))
+        """Sheet universe.
+        :return: Sheet universe.
+        :rtype: Universe"""
+
+        return (
+            self.filename.universe
+        )  # Universe(str(self.get_filename(suffix=".gro")))
 
     # TODO: add n_atoms and uc data to match data
 
     def backup(self, filename: Path) -> None:
+        """Backup files.
+        :param filename: Filename.
+        :type filename: Path
+        :return: None"""
         sheets_backup: Path = filename.with_suffix(f"{filename.suffix}.1")
         backups = filename.parent.glob(f"*.{filename.suffix}.*")
         for backup in reversed(list(backups)):
@@ -990,6 +1107,23 @@ class Sheet:
 
 
 class Solvent:
+    """Solvent class.
+    :param x_dim: X-dimension.
+    :type x_dim: Optional[Union[int, float]]
+    :param y_dim: Y-dimension.
+    :type y_dim: Optional[Union[int, float]]
+    :param z_dim: Z-dimension.
+    :type z_dim: Optional[Union[int, float]]
+    :param n_mols: Number of molecules.
+    :type n_mols: Optional[Union[int]]
+    :param n_ions: Number of ions.
+    :type n_ions: Optional[Union[int]]
+    :param z_padding: Z-padding.
+    :type z_padding: float
+    :param min_height: Minimum height.
+    :type min_height: float
+    :return: None"""
+
     solv_density = 1000e-27  # g/L 1L = 10E27 A^3
     mw_sol = 18
 
@@ -1030,15 +1164,24 @@ class Solvent:
 
     @property
     def z_dim(self) -> float:
+        """Z-dimension.
+        :return: Z-dimension.
+        :rtype: float"""
         return self._z_dim + self._z_padding
 
     @property
     def universe(self) -> Universe:
+        """Solvent universe.
+        :return: Universe.
+        :rtype: Universe"""
         universe = getattr(self, "__universe", None)
         return universe
 
     @property
     def topology(self) -> TopologyConstructor:
+        """Solvent topology.
+        :return: Topology.
+        :rtype: TopologyConstructor"""
         top = getattr(self, "__top", None)
         return top
 
@@ -1049,6 +1192,10 @@ class Solvent:
         return self.__repr__()
 
     def get_solvent_sheet_height(self, mols_sol: int) -> float:
+        """Get solvent sheet height from number of solvent molecules..
+                :param mols_sol: Number of solvent molecules.
+        :type mols_sol: int
+        """
         z_dim = (self.mw_sol * mols_sol) / (
             constants["N_Avogadro"]
             * self.x_dim
@@ -1058,6 +1205,11 @@ class Solvent:
         return z_dim
 
     def get_sheet_solvent_mols(self, z_dim: Union[float, int]) -> int:
+        """Get number of solvent molecules from solvent sheet height.
+        :param z_dim: Solvent sheet height.
+        :type z_dim: Union[float, int]
+        """
+
         mols_sol = (
             z_dim
             * constants["N_Avogadro"]

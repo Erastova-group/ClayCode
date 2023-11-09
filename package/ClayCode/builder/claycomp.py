@@ -20,7 +20,16 @@ from functools import (
     wraps,
 )
 from pathlib import PosixPath
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Literal,
+    NoReturn,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import dask.array
 import dask.bag
@@ -31,7 +40,7 @@ import zarr
 from ClayCode.builder.consts import BUILDER_DATA
 from ClayCode.builder.utils import get_checked_input, select_input_option
 from ClayCode.core.classes import Dir, File, ITPFile, PathFactory, YAMLFile
-from ClayCode.core.consts import CLAYFF_AT_TYPES, LINE_LENGTH, UCS
+from ClayCode.core.consts import LINE_LENGTH
 from ClayCode.core.lib import get_ion_charges
 from ClayCode.core.utils import (
     backup_files,
@@ -39,16 +48,26 @@ from ClayCode.core.utils import (
     get_debugheader,
     get_subheader,
 )
+from ClayCode.data.consts import CLAYFF_AT_TYPES, UCS
 from numba import njit, prange
 from numpy._typing import NDArray
 from tqdm.auto import tqdm
 from zarr.errors import PathNotFoundError
 
-__all__ = ["TargetClayComposition"]
+__all__ = [
+    "TargetClayComposition",
+    "UCData",
+    "UnitCell",
+    "UCClayComposition",
+    "MatchClayComposition",
+    "Ions",
+    "InterlayerIons",
+    "BulkIons",
+]
 
 logger = logging.getLogger(__name__)
 
-MAX_STORE_ARR_SIZE = 536870912
+MAX_STORE_ARR_SIZE = 5368709  # 12
 
 
 class UnitCell(ITPFile):
@@ -367,8 +386,18 @@ class UCData(Dir):
         self._full_df["sheet"].fillna("X", inplace=True)
         self._full_df.fillna(0, inplace=True)
         for uc in self.uc_list:
-            atoms = uc["atoms"].df
-            self._full_df[f"{uc.idx}"].update(atoms.value_counts("at-type"))
+            try:
+                atoms = uc["atoms"].df
+                self._full_df[f"{uc.idx}"].update(
+                    atoms.value_counts("at-type")
+                )
+            except AttributeError:
+                logger.finfo(f"Invalid unit cell {uc.name!r}")
+                for suffix in [".gro", ".itp"]:
+                    try:
+                        os.remove(uc.with_suffix(suffix))
+                    except FileNotFoundError:
+                        pass
         self._full_df.set_index("sheet", append=True, inplace=True)
         self._full_df.sort_index(inplace=True, level=1, sort_remaining=True)
         self._full_df.index = self._full_df.index.reorder_levels(
@@ -417,9 +446,18 @@ class UCData(Dir):
             lambda x: x * self.full_df["charge"], raw=True
         )
         total_charge = (
-            charge.loc[:, self.uc_idxs].sum().astype(np.float64).round(2)
+            charge.loc[:, self.uc_idxs].sum().astype(np.float32).round(4)
         )
         total_charge.name = "charge"
+        if total_charge.any() > 1.001:
+            self._full_df = self._full_df[
+                total_charge[
+                    np.less(
+                        1.002,
+                        total_charge,
+                    )
+                ]
+            ]
         return total_charge
 
     @cached_property
@@ -485,7 +523,7 @@ class UCData(Dir):
         return occ_dict
 
     @property
-    def atomic_charges(self):
+    def atomic_charges(self) -> pd.Series:
         """Get dictionary of unit cell atomic charges
         :return: dictionary of unit cell atomic charges
         :rtype: Dict[str , int]"""
@@ -500,7 +538,7 @@ class UCData(Dir):
         df: Union[pd.DataFrame, pd.Series],
         tot_charge: Optional = None,
         sum_dict: bool = True,
-    ) -> Dict[Union[Literal["T"], Literal["O"]], int]:
+    ) -> Union[Dict[Union[Literal["T"], Literal["O"]], int], pd.DataFrame]:
         """Get oxidation numbers from unit cell composition and occupancies.
         :param occupancies: dictionary of unit cell sheet occupancies
         :type occupancies: Dict[Union[Literal['T'], Literal['O']], int]
@@ -517,7 +555,7 @@ class UCData(Dir):
         df: Union[pd.DataFrame, pd.Series],
         tot_charge: Optional = None,
         sum_dict: bool = True,
-    ) -> Tuple[pd.DataFrame, Dict[str, int]]:
+    ) -> Tuple[pd.DataFrame, Dict[str, int], pd.DataFrame]:
         """Get oxidation numbers from unit cell composition and occupancies"""
         ox_dict = UCData._get_ox_dict()
         # df = df.loc[['T','O']]
@@ -561,7 +599,7 @@ class UCData(Dir):
                 )
             )
         else:
-            ox_dict = ox.groupby("sheet").apply(
+            ox_dict: pd.DataFrame = ox.groupby("sheet").apply(
                 lambda x: x / occupancies[x.name]
             )
         return at_types, ox_dict
@@ -688,7 +726,7 @@ class TargetClayComposition:
         )
 
         self.split_fe_occupancies()
-        self.__ion_df: pd.DataFrame = None
+        self.__ion_df = None
         self.set_ion_numbers()
 
     def __str__(self):
@@ -723,7 +761,9 @@ class TargetClayComposition:
         """Get dictionary of elements and corresponding clayff atom types.
         :return: dictionary of elements and corresponding clayff atom types
         :rtype: Dict[str, str]"""
-        reverse_at_types = {v: k for (k, v) in self.clayff_at_types.items()}
+        reverse_at_types = {}
+        for k1, v1 in self.clayff_at_types.items():
+            reverse_at_types[k1] = {v: k for (k, v) in v1.items()}
         return reverse_at_types
 
     def clayff_to_element(self, at_type: str) -> str:
@@ -1037,7 +1077,9 @@ class TargetClayComposition:
         return wrapper
 
     @sheet_df_decorator
-    def __get_sheet_df(self, sheet_df):  # , idx_sel=["T", "O"]):
+    def __get_sheet_df(
+        self, sheet_df: pd.DataFrame
+    ) -> pd.DataFrame:  # , idx_sel=["T", "O"]):
         charge_substitutions = self.atom_types
         charge_substitutions["charge"] = charge_substitutions.groupby(
             "sheet"
@@ -1082,12 +1124,12 @@ class TargetClayComposition:
     @sheet_df_decorator
     def correct_charged_occupancies(
         self,
-        sheet_df,
+        sheet_df: pd.DataFrame,
         # idx_sel=["T", "O"],
         priority: Optional[
             Union[Literal["charges"], Literal["occupancies"]]
         ] = None,
-    ):
+    ) -> Union[pd.DataFrame, pd.Series, NoReturn]:
         priorities = ["charges", "occupancies"]
         priorities.remove(priority)
         non_priority_sel = next(iter(priorities))
@@ -1217,7 +1259,7 @@ class TargetClayComposition:
     @sheet_df_decorator
     def correct_uncharged_occupancies(
         self, sheet_df: pd.DataFrame
-    ):  # , idx_sel=["T", "O"]):
+    ) -> None:  # , idx_sel=["T", "O"]):
         correct_uc_occ: pd.Series = pd.Series(self.uc_data.occupancies)
         input_uc_occ: pd.Series = pd.Series(self.occupancies)
         check_occ: pd.Series = input_uc_occ - correct_uc_occ
@@ -1481,6 +1523,7 @@ class TargetClayComposition:
 
     def __read_match_df(self, csv_file):
         """Read match DataFrame from csv file."""
+
         match_df: pd.DataFrame = pd.read_csv(csv_file)
         match_df["sheet"].ffill(inplace=True)
         match_cols = match_df.columns.values
@@ -1800,7 +1843,8 @@ class MatchClayComposition(ClayComposition):
         manual_setup: bool = True,
         debug_run: bool = False,
         max_ucs: Optional[int] = None,
-        array_chunk_size=10000,
+        array_chunk_size: int = 10000,
+        max_dist: float = 0.05,
     ):
         super().__init__(
             sheet_n_ucs=sheet_n_ucs,
@@ -1812,6 +1856,7 @@ class MatchClayComposition(ClayComposition):
         self.manual_setup = manual_setup
         self.array_chunk_size = array_chunk_size
         self.ignore_threshold = ignore_threshold
+        self.max_dist = max_dist
         self.target_comp: TargetClayComposition = target_composition
         self.__target_df: pd.DataFrame = target_composition.clay_df
         self._max_ucs = max_ucs
@@ -2208,8 +2253,11 @@ class MatchClayComposition(ClayComposition):
                 if np.all(out_zarr.shape == (n_combs, shape_1)):
                     pass
                 elif np.any(out_zarr.shape < (n_combs, shape_1)):
-                    raise PathNotFoundError
-            except PathNotFoundError:
+                    for arr_file in out_zarr.store.listdir():
+                        os.remove(f"{out_zarr.store.path}/{arr_file}")
+                    raise PathNotFoundError(f"Existing array too small!")
+            except PathNotFoundError as e:
+                logger.debug(f"{e}")
                 out_zarr = zarr.zeros(
                     store=self._get_zarr_storage(array_name),
                     dtype=arr_type,
@@ -2218,7 +2266,9 @@ class MatchClayComposition(ClayComposition):
                 )
             finally:
                 setattr(self, f"_{array_name}_zarr", out_zarr)
-                out_dask = dask.array.from_zarr(out_zarr.store.path)
+                out_dask = dask.array.from_zarr(
+                    out_zarr.store.path, chunks=out_zarr.chunks
+                )
                 out_dask[:] = 0
                 if np.all(out_zarr.shape != (n_combs, shape_1)):
                     out_dask = out_dask[:n_combs, :shape_1]
@@ -2272,6 +2322,7 @@ class MatchClayComposition(ClayComposition):
 
     @cached_property
     def _unique_uc_match_dict(self) -> dict:
+        max_it = 3
         uc_df = self.uc_df.copy()
         uc_df.columns = uc_df.columns.astype(int)
         match_dict = dict(
@@ -2291,6 +2342,7 @@ class MatchClayComposition(ClayComposition):
         self.init_weight_arrays(target_values)
         n_ucs = 0
         match_found = False
+        worse_matches = 0
         while not match_found and n_ucs < self.max_ucs:
             n_ucs += 1
             self.get_weight_array_slices(n_ucs)
@@ -2340,12 +2392,38 @@ class MatchClayComposition(ClayComposition):
                 )
             if better_choice_than_prev:
                 uc_id_sel = match_dict["uc_ids"]
-            else:
+            elif dist <= self.max_dist:
                 logger.finfo(
                     f"Found better match with fewer unit cells.\nStopping here.",
                     initial_linebreak=True,
                 )
                 match_found = True
+            elif worse_matches <= max_it:
+                logger.finfo(
+                    f"Found better match with fewer unit cells but deviation ({min_dist:1.4f}) "
+                    f"from target composition greater than accepted threshold of {self.max_dist:1.4f}.\n"
+                    "Searching for for better match.",
+                    initial_linebreak=True,
+                )
+                worse_matches += 1
+            else:
+                logger.finfo(
+                    f"The last {max_it} iterations did not provide an improved matching.\n"
+                    f"The average unit cell composition still deviates by a total of {min_dist:1.4f} from target stoichiometry.\n"
+                    "Stopping here.",
+                    initial_linebreak=True,
+                )
+                match_found = select_input_option(
+                    instance_or_manual_setup=True,
+                    query="\nContinue with current match? [y]es/[e]xit (Default y)\n",
+                    options=["y", "e", ""],
+                    result=match_found,
+                    result_map={"y": True, "e": False, "": True},
+                )
+                if not match_found:
+                    self.__abort(
+                        "Could not find a unit cell composition that matches the target composition better than the accepted threshold of {self.max_dist:1.4f}."
+                    )
         logger.finfo(
             f"Best match found with {match_dict['n_ucs']} unique unit cells "
             + f"(total occupancy deviation {match_dict['dist']:+.4f})\n",
