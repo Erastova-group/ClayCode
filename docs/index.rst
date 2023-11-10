@@ -9,13 +9,13 @@
 
 |
    
-.. description of claycode
+.. description of ClayCode
 
-**ClayCode** generates clay mineral structures based upon their natural partially occupied unit cell compositions and assigns ClayFF forcefield parameters, generating all the input files ready for simulation with Gromacs software.
+**ClayCode** generates clay mineral structures based upon their natural partially occupied unit cell compositions and assigns ClayFF force field parameters, generating all the input files ready for simulation with Gromacs software.
 
 .. outline of docs
 
-The ClayCode :ref:`User Guide <user_guide>` provides an overview on how use the package, with comprehensive information on the input and output files. For installating claycode and its dependencies see the :ref:`Installation Guide <installation>`. There are also partical step-by-step :ref:`Tutorials <tutorials>` using various clay types as examples. More detailed :ref:`technical documentation <API_docs>` is supplied for developers.
+The ClayCode :ref:`User Guide <user_guide>` provides an overview on how use the package, with comprehensive information on the input and output files. For installing ClayCode and its dependencies see the :ref:`Installation Guide <installation>`. There are also practical step-by-step :ref:`Tutorials <tutorials>` using various clay types as examples. More detailed :ref:`technical documentation <API_docs>` is supplied for developers.
 
 Source Code
 ===========
@@ -47,7 +47,7 @@ Citing ClayCode
 
 ClayCode is developed by Hannah Pollak, Matteo Degiacomi and Valentina Erastova, University of Edinburgh, 2023.
 
-Claycode is published under the `MIT License`_.
+ClayCode is published under the `MIT License`_.
 
 .. _`MIT License`: https://github.com/Erastova-group/ClayCode/blob/main/LICENSE.txt
 
