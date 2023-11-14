@@ -85,5 +85,3 @@ Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulatio
    ./tutorials/fe_smectite
    ./tutorials/kaolinite
    ./tutorials/ldh
-   
-   
