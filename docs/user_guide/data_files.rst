@@ -190,3 +190,10 @@ Example UC.itp
 
 .. bibliography::
    :style: plain
+   :filter: False
+
+   Cygan2021
+   Cygan2004
+   Li2016
+   Hanwell2012
+   Smith2023
