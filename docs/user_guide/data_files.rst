@@ -50,7 +50,7 @@ Use of ClayCode should not be dictated only by the Unit Cells provided with this
 #. Obtain a crystal structure. We recommend downloading a .cif file from the `American Mineralogist Crystal Structure Database`_.
 
 #. Convert it to a full occupancy expanded structure (.gro or .pdb). We recommend using one of the the following:
-`OpenBabel`_, `Avogadro`_ :cite:p:`Shanwell2012` (not Avogadro2) or `Mercury by CCDC`_ (licence needed).
+`OpenBabel`_, `Avogadro`_ :cite:p:`Thanwell2012` (not Avogadro2) or `Mercury by CCDC`_ (licence needed).
 
 #. Manually rename the atoms in the .gro to have unique names.
 
@@ -199,5 +199,5 @@ Example UC.itp
    Cygan2021
    Cygan2004
    Li2016
-   Hanwell2012
+   Thanwell2012
    Smith2023
