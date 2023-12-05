@@ -16,8 +16,6 @@ charset-normalizer==3.3.1
     # via requests
 click==8.1.7
     # via pip-tools
-cloud-sptheme==1.10.1.post20200504175005
-    # via -r docs/requirements.in
 colorama==0.4.6
     # via sphinx-autobuild
 docutils==0.17.1
@@ -70,7 +68,6 @@ snowballstemmer==2.2.0
 sphinx==5.3.0
     # via
     #   -r docs/requirements.in
-    #   cloud-sptheme
     #   sphinx-autobuild
     #   sphinx-copybutton
     #   sphinx-rtd-theme
