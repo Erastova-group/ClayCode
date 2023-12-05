@@ -25,7 +25,7 @@ Each subdirectory contains the data files of that kind where:
    
    * :code:`Ions.ff` force fields by Pengfei Li. :cite:p:`Li2016, Smith2023` The default is IOD-type, with HFE and CN also included.
    
-- :code:`data/UCS/` contains unit cell structures in .GRO format and their corresponding topology in .ITP format with information taken from the ClayFF force field. Currently included, grouped by type, is:
+- :code:`data/UCS/` contains unit cell structures in .GRO format and their corresponding topology in .ITP format with information taken from the ClayFF force field. Currently included is:
 
    * :code:`D21` is dioctohedral 2:1
    
