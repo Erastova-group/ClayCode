@@ -35,6 +35,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinxcontrib.bibtex",
+    "cloud_sptheme.ext.table_styling"
 ]
 
 # intersphinx settings
