@@ -6,3 +6,4 @@ sphinx-autobuild
 pip-tools
 sphinx-copybutton
 sphinxcontrib.bibtex
+cloud_sptheme
