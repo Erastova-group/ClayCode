@@ -147,13 +147,45 @@ Clay Sheet Size
 Clay Composition
 *****************
 
-:code:`ClayCode.builder` uses the supplied .csv file to calculate the number and type of unit cells necessary to match the desired composition. These can also be supplied manually using the following parameters. See the :ref:`Pyrophyllite tutorial <pyro_tutorial>` for an example.
+:code:`ClayCode.builder` uses the supplied .csv file to calculate the number and type of unit cells necessary to match the desired composition. The way in which ClayCode will match this target composition can be specified.
+
+| :code:`OCC_TOL`: occupation_tolerance [ *float* ] (Default = 0.1)
+| The maximum occupancy/charge deviation for a unit cell that is adjusted without querying to match the expected values.
+| *E.g.* with an expected :code:`csv:T` total unit cell occupancy of 4 and :code:`OCC_TOL` of 0.1, any composition with tetrahedral occupancies between 3.9 and 4.1 will be automatically adjusted to match the expected value.
+
+| :code:`ZERO_THRESHOLD`: threshold [ *float* ] (Default = 0.05)
+| The occupancy threshold below which the matched composition will be set to 0 if the element is not found in the force field or in the unit cell database.
+
+| :code:`SEL_PRIORITY`: charge_correction [ *str* ] (Default = charges)
+| The priority to use when correcting charges and substitution occupancies.
+| *E.g.* An octahedral charge of -0.3 and a "mgo" occupancy of 0.4 is not possible, and one needs to be adjusted.
+| There are two possible options:
+| 1. :code:`charges`: Conserve specified charges and adjust substitution occupancies. *E.g. mgo: 0.4 -> 0.3*
+| 2. :code:`occupancies`: Conserve occupancies and adjust charges. *E.g. -0.3 e -> -0.4 e*
+
+| :code:`CHARGE_PRIORITY`: charge_correction [ *str* ] (Default = total_charge)
+| The priority to use when individual sheet and total charge do not match.
+| *E.g.* total charge = -1.00 but tetrahedral charge = -0.70 and octahedral charge = -0.40
+| There are two possible options:
+| 1. :code:`total_charge`: Conserve the total charge and adjust tetrahedral and octahedral occupancies. *E.g. tetrahedral charge: -0.70 -> -0 .65 and octahedral charge: -0.40 -> -0.35*
+| 2. :code:`sheet_charges`: Conserve the sheet charges and adjust total charge. *E.g. total charge: -1.00 -> 1.10*
+
+| :code:`MATCH_TOLERANCE`: tolerance [ *float* ] (Default = 0.02)
+| The maximum total occupancy deviation from the corrected target stoichiometry.
+
+No CSV File
+*******************
+
+The clay composition can also be supplied manually in the .yaml file using the following parameters. See the :ref:`Pyrophyllite tutorial <pyro_tutorial>` for an example.
 
 | :code:`UC_INDEX_LIST`: unit_cells [ *list* ]
 | List of unit cells to be used for building the model. These must have corresponding :code:`.gro` and :code:`.itp` files in the :code:`data/UCS/CLAY_TYPE` directory.
 
 | :code:`UC_RATIOS_LIST`: cell_probabilities [ *list* ]
 | List of probabilities for the above unit cells. The total probability must equal 1.
+
+| :code:`IL_ION_RATIOS`: ions_and_ratios [ *dict[str: int]* ] (Default = Ca: 1 Cl: 1)
+| The interlayer ions to be used and the ratio between them. The sum of all cation/anion contributions should be **1**. Only ion species of the opposite sign to the layer charge will be considered.
 
 Interlayer Solvent and Ions
 ****************************
