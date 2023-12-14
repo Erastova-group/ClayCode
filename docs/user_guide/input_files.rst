@@ -40,6 +40,13 @@ The file should be comprised of at least 3 columns:
 
 - Subsequent columns - the clay name(s) with each row giving the corresponding value for that clay. One of these should match the :code:`SYSNAME` option in the corresponding .yaml file.
 
+.. figure:: ../images/csv.png
+   :alt: CSV structure
+   :align: center
+   :figwidth: image
+
+   The file structure for the CSV file.
+
 
 Iron Oxidation State
 *********************
