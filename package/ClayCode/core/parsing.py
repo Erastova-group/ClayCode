@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r""":mod:`ClayCode.core.parsing` --- Argument parsing module
-==========================================================="""
+r""":mod:`ClayCode.core.parsing` --- Argument parsing module"""
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import re
@@ -13,18 +13,16 @@ from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserDict
 from functools import cached_property
-from typing import Any, Dict, List, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import MDAnalysis
 import numpy as np
 import pandas as pd
 import yaml
 from caseless_dictionary import CaselessDict
-from ClayCode.addmols.consts import ADDMOLS_DEFAULTS as _addmols_defaults
-from ClayCode.addmols.consts import ADDTYPES
 from ClayCode.builder.consts import BUILDER_DATA
-from ClayCode.core.classes import BasicPath, Dir, File, ForceField, init_path
-from ClayCode.core.consts import ANGSTROM
+from ClayCode.core.classes import BasicPath, Dir, File, init_path
+from ClayCode.core.consts import ANGSTROM, FF, MDP_DEFAULTS, UCS
 from ClayCode.core.lib import select_clay
 from ClayCode.core.utils import (
     get_debugheader,
@@ -33,8 +31,8 @@ from ClayCode.core.utils import (
     parse_yaml,
     select_file,
 )
-from ClayCode.data.consts import ALL_UCS, FF, MDP_DEFAULTS, UCS, USER_UCS
-from ClayCode.siminp.writer import MDPRunGenerator
+from ClayCode.data.ucgen import UCWriter
+from ClayCode.siminp.writer import GMXRunFactory, MDPRunGenerator
 
 __all__ = {
     "ArgsFactory",
@@ -90,7 +88,6 @@ buildparser.add_argument(
     dest="csv_file",
     required=False,
 )
-
 buildparser.add_argument(
     "-mdp",
     type=File,
@@ -391,22 +388,30 @@ dataparser.add_argument(
 # siminpparser.add_argument("-run_config")
 
 # TODO: add plotting?
+#
+# parser.add_argument('builder',
+#                     required=False,
+#                     default=False,
+#                     nargs=0,
+#                     action='store_true',
+#                     dest='BUILDER')
+#
+# parser.add_argument('siminp',
+#                     required=False,
+#                     default=False,
+#                     action='store_true',
+#                     dest='SIMINP')
+#
 
 
 def read_yaml_path_decorator(*path_args):
     def read_yaml_decorator(f):
         def wrapper(self: _Args, enumerate_duplicates=False):
             assert isinstance(self, _Args), "Wrong class for decorator"
-            try:
-                with open(self.data["yaml_file"], "r") as file:
-                    self.__yaml_data = parse_yaml(
-                        file, enumerate_duplicates=enumerate_duplicates
-                    )
-            except FileNotFoundError:
-                logger.error(
-                    f'{File(self.data["yaml_file"]).resolve()} not found!\nAborting...'
+            with open(self.data["yaml_file"], "r") as file:
+                self.__yaml_data = parse_yaml(
+                    file, enumerate_duplicates=enumerate_duplicates
                 )
-                sys.exit(2)
             logger.finfo(f"Reading {file.name!r}:\n")
             for k, v in self.__yaml_data.items():
                 if k in self._arg_names:
@@ -416,28 +421,10 @@ def read_yaml_path_decorator(*path_args):
                             try:
                                 path = File(path, check=True)
                             except FileNotFoundError:
-                                try:
-                                    path = File(
-                                        self.data["yaml_file"].parent / v,
-                                        check=True,
-                                    )
-                                except FileNotFoundError:
-                                    try:
-                                        path = File(
-                                            self.data["INPATH"]
-                                            / path.relative_to(path.cwd()),
-                                            check=True,
-                                        )
-                                        found = True
-                                    except KeyError:
-                                        found = False
-                                    except FileNotFoundError:
-                                        found = False
-                                    finally:
-                                        if not found:
-                                            raise FileNotFoundError(
-                                                f"File {v!r} not found!"
-                                            )
+                                path = File(
+                                    self.data["yaml_file"].parent / v,
+                                    check=True,
+                                )
                         else:
                             path = Dir(path)
                         v = str(path)
@@ -459,9 +446,8 @@ class _Args(ABC, UserDict):
     _arg_names = []
 
     def __init__(self, data: dict):
+        # self._arg_defaults = {}
         self.data = data
-        self.ff = None
-        self.__yaml_data = None
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.data.__repr__()})"
@@ -477,11 +463,7 @@ class _Args(ABC, UserDict):
     def check(self):
         pass
 
-    def _set_attributes(
-        self, data_keys: List[str], optional: List[str] = None
-    ):
-        if optional is None:
-            optional = []
+    def _set_attributes(self, data_keys: List[str], optional: List[str] = []):
         for prm in data_keys:
             try:
                 prm_value = self.data[prm]
@@ -501,7 +483,9 @@ class _Args(ABC, UserDict):
             self._mdp_defaults = MDP_DEFAULTS
         return self._mdp_defaults
 
-    def get_ff_data(self) -> Dict[str, Type["ForceField"]]:
+    def get_ff_data(self):
+        from ClayCode.core.classes import ForceField
+
         water_sel_dict = {"SPC": ["ClayFF_Fe", ["spc", "interlayer_spc"]]}
         ff_dict = {}
         logger.info(get_subheader("Getting force field data"))
@@ -556,14 +540,11 @@ class _Args(ABC, UserDict):
 
 
 class BuildArgs(_Args):
-    """Parameters for clay model setup with :mod:`ClayCode.builder`
-    :param data: dictionary of command line arguments
-    :type data: dict
-    """
+    """Parameters for clay model setup with :mod:`ClayCode.builder`"""
 
     option = "builder"
     from ClayCode.builder.consts import BUILD_DEFAULTS as _build_defaults
-    from ClayCode.data.consts import UC_CHARGE_OCC as _charge_occ_df
+    from ClayCode.builder.consts import UC_CHARGE_OCC as _charge_occ_df
 
     _arg_names = [
         "SYSNAME",
@@ -594,7 +575,6 @@ class BuildArgs(_Args):
         "Z_PADDING",
         "MIN_IL_HEIGHT",
         "MAX_UCS",
-        "MATCH_TOLERANCE",
     ]
     _arg_defaults = _build_defaults
 
@@ -603,20 +583,20 @@ class BuildArgs(_Args):
         self.debug_run = debug_run
         self._target_comp = None
         self._uc_data = None
-        self.filestem = None
-        self.uc_charges = None
-        self.x_cells = None
-        self.y_cells = None
-        self.boxheight = None
-        self.n_sheets = None
-        self._uc_name = None
-        self.uc_stem = None
-        self.name = None
-        self.outpath = None
-        self.zero_threshold = None
-        self._raw_comp = None
-        self._corr_comp = None
-        self._uc_comp = None
+        self.filestem: str = None
+        self.uc_charges: pd.DataFrame = None
+        self.x_cells: int = None
+        self.y_cells: int = None
+        self.boxheight: float = None
+        self.n_sheets: int = None
+        self._uc_name: str = None
+        self.uc_stem: str = None
+        self.name: str = None
+        self.outpath: Dir = None
+        self.zero_threshold: float = None
+        self._raw_comp: pd.DataFrame = None
+        self._corr_comp: pd.DataFrame = None
+        self._uc_comp: pd.DataFrame = None
         self.ff = None
         self.ucs = None
         self.il_solv = None
@@ -688,14 +668,7 @@ class BuildArgs(_Args):
             if (
                 uc_type
                 in self._charge_occ_df.index.get_level_values("value").unique()
-            ):
-                if (UCS / uc_type).is_dir():
-                    self._uc_path = UCS / uc_type
-                elif (USER_UCS / uc_type).is_dir():
-                    self._uc_path = USER_UCS / uc_type
-                else:
-                    raise ValueError(f"Unknown unit cell type {uc_type!r}!")
-                self._uc_path = Dir(self._uc_path)
+            ) and (UCS / uc_type).is_dir():
                 self._uc_name = uc_type
                 self._tbc = None
                 tbc_match = re.search(
@@ -703,13 +676,11 @@ class BuildArgs(_Args):
                 )
                 if tbc_match:
                     pass
-                self.uc_stem = self._uc_path.itp_filelist[0].stem[:-3]
+                self.uc_stem = self._uc_name[:2]
                 logger.debug(f"Setting unit cell type: {self._uc_name!r}")
             else:
-                raise ValueError(f"Unknown unit cell type {uc_type!r}!")
-        except ValueError as e:
-            logger.error(f"{e}\nAborting...")
-            sys.exit(2)
+                logger.error(f"Unknown unit cell type {uc_type!r}!")
+                sys.exit(2)
         except KeyError:
             logger.error("No unit cell type specified!")
             sys.exit(2)
@@ -754,7 +725,6 @@ class BuildArgs(_Args):
             "ZERO_THRESHOLD",
             "Z_PADDING",
             "MIN_IL_HEIGHT",
-            "MATCH_TOLERANCE",
         ]
         self._set_attributes(data_keys=data_keys)
         if self.z_padding <= 0:
@@ -788,6 +758,10 @@ class BuildArgs(_Args):
         logger.set_file_name(
             new_filepath=self.outpath, new_filename=self.filestem
         )
+        # logger.rename_log_file(
+        #     new_filepath=self.outpath,
+        #     new_filename=BasicPath(self.outpath.name),
+        # )
         init_path(self.outpath)
         logger.finfo(
             kwd_str="Setting output directory: ", message=f"{self.outpath}"
@@ -800,14 +774,11 @@ class BuildArgs(_Args):
         self.get_il_solvation_data()
         self.get_bulk_ions()
 
-    def get_uc_data(self, reset=False):
+    def get_uc_data(self):
         from ClayCode.builder.claycomp import UCData
 
         self._uc_data = UCData(
-            self._uc_path,
-            uc_stem=self.uc_stem,
-            ff=self.ff["clay"],
-            reset=reset,
+            UCS / self._uc_name, uc_stem=self.uc_stem, ff=self.ff["clay"]
         )
         occ = self._uc_data.occupancies
         ch = self._uc_data.oxidation_numbers
@@ -829,9 +800,6 @@ class BuildArgs(_Args):
                 manual_setup=self.manual_setup,
                 occ_correction_threshold=self.zero_threshold,
             )
-            # if self.name not in self.data["CLAY_COMP"].keys():
-            #     logger.finfo(f'Invalid system name {self.name!r}!\nAvailable options are:'+', '.join(self.data["CLAY_COMP"].keys()))
-            #     sys.exit(1)
             self._target_comp.write_csv(self.outpath, backup=self.backup)
             self._ion_df = self._target_comp.ion_df
 
@@ -899,6 +867,7 @@ class BuildArgs(_Args):
     @property
     def ion_df(self):
         return self._ion_df
+        # return self._target_comp.ion_df
 
     @cached_property
     def sheet_n_cells(self):
@@ -908,31 +877,15 @@ class BuildArgs(_Args):
         if not self.uc_index_ratios:
             from ClayCode.builder.claycomp import MatchClayComposition
 
-            try:
-                self.match_comp = MatchClayComposition(
-                    target_composition=self._target_comp,
-                    sheet_n_ucs=self.sheet_n_cells,
-                    manual_setup=self.manual_setup,
-                    ignore_threshold=self.zero_threshold,
-                    debug_run=self.debug_run,
-                    max_ucs=self.max_ucs,
-                    max_dist=self.match_tolerance,
-                )
-            except Exception as e:
-                logger.info(f"{e}")
-                self.get_uc_data(reset=True)
-                self.get_exp_data()
-                self.match_comp = MatchClayComposition(
-                    target_composition=self._target_comp,
-                    sheet_n_ucs=self.sheet_n_cells,
-                    manual_setup=self.manual_setup,
-                    ignore_threshold=self.zero_threshold,
-                    debug_run=self.debug_run,
-                    max_ucs=self.max_ucs,
-                    max_dist=self.match_tolerance,
-                )
-            finally:
-                self.match_comp.write_csv(self.outpath, backup=self.backup)
+            self.match_comp = MatchClayComposition(
+                target_composition=self._target_comp,
+                sheet_n_ucs=self.sheet_n_cells,
+                manual_setup=self.manual_setup,
+                ignore_threshold=self.zero_threshold,
+                debug_run=self.debug_run,
+                max_ucs=self.max_ucs,
+            )
+            self.match_comp.write_csv(self.outpath, backup=self.backup)
         else:
             from ClayCode.builder.claycomp import (
                 TargetClayComposition,
@@ -1057,25 +1010,24 @@ class AnalysisArgs(_Args):
     option = "analysis"
 
     def __init__(self, data: Dict[str, Any]):
+        """Class for handling arguments for analysing simulation run data."""
         super().__init__(data)
 
 
 class CheckArgs(_Args):
-    """Parameters for checking simulation run data with :mod:`ClayCode.check`
-    :param data: dictionary of arguments
-    :type data: Dict[str, Any]"""
+    """Parameters for checking simulation run data with :mod:`ClayCode.check`"""
 
     option = "check"
 
     def __init__(self, data: Dict[str, Any]):
+        """Class for handling arguments for checking simulation run data.
+        :param data: dictionary of arguments
+        :type data: Dict[str, Any]"""
         super().__init__(data)
 
 
 class EditArgs(_Args):
-    """Parameters for editing clay model with :mod:`ClayCode.edit`
-
-    :param data: dictionary of arguments
-    :type data: Dict[str, Any]"""
+    """Parameters for editing clay model with :mod:`ClayCode.edit`"""
 
     option = "edit"
 
@@ -1094,25 +1046,26 @@ class EditArgs(_Args):
     }
 
     def __init__(self, data: Dict[str, Any]):
+        """Class for handling arguments for editing clay models.
+        :param data: dictionary of arguments
+        :type data: Dict[str, Any]"""
         super().__init__(data)
 
 
 class PlotArgs(_Args):
-    """Parameters for plotting analysis data with :mod:`ClayCode.plot`        :param data: dictionary of arguments
-    :type data: Dict[str, Any]"""
+    """Parameters for plotting analysis data with :mod:`ClayCode.plot`"""
 
     option = "plot"
 
     def __init__(self, data: Dict[str, Any]):
+        """Class for handling arguments for plotting analysis data.
+        :param data: dictionary of arguments
+        :type data: Dict[str, Any]"""
         super().__init__(data)
 
 
 class SiminpArgs(_Args):
-    """Parameters for setting up GROMACS simulations with :mod:`ClayCode.siminp`
-    :param data: dictionary of arguments
-    :type data: Dict[str, Any]
-    :debug_run: flag for running in debug mode
-    :type debug_run: bool"""
+    """Parameters for setting up GROMACS simulations with :mod:`ClayCode.siminp`"""
 
     option = "siminp"
     from ClayCode.siminp.consts import SIMINP_DEFAULTS as _siminp_defaults
@@ -1146,11 +1099,15 @@ class SiminpArgs(_Args):
         "GMX",
         "GMX_VERSION",
         "FF",
-        "RUN_PATH",
     ]
     _arg_defaults = _siminp_defaults
 
     def __init__(self, data: Dict[str, Any], debug_run: bool = False):
+        """Class for handling arguments for setting up GROMACS simulations.
+        :param data: dictionary of arguments
+        :type data: Dict[str, Any]
+        :debug_run: flag for running in debug mode
+        :type debug_run: bool"""
         super().__init__(data)
         self.run_sequence = []
         self.debug_run = debug_run
@@ -1200,7 +1157,6 @@ class SiminpArgs(_Args):
                         itop=self.intop,
                         odir=self.outpath,
                         deffnm=run_name,
-                        run_dir=self.run_path,
                         **run_options,
                     )
                 else:
@@ -1209,7 +1165,6 @@ class SiminpArgs(_Args):
                         run_name,
                         odir=self.outpath,
                         deffnm=run_name,
-                        run_dir=self.run_path,
                         **run_options,
                     )
                 # run_options = run_specs.pop(run_name)
@@ -1237,7 +1192,6 @@ class SiminpArgs(_Args):
             "INTOP",
             "FF",
             "SCRIPT_TEMPLATE",
-            "RUN_PATH",
         ]
         paths = ["OUTPATH", "INPATH", "INGRO"]
         if [k in self.data.keys() for k in paths].count(True) == 0:
@@ -1266,8 +1220,6 @@ class SiminpArgs(_Args):
             self.data["INTOP"] = select_file(
                 self.data["INPATH"], suffix=".top", how="latest"
             )
-        if "RUN_PATH" not in self.data.keys():
-            self.data["RUN_PATH"] = self.data["OUTPATH"]
         self._set_attributes(
             data_keys=data_keys, optional=["INTOP", "SCRIPT_TEMPLATE"]
         )
@@ -1342,24 +1294,17 @@ class SiminpArgs(_Args):
         # )
 
     def write_runs(self):
-        self.mdp_generator.write_runs(
-            self.outpath, ff=self.ff_data, run_dir=self.run_path
-        )
+        self.mdp_generator.write_runs(self.outpath, ff=self.ff_data)
 
 
 class DataArgs(_Args):
-    """Class for handling arguments for adding or modifying interlayer data with :mod:`ClayCode.data`.
-    :param data: command line arguments
-    :param type: Dict[str, Any]
-    :param debug_run: debug run flag
-    :param type: bool"""
+    """Class for handling arguments for adding or modifying interlayer data with :mod:`ClayCode.data`."""
 
     option = "data"
     _arg_names = [
         "OUTPATH",
         "INGRO",
         "UC_TYPE",
-        "UC_NAME",
         "SUBSTITUTIONS",
         "DEFAULT_SOLV",
     ]
@@ -1367,6 +1312,11 @@ class DataArgs(_Args):
     _arg_defaults = {"SUBSTITUTIONS": None, "DEFAULT_SOLV": None}
 
     def __init__(self, data, debug_run=False):
+        """Initialise data argument class.
+        :param data: command line arguments
+        :param type: Dict[str, Any]
+         :param debug_run: debug run flag
+         :param type: bool"""
         super().__init__(data)
         self.process()
 
@@ -1384,46 +1334,23 @@ class DataArgs(_Args):
         """Check that all required arguments are present."""
         self._set_attributes(data_keys=self._arg_names)
 
+    def add_substitutions(self) -> None:
+        """Generate new unit cell by adding substitutions to base unit cell."""
+        for k, v in self.substitutions.items():
+            if isinstance(v, dict):
+                for k1, v1 in v.items():
+                    self.uc_writer.add_substitution(k1, v1)
+            else:
+                self.uc_writer.add_substitution(k, v)
 
-class AddMolsArgs(_Args):
-    """Class for handling arguments for adding molecules with :mod:`ClayCode.addmols`."""
-
-    option = "addmols"
-    _arg_names = [
-        "ODIR",
-        "SYSNAME",
-        "ADDTYPE",
-        "MOLTYPES",
-        "INGRO",
-        "INTOP",
-        "CONC",
-        "PH",
-        "FF",
-        "NEUTRAL_IONS",
-    ]
-    _arg_defaults = _addmols_defaults
-
-    def __init__(self, data, debug_run=False):
-        super().__init__(data)
-        self.process()
-
-    def process(self):
-        """Process data arguments."""
-        self.read_yaml()
-        self.check()
-
-    @read_yaml_path_decorator("OUTPATH", "INGRO")
-    def read_yaml(self):
-        """Read specifications from yaml file."""
-        pass
-
-    def check(self) -> None:
-        """Check that all required arguments are present."""
-        if self.data["ADDTYPE"] not in ADDTYPES:
-            raise ValueError(
-                f"Invalid parameter {self.data['ADDTYPE']!r} for 'addmols'!\nAvailable options are: {', '.join(ADDTYPES)}"
-            )
-        self._set_attributes(data_keys=self._arg_names)
+    def _split_sub_str(self, sub_str: str) -> Tuple[str]:
+        """Split a '->' separated string into a tuple of two strings.
+        :param sub_str: string to split
+        :type sub_str: str
+        :return: tuple of two strings
+        :return type: Tuple[str]
+        """
+        return tuple([s.strip() for s in sub_str.split("->")])
 
 
 class ArgsFactory:
@@ -1436,7 +1363,6 @@ class ArgsFactory:
         "analysis": AnalysisArgs,
         "siminp": SiminpArgs,
         "data": DataArgs,
-        "addmols": AddMolsArgs,
     }
 
     @classmethod

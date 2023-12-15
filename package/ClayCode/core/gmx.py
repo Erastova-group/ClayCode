@@ -27,9 +27,8 @@ from ClayCode.core.classes import (
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
-from ClayCode.core.consts import ANGSTROM
+from ClayCode.core.consts import ANGSTROM, MDP, MDP_DEFAULTS
 from ClayCode.core.utils import SubprocessProgressBar, execute_shell_command
-from ClayCode.data.consts import MDP, MDP_DEFAULTS
 
 DEFAULT_GMX = "gmx"
 

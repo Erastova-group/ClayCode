@@ -12,8 +12,6 @@ from ClayCode.core.cctypes import (
     AnyDir,
     AnyFile,
     FileNameMatchSelector,
-    NumOrListDictOf,
-    NumOrListOf,
     PathOrStr,
     PathType,
     StrNum,
@@ -110,9 +108,6 @@ __all__ = [
     "ArgsFactory",
     "DirFactory",
     "FileFactory",
-    "PathListFactory",
-    "NumOrListOf",
-    "NumOrListDictOf",
 ]
 logging.setLoggerClass(ClayCodeLogger)
 # from Bio import BiopythonDeprecationWarning

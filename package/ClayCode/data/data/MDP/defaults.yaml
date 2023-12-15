@@ -950,7 +950,7 @@ D-SPACE:
   tcoupl: "nose-hoover"
 EM:
   constraints: "none"
-  emstep: "0.0005"
+  emstep: "0.0001"
   emtol: "500"
   integrator: "steep"
   lincs-iter: "8"

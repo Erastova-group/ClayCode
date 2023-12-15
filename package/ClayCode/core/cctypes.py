@@ -15,9 +15,8 @@ __all__ = [
     "PathOrStr",
     "AnyDict",
     "Definition",
-    "NumOrListOf",
-    "NumOrListDictOf",
 ]
+
 
 StrOrListOf = TypeVar("StrOrListOf", str, List[str])
 StrOrDictOf = TypeVar("StrOrListOf", str, Dict[str, str])
@@ -25,10 +24,6 @@ StrOrListDictOf = TypeVar("StrListorStrDict", str, List[str], Dict[str, Any])
 StrNum = TypeVar("StrNum", str, float, int)
 StrNumOrListDictOf = TypeVar(
     "StrNumOrListDictOf", StrNum, List[StrNum], Dict[StrNum, Any]
-)
-NumOrListOf = TypeVar("NumOrListOf", float, int, List[Union[float, int]])
-NumOrListDictOf = TypeVar(
-    "NumOrListDictOf", NumOrListOf, Dict[Union[float, int], Any]
 )
 FileNameMatchSelector = TypeVar(
     "FileNameMatchSelector",
