@@ -1,10 +1,12 @@
 include README.rst
 include docs/*.txt
 
-recursive-include package/ClayCode/data *
+recursive-include package/ClayCode/data/data *
+recursive-include package/ClayCode/data/user_data *
 recursive-include package/ClayCode/builder/config *
 recursive-include package/ClayCode/builder/data *
 recursive-include package/ClayCode/siminp/config *
+recursive-include package/ClayCode/siminp/scripts *
 recursive-include package/ClayCode/addmols/config *
 recursive-include package/tests/builder *
 recursive-include package/tests *

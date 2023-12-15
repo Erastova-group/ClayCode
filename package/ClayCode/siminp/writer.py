@@ -53,7 +53,13 @@ from ClayCode.core.utils import (
     property_exists_checker,
     substitute_kwds,
 )
-from ClayCode.data.consts import FF, MDP, MDP_DEFAULTS, USER_MDP
+from ClayCode.data.consts import (
+    CLAYFF_AT_CHARGES,
+    FF,
+    MDP,
+    MDP_DEFAULTS,
+    USER_MDP,
+)
 from ClayCode.siminp.consts import DSPACE_RUN_SCRIPT, REMOVE_WATERS_SCRIPT
 from ClayCode.siminp.sitypes import (
     DefaultGMXRunType,
@@ -153,13 +159,19 @@ class GMXRun(UserDict, ABC):
                     pass
                 else:
                     break
+            if rel_filename == filename:
+                rel_filename = filename.name
+                out_part = self.odir
             relpath = list(out_part.parts)[-1]
-            new_rdir = ["/"]
-            for rd in self.run_path.parts:
+            new_rdir = []
+            for rd in self.run_path.parts[1:]:
                 if rd not in out_part.parts:
                     new_rdir.append(rd)
                 else:
-                    rel_filename
+                    relpath = Path(*out_part.parts[out_part.parts.index(rd) :])
+                    break
+            if len(new_rdir) != 0:
+                new_rdir.insert(0, "/")
             new_rdir = Path(*new_rdir, relpath)
             return new_rdir / rel_filename
         else:
@@ -191,17 +203,17 @@ class GMXRun(UserDict, ABC):
 
     @property
     def run_path(self):
-        if self._run_dir.name not in [self.odir.parent.name, self.odir.name]:
-            return self._run_dir
-        else:
-            self.run_path = self._run_dir
-            return self._run_dir
+        # if self._run_dir.name not in [self.odir.parent.name, self.odir.name]:
+        return self._run_dir
+        # else:
+        #     self.run_path = self._run_dir
+        #     return self._run_dir
 
     @run_path.setter
     def run_path(self, run_dir):
         run_dir = Dir(run_dir)
-        while run_dir.name in [self.odir.parent.name, self.odir.name]:
-            run_dir = run_dir.parent
+        # while run_dir.name in [self.odir.parent.name, self.odir.name]:
+        #     run_dir = run_dir.parent
         self._run_dir = run_dir
 
     @property
@@ -687,27 +699,38 @@ class DSpaceRun(GMXRun):
         self.process_kwargs(gro)
         self.add_nsteps()
 
+    @property
+    def odir(self):
+        return self._odir
+
+    @odir.setter
+    def odir(self, odir):
+        if odir is not None:
+            self._odir = Dir(odir)
+
     def get_run_command(self, gmx_alias="gmx", max_run=10):
         shutil.copy2(REMOVE_WATERS_SCRIPT, self.odir)
+        shutil.copy2(CLAYFF_AT_CHARGES, self.odir)
         remove_waters_script = self.get_run_path(
             self.odir / REMOVE_WATERS_SCRIPT.name
         )
-        dspace_run_string = File(DSPACE_RUN_SCRIPT).string
+        at_charges_file = self.get_run_path(self.odir / CLAYFF_AT_CHARGES.name)
+        with open(DSPACE_RUN_SCRIPT, "r") as dspace_run_file:
+            dspace_run_string = dspace_run_file.read()
         dspace_run_string = substitute_kwds(
             dspace_run_string,
             {
                 "INGRO": self.get_run_path(self.gro),
                 "OUTGRO": self.get_run_path(self.odir / self.gro.name),
-                "DSPACE": self.d_space,
-                "SHEET_WAT": self.sheet_n_wat,
                 "INTOP": self.get_run_path(self.top),
                 "ODIR": self.run_path,
-                "DSPACE": self.d_space,
-                "REMOVE_WATERS": self.sheet_n_wat,
+                "TARGETSPACING": self.d_space,
+                "REMOVEWATERS": self.sheet_n_wat,
                 "GMX": gmx_alias,
-                "MDP": self.mdp,
-                "DSPACE_SCRIPT": remove_waters_script,
-                "MAX_RUN": max_run,
+                "MDP": self.get_run_path(self.mdp),
+                "DSPACESCRIPT": self.get_run_path(remove_waters_script),
+                "MAXRUN": max_run,
+                "YAMLFILE": self.get_run_path(at_charges_file),
             },
             flags=re.MULTILINE | re.DOTALL,
         )
@@ -716,7 +739,7 @@ class DSpaceRun(GMXRun):
     @property
     def sheet_n_wat(self) -> int:
         if hasattr(self, "sheet_wat"):
-            return np.rint(self.sheet_wat)
+            return int(np.rint(self.sheet_wat))
         elif hasattr(self, "uc_wat"):
             u = add_resnum(crdin=self.gro, crdout=self.gro)
             clay = select_clay(u)
@@ -728,7 +751,7 @@ class DSpaceRun(GMXRun):
                     res_id = residue.resid
                 else:
                     break
-            return np.rint(n_ucs * self.uc_wat)
+            return int(np.rint(n_ucs * self.uc_wat))
         # elif hasattr(self, "percent_wat"):
         #     return np.rint(self.percent_wat * self.gro.n_atoms / 100)
         else:
@@ -1019,20 +1042,31 @@ class MDPRunGenerator:
                     run_name, outpath=run.odir
                 )
                 run.process_mdp(gro=init_gro)
-                if not re.fullmatch(
-                    f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
+                if (
+                    not re.fullmatch(
+                        f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
+                    )
+                    and not run.__class__.__name__ == "DSpaceRun"
                 ):
                     if run.cpt is None:
                         run.mdp.add({"gen-vel": "yes"}, replace=True)
                     else:
                         run.mdp.add({"gen-vel": "no"}, replace=True)
                     prev_cpt = run.outname.with_suffix(".cpt")
+                elif run.__class__.__name__ == "DSpaceRun":
+                    run.mdp.add({"gen-vel": "no"}, replace=True)
+                    run.cpt = None
+                    prev_cpt = None
                 else:
                     prev_cpt = None
                 run.mdp.write_prms(run.mdp.string, all=True)
                 scriptfile.write(run.get_run_command(self._gmx_alias))
                 prev_gro = run.gro
                 prev_top = run.top
+        logger.finfo(
+            f"Wrote runscript to {str(odir / run_script_name)}",
+            initial_linebreak=True,
+        )
 
         #
         #

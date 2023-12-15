@@ -47,6 +47,7 @@ include-package-data = true
 "ClayCode.builder.config" = ['defaults.yaml']
 "ClayCodeTests.builder" = ['data/*.yaml', 'data/*.csv']
 "ClayCode.siminp.config" = ["defaults.yaml"]
+"ClayCode.siminp.scripts" = ["*.sh"]
 "ClayCode.addmols.config" = ["defaults.yaml", "addtypes.yaml"]
 
 [project.urls]

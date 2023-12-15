@@ -13,4 +13,4 @@ with open(defaults_file, "r") as file:
 REMOVE_WATERS_SCRIPT = files("ClayCode.siminp.scripts").joinpath(
     "remove_waters.sh"
 )
-DSPACE_RUN_SCRIPT = files("ClayCode.siminp.scripts").joinpath("dspace_run.py")
+DSPACE_RUN_SCRIPT = files("ClayCode.siminp.scripts").joinpath("dspace_run.sh")

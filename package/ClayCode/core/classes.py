@@ -405,6 +405,26 @@ class BasicPath(_Path):
     _flavour = _PosixPath._flavour
     __slots__ = ()
 
+    def newer(self, other: PathType) -> bool:
+        """Check if file is newer than other file"""
+        return self.stat().st_mtime > other.stat().st_mtime
+
+    def older(self, other: PathType) -> bool:
+        """Check if file is older than other file"""
+        return self.stat().st_mtime < other.stat().st_mtime
+
+    def larger(self, other: PathType) -> bool:
+        """Check if file is larger than other file"""
+        return self.stat().st_size > other.stat().st_size
+
+    def smaller(self, other: PathType) -> bool:
+        """Check if file is smaller than other file"""
+        return self.stat().st_size < other.stat().st_size
+
+    def samefile(self, other_path):
+        """Check if file is the same as other file"""
+        return os.path.samefile(self, other_path)
+
     def _match_deorator(method):
         """Match name against seacrch pattern object"""
 
@@ -1319,7 +1339,7 @@ class ITPFile(File):
                 kwds = Kwd(kwds)
             kwds = get_match_pattern(kwds)
         section_pattern = re.compile(
-            rf"\s*({kwds}) ]\s*\n([\sa-zA-Z\d#_.-]*)",
+            rf"\s*({kwds})\s+]\s*\n([\sa-zA-Z\d#_.-]*)",
             flags=re.MULTILINE | re.DOTALL,
         )
         for section in sections:
@@ -1395,12 +1415,13 @@ class GROFile(File):
 
     @property
     def df(self):
-        df = pd.read_csv(
+        df = pd.read_fwf(
             str(self.resolve()),
             index_col=[0],
             skiprows=2,
             header=None,
-            sep="\s+",
+            # sep="\s+",
+            widths=[10, 5, 5, 8, 8, 8],
             names=["at-type", "atom-id", "x", "y", "z"],
             nrows=self.n_atoms,
         )
@@ -1749,7 +1770,7 @@ class CSVFile(File):
         if self._data is not None:
             if len(self._data) != 0:
                 self._data.to_csv(self, sep=",", index=index, header=True)
-                logger.info(f"Writing {self.name!r}")
+                logger.debug(f"Writing {self.name!r}")
                 self._data = None
 
 
@@ -2457,7 +2478,7 @@ def set_mdp_freeze_groups(
         else:
             freeze_dims = [freeze_dims for _ in range(3)]
     if not (
-        len(freeze_dims) % 3 == 0 and len(freeze_dims) // 3 == len(uc_names)
+        len(freeze_dims) % 3 == 0  # and len(freeze_dims) // 3 == len(uc_names)
     ):
         raise ValueError(
             "Freeze dimensions must have either 1 or 3 elements "

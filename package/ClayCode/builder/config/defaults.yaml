@@ -116,7 +116,7 @@ ZERO_THRESHOLD: 0.05
 #               occupancies, i.e. 'mgo' (0.4) -> (0.3)
 # 2. 'occupancies': Will conserve occupancies and adjust charges
 #                   i.e. octahedral charge (-0.3 e) -> (-0.4 e)
-SEL_PRIORITY: occupancies
+SEL_PRIORITY: charges
 
 # Priority when individual sheet and total charge do not match.
 # e.g. total charge: -1.00, tetrahedral charge: -0.70, octahedral charge: -0.40
@@ -129,7 +129,7 @@ SEL_PRIORITY: occupancies
 CHARGE_PRIORITY: total_charge
 
 # Maximum total occupancy deviation from the corrected target stoichiometry
-MATCH_TOLERANCE: 0.05
+MATCH_TOLERANCE: 0.02
 
 # -----------------------------------------------------------------------------
 # Parameters for EM run

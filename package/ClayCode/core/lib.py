@@ -11,6 +11,7 @@ import pathlib as pl
 import pickle as pkl
 import re
 import shutil
+import sys
 import tempfile
 from functools import partial, update_wrapper, wraps
 from pathlib import Path, PosixPath
@@ -1062,8 +1063,8 @@ def add_resnum(
     if res_n_atoms is None:
         res_n_atoms = get_system_n_atoms(crds=u, write=False)
     atoms: MDAnalysis.AtomGroup = u.atoms
-    for i in np.unique(atoms.residues.resnames):
-        logger.debug(f"Found residues: {i} - {res_n_atoms[i]} atoms")
+    # for i in np.unique(atoms.residues.resnames):
+    #     logger.debug(f"Found residues: {i} - {res_n_atoms[i]} atoms")
     res_idx = 1
     first_idx = 0
     last_idx = 0
@@ -1086,7 +1087,7 @@ def add_resnum(
     crdlines = [line for line in crdlines if re.match(r"\s*\n", line) is None]
     new_lines = crdlines[:2]
     for linenum, line in enumerate(crdlines[2:-1]):
-        line = re.sub(pattern, resids[linenum], line)
+        line = re.sub(pattern, resids[linenum][:5], line)
         new_lines.append(line)
     new_lines.append(crdlines[-1])
     with open(crdout, "w") as crdfile:
@@ -1230,12 +1231,13 @@ def get_clay_prms(prm_str: str, uc_name: str, uc_path=UCS, force_update=False):
     prm_file = DATA / f"{uc_name.upper()}_{prm_str}.pkl"
     if not prm_file.is_file() or force_update is True:
         charge_dict = {}
-        uc_files = uc_path.glob(rf"{uc_name}/*[0-9].itp")
-        for uc_file in uc_files:
-            uc_charge = prm_func(
-                itp_file=uc_file, write=False, force_update=force_update
-            )
-            charge_dict.update(uc_charge)
+        for uc_path in [UCS, USER_UCS]:
+            uc_files = uc_path.glob(rf"{uc_name}/*[0-9].itp")
+            for uc_file in uc_files:
+                uc_charge = prm_func(
+                    itp_file=uc_file, write=False, force_update=force_update
+                )
+                charge_dict.update(uc_charge)
     else:
         with open(prm_file, "rb") as prm_file:
             charge_dict = pkl.read(prm_file)
@@ -1381,13 +1383,20 @@ def get_all_prms(
         clay_types = Dir(UCS).dirlist.filter(r"[A-Z]*[0-9]*")
         clay_types += Dir(USER_UCS).dirlist.filter(r"[A-Z]*[0-9]*")
         clay_dict = {}
-        for uc in clay_types:
-            uc = uc.stem
-            clay_dict.update(
-                get_clay_prms(
-                    prm_str=prm_str, uc_name=uc, force_update=force_update
-                )
-            )
+        try:
+            for uc in clay_types:
+                if not uc.name.startswith("."):
+                    uc = uc.stem
+                    clay_dict.update(
+                        get_clay_prms(
+                            prm_str=prm_str,
+                            uc_name=uc,
+                            force_update=force_update,
+                        )
+                    )
+        except Exception as e:
+            logger.error(f"{e}\nError getting {uc.name} unit cell parameters.")
+            sys.exit(1)
         sol_dict = get_sol_prms(prm_str=prm_str, force_update=force_update)
         charge_dict = {**ion_dict, **clay_dict, **sol_dict, **aa_dict}
         if write is True:
@@ -1811,9 +1820,8 @@ def run_em(
         )
         if conv is None:
             logger.error("Energy minimisation run not converged!\n")
-            logger.finfo(error)
             logger.finfo(em)
-            logger.finfo(out)
+            # logger.finfo(out)
         else:
             fmax, n_steps = conv.groups()
             final_str = (

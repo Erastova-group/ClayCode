@@ -22,23 +22,25 @@ def run_builder(args: BuildArgs):
 
     extra_il_space = {True: 1.5, False: 1}
     clay_builder = Builder(args)
-    clay_builder.write_sheet_crds(backup=clay_builder.args.backup)
-    clay_builder.construct_solvent(
-        solvate=args.il_solv,
-        ion_charge=args.match_charge["tot"],
-        solvate_add_func=clay_builder.solvate_clay_sheets,
-        ion_add_func=clay_builder.add_il_ions,
-        solvent_remove_func=clay_builder.remove_il_solv,
-        solvent_rename_func=clay_builder.rename_il_solv,
-        backup=clay_builder.args.backup,
-    )
+    clay_builder.get_solvated_il()
+    # clay_builder.write_sheet_crds(backup=clay_builder.args.backup)
+    # clay_builder.solvate_il = lambda: clay_builder.construct_solvent(
+    #     solvate=args.il_solv,
+    #     ion_charge=args.match_charge["tot"],
+    #     solvate_add_func=clay_builder.solvate_clay_sheets,
+    #     ion_add_func=clay_builder.add_il_ions,
+    #     solvent_remove_func=clay_builder.remove_il_solv,
+    #     solvent_rename_func=clay_builder.rename_il_solv,
+    #     backup=clay_builder.args.backup,
+    # )
     logger.finfo(f"Wrote interlayer sheet to {clay_builder.il_solv.name!r}")
-    clay_builder.stack_sheets(
-        extra=extra_il_space[args.il_solv], backup=clay_builder.args.backup
-    )
-    clay_builder.extend_box(backup=clay_builder.args.backup)
     completed = False
     while completed is False:
+        clay_builder.write_sheet_crds(backup=clay_builder.args.backup)
+        clay_builder.stack_sheets(
+            extra=extra_il_space[args.il_solv], backup=clay_builder.args.backup
+        )
+        clay_builder.extend_box(backup=clay_builder.args.backup)
         if clay_builder.extended_box:
             clay_builder.construct_solvent(
                 solvate=args.bulk_solv,
@@ -103,6 +105,7 @@ def run():
         uc_writer.write_new_uc(args.uc_name)
         uc_writer.add_single_substitutions()
         uc_writer.add_double_substitutions()
+        uc_writer.add_triple_substitutions()
     elif isinstance(args, BuildArgs):
         run_builder(args)
     return 0

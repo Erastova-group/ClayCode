@@ -695,6 +695,7 @@ class BuildArgs(_Args):
                     self._uc_path = USER_UCS / uc_type
                 else:
                     raise ValueError(f"Unknown unit cell type {uc_type!r}!")
+                self._uc_path = Dir(self._uc_path)
                 self._uc_name = uc_type
                 self._tbc = None
                 tbc_match = re.search(
@@ -702,7 +703,7 @@ class BuildArgs(_Args):
                 )
                 if tbc_match:
                     pass
-                self.uc_stem = self._uc_name[:2]
+                self.uc_stem = self._uc_path.itp_filelist[0].stem[:-3]
                 logger.debug(f"Setting unit cell type: {self._uc_name!r}")
             else:
                 raise ValueError(f"Unknown unit cell type {uc_type!r}!")
@@ -799,11 +800,14 @@ class BuildArgs(_Args):
         self.get_il_solvation_data()
         self.get_bulk_ions()
 
-    def get_uc_data(self):
+    def get_uc_data(self, reset=False):
         from ClayCode.builder.claycomp import UCData
 
         self._uc_data = UCData(
-            self._uc_path, uc_stem=self.uc_stem, ff=self.ff["clay"]
+            self._uc_path,
+            uc_stem=self.uc_stem,
+            ff=self.ff["clay"],
+            reset=reset,
         )
         occ = self._uc_data.occupancies
         ch = self._uc_data.oxidation_numbers
@@ -904,16 +908,31 @@ class BuildArgs(_Args):
         if not self.uc_index_ratios:
             from ClayCode.builder.claycomp import MatchClayComposition
 
-            self.match_comp = MatchClayComposition(
-                target_composition=self._target_comp,
-                sheet_n_ucs=self.sheet_n_cells,
-                manual_setup=self.manual_setup,
-                ignore_threshold=self.zero_threshold,
-                debug_run=self.debug_run,
-                max_ucs=self.max_ucs,
-                max_dist=self.match_tolerance,
-            )
-            self.match_comp.write_csv(self.outpath, backup=self.backup)
+            try:
+                self.match_comp = MatchClayComposition(
+                    target_composition=self._target_comp,
+                    sheet_n_ucs=self.sheet_n_cells,
+                    manual_setup=self.manual_setup,
+                    ignore_threshold=self.zero_threshold,
+                    debug_run=self.debug_run,
+                    max_ucs=self.max_ucs,
+                    max_dist=self.match_tolerance,
+                )
+            except Exception as e:
+                logger.info(f"{e}")
+                self.get_uc_data(reset=True)
+                self.get_exp_data()
+                self.match_comp = MatchClayComposition(
+                    target_composition=self._target_comp,
+                    sheet_n_ucs=self.sheet_n_cells,
+                    manual_setup=self.manual_setup,
+                    ignore_threshold=self.zero_threshold,
+                    debug_run=self.debug_run,
+                    max_ucs=self.max_ucs,
+                    max_dist=self.match_tolerance,
+                )
+            finally:
+                self.match_comp.write_csv(self.outpath, backup=self.backup)
         else:
             from ClayCode.builder.claycomp import (
                 TargetClayComposition,
