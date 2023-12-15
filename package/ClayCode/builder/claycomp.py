@@ -608,26 +608,52 @@ class UCData(Dir):
         ox_dict = UCData._get_ox_dict()
         # df = df.loc[['T','O']]
         ox_df: pd.DataFrame = df.copy()
-        ox_df.sort_index(level="sheet", sort_remaining=True, inplace=True)
+
         try:
             ox_df = ox_df.loc[~(ox_df == 0).all(1), :]
         except ValueError:
             ox_df = ox_df.loc[~(ox_df == 0)]
-        if tot_charge is not None:
-            _ox_df = ox_df.loc[:, tot_charge == 0]
-            if _ox_df.empty:
-                _ox_df = ox_df[ox_df == ox_df.max()].dropna()
-                _ox_df[:] = ox_df.groupby("sheet", group_keys=True).sum()
-            ox_df = _ox_df
+
         at_types: pd.DataFrame = ox_df.index.get_level_values(
             "at-type"
         ).to_frame()
         at_types.index = ox_df.index
+        at_types = at_types.applymap(lambda x: ox_dict[x])
+        if tot_charge is not None:
+            _ox_df = ox_df.loc[:, tot_charge.abs() == tot_charge.abs().min()]
+            # ox_df.drop_duplicates(inplace=True)
+            if not _ox_df.empty:
+                # _ox_df = ox_df.max(axis=1)#.groupby('sheet', group_keys=False).apply(lambda x: x.sort_values(ascending=False).head(1))
+                ox_df = _ox_df
+        # ox_df = ox_df.max(axis=1)
+        # ox_df.name = 'charge'
+        if sum_dict is True:  # ox_df.groupby("sheet").count().max() > 1 and
+            # if tot_charge is not None:
+            #     _ox_df = ox_df.loc[:, tot_charge.abs() == tot_charge.abs().min()]
+            #     # ox_df.drop_duplicates(inplace=True)
+            #     if not _ox_df.empty:
+            #         ox_df = _ox_df
+            col = (
+                ox_df.groupby("sheet")
+                .apply(lambda x: x.max())
+                .sum()
+                .sort_values(ascending=False)
+                .head(1)
+                .index[0]
+            )
+            ox_df = ox_df.loc[:, col]
+            ox_df.sort_index(level="sheet", sort_remaining=True, inplace=True)
+            ox_df.name = "charge"
+            ox_df = ox_df.groupby("sheet", group_keys=False, sort=True).apply(
+                lambda x: x[x == x.max()]
+            )
+            # _ox_df = ox_df.groupby('sheet', group_keys=False, sort=True).apply(lambda x: x.sort_values(ascending=False).first())
+            # ox_df[:] = ox_df.groupby('sheet', group_keys=True).sum()
         try:
             at_types.drop(("O", "fe_tot"), inplace=True)
         except KeyError:
             pass
-        at_types = at_types.applymap(lambda x: ox_dict[x])
+
         if type(ox_df) == pd.DataFrame:
             ox: pd.DataFrame = ox_df.apply(lambda x: x * at_types["at-type"])
         else:
