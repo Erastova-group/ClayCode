@@ -5,14 +5,17 @@ r""":mod:`ClayCode.builder.assembly` --- Assembly of clay models
 from __future__ import annotations
 
 import copy
+import itertools
 import logging
+import math
 import os
 import re
 import shutil
+import sys
 import tempfile
-from functools import cached_property
+from functools import cached_property, partialmethod
 from pathlib import Path
-from typing import Any, Callable, List, Literal, Optional, Type, Union
+from typing import Any, Callable, List, Literal, Optional, Tuple, Type, Union
 
 import numpy as np
 import pandas as pd
@@ -26,14 +29,7 @@ from ClayCode.core.classes import (
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
-from ClayCode.core.consts import (
-    ANGSTROM,
-    FF,
-    GRO_FMT,
-    LINE_LENGTH,
-    MDP,
-    MDP_DEFAULTS,
-)
+from ClayCode.core.consts import ANGSTROM, LINE_LENGTH
 from ClayCode.core.gmx import (
     GMXCommands,
     add_gmx_args,
@@ -46,12 +42,15 @@ from ClayCode.core.lib import (
     add_resnum,
     center_clay,
     check_insert_numbers,
+    get_system_n_atoms,
     run_em,
     select_outside_clay_stack,
     write_insert_dat,
 )
 from ClayCode.core.utils import backup_files, get_header, get_subheader
+from ClayCode.data.consts import FF, GRO_FMT, MDP, MDP_DEFAULTS
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
+from MDAnalysis.lib.mdamath import triclinic_box, triclinic_vectors
 from MDAnalysis.units import constants
 from numpy._typing import NDArray
 
@@ -61,6 +60,10 @@ logger = logging.getLogger(__name__)
 
 
 class Builder:
+    """Clay model builder class.
+    :param build_args: Arguments for building clay model.
+    :type build_args: Type["BuildArgs"]"""
+
     __tmp_outpath: Type[
         tempfile.TemporaryDirectory
     ] = tempfile.TemporaryDirectory()
@@ -78,9 +81,11 @@ class Builder:
             y_cells=self.args.y_cells,
             fstem=self.args.filestem,
             outpath=self.args.outpath,
+            debug=self.args.debug_run,
         )
         self.top = TopologyConstructor(self.args._uc_data, self.args.ff)
         self.__il_solv: Union[None, GROFile] = None
+        self.__il: Union[None, GROFile] = None
         self.__stack: Union[None, GROFile] = None
         self.__box_ext: bool = False
         logger.info(get_header(f"Building {self.args.name} model"))
@@ -106,6 +111,33 @@ class Builder:
         self.em_prms.update(self.args.mdp_parameters["EM"])
         check_box_lengths(
             self.em_prms, [self.sheet.dimensions[0], self.sheet.dimensions[1]]
+        )
+
+    def get_solvated_il(self):
+        self.construct_solvent(
+            solvate=self.args.il_solv,
+            ion_charge=self.args.match_charge["tot"],
+            ion_add_func=self.add_il_ions,
+            solvate_add_func=self.solvate_clay_sheets,
+            solvent_remove_func=self.remove_il_solv,
+            il_rename_func=self.rename_il,
+            backup=self.args.backup,
+            solvent=True,
+            ions=False,
+        )
+
+    def get_il_ions(self, sheet_id=None):
+        self.construct_solvent(
+            solvate=self.args.il_solv,
+            ion_charge=self.args.match_charge["tot"],
+            solvate_add_func=self.solvate_clay_sheets,
+            ion_add_func=self.add_il_ions,
+            solvent_remove_func=self.remove_il_solv,
+            solvent_rename_func=self.rename_il_solv,
+            il_rename_func=self.rename_il,
+            backup=self.args.backup,
+            ions=True,
+            solvent=False,
         )
 
     @property
@@ -144,7 +176,10 @@ class Builder:
         ion_add_func: Callable[[], Any],
         solvent_remove_func: Callable[[], Any],
         solvent_rename_func: Optional[Callable[[], Any]] = None,
+        il_rename_func: Optional[Callable[[], Any]] = None,
         backup: bool = False,
+        solvent=True,
+        ions=True,
     ) -> None:
         """Construct solvent workflow.
         :param solvate: Whether to solvate the clay stack.
@@ -165,26 +200,51 @@ class Builder:
         if not solvate and ion_charge == 0:
             pass
         elif solvate or ion_charge != 0:
-            solvate_add_func(backup=backup)
-            if ion_charge != 0:
+            if solvent:
+                solvate_add_func(backup=backup)
+            if ion_charge != 0 and ions:
                 ion_add_func()
                 if not solvate:
                     solvent_remove_func()
-                elif solvent_rename_func:
-                    solvent_rename_func()
+            if ion_charge == 0 and solvent and solvate:
+                solvent_rename_func()
+            elif (
+                ion_charge != 0
+                and ions
+                and solvate
+                and il_rename_func is not None
+            ):
+                il_rename_func()
 
-    def rename_il_solv(self) -> None:
+    def rename_solv(self, solv: Union["il", "il_solv"]) -> None:
         """Rename interlayer solvent residues from 'SOl' to 'iSL'.
         :return: None"""
-        il_u: Universe = Universe(str(self.il_solv))
+        gro_file = getattr(self, solv)
+        il_u: Universe = Universe(str(gro_file))
         il_resnames: NDArray = il_u.residues.resnames
         il_resnames: list = list(
             map(lambda resname: re.sub("SOL", "iSL", resname), il_resnames)
         )
         il_u.residues.resnames: NDArray = il_resnames
-        self.il_solv.universe: Universe = il_u
-        self.il_solv.write(topology=self.top)
-        self.il_solv = self.il_solv
+
+        gro_file.universe: Universe = il_u
+        gro_file.write(topology=self.top)
+        setattr(self, solv, gro_file)
+
+    rename_il_solv = partialmethod(rename_solv, solv="il_solv")
+    rename_il = partialmethod(rename_solv, solv="il")
+    # def rename_il_solv(self) -> None:
+    #     """Rename interlayer solvent residues from 'SOl' to 'iSL'.
+    #     :return: None"""
+    #     il_u: Universe = Universe(str(self.il_solv))
+    #     il_resnames: NDArray = il_u.residues.resnames
+    #     il_resnames: list = list(
+    #         map(lambda resname: re.sub("SOL", "iSL", resname), il_resnames)
+    #     )
+    #     il_u.residues.resnames: NDArray = il_resnames
+    #     self.il_solv.universe: Universe = il_u
+    #     self.il_solv.write(topology=self.top)
+    #     self.il_solv = self.il_solv
 
     def run_em(
         self,
@@ -213,7 +273,7 @@ class Builder:
             crdin=self.stack,
             topin=self.stack.top,
             odir=self.args.outpath,
-            outname=f"{self.stack.stem}_em",
+            outname=f"{self.stack.stem.strip('_em')}_em",
             gmx_commands=self.gmx_commands,
             freeze_grps=freeze_grps,
             freeze_dims=freeze_dims,
@@ -243,12 +303,18 @@ class Builder:
                             backups.append(
                                 backup_files(new_filename=em_path / file.name)
                             )
-                        shutil.move(file, em_path / file.name)
-                        file = em_path / file.name
+                        new_file = em_path / file.name
+                        try:
+                            shutil.copy2(file, new_file)
+                        except shutil.SameFileError:
+                            pass
+                        else:
+                            file.unlink(missing_ok=True)
+                            file = new_file
                     if file.suffix == ".gro":
                         self.stack = file
                         logger.finfo(
-                            f"Wrote final output from energy minimisation to {str(file.parent)!r}:"
+                            f"Writing final output from energy minimisation to {str(file.parent)!r}:"
                         )
                     em_files.append(file.name)
         if backups:
@@ -269,7 +335,7 @@ class Builder:
         add_resnum(crdin=self.stack, crdout=self.stack)
         self.__tmp_outpath.cleanup()
         logger.debug(
-            f"Wrote final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
+            f"Writing final coordinates and topology to {self.stack.name!r} and {self.stack.top.name!r}"
         )
         logger.set_file_name(final="builder")
         logger.finfo(
@@ -277,15 +343,15 @@ class Builder:
         )
         logger.info(get_header(f"{self.args.name} model setup complete"))
 
-    def remove_il_solv(self, min_height=1.0) -> None:
+    def remove_il_solv(self) -> None:
         """Remove interlayer solvent if interlayer needs to have ions but no solvent.
-        :return None"""
+        :return: None"""
         logger.finfo("Removing interlayer solvent", initial_linebreak=True)
-        il_u: Universe = Universe(str(self.il_solv))
+        il_u: Universe = self.il.universe  # Universe(str(self.il_solv))
         il_atoms: AtomGroup = il_u.select_atoms("not resname SOL iSL")
-        self.il_solv.universe = il_atoms
-        self.il_solv.write(topology=self.top)
-        self.il_solv = self.il_solv
+        self.il.universe = il_atoms
+        self.il.write(topology=self.top)
+        self.il = self.il
 
     def extend_box(self, backup) -> None:
         """Extend simulation box to specified height.
@@ -370,8 +436,8 @@ class Builder:
                 Universe, AtomGroup, ResidueGroup
             ] = solv_box_u
             solv_box_crd.write(self.top)
-
             self.stack: GROFile = solv_box_crd
+            # self.stack.universe = solv_box_u
             self.stack.write(self.top)
             logger.finfo(f"Saving solvated box as {self.stack.stem!r}\n")
         else:
@@ -379,6 +445,9 @@ class Builder:
 
     @cached_property
     def __ion_sel_str(self) -> str:
+        """String of ion residue names.
+        :return: String of ion residue names.
+        :rtype: str"""
         return " ".join(self.args.ff["ions"]["atomtypes"].df["at-type"])
 
     def remove_bulk_ions(self):
@@ -496,7 +565,7 @@ class Builder:
                 self.stack.reset_universe()
                 self.stack.write(self.top)
             excess_charge = int(self.args.il_ions.clay_charge + ion_charge)
-            logger.finfo(f"\tNeutralising charge:")
+            logger.finfo(f"Neutralising charge:")
             if excess_charge != 0:
                 neutral_bulk_ions = InterlayerIons(
                     excess_charge,
@@ -518,11 +587,13 @@ class Builder:
                     logger.debug(
                         f"after n_atoms: {self.stack.universe.atoms.n_atoms}"
                     )
-                    logger.finfo(f"\t\tAdded {n_ions} {ion} ions to bulk")
+                    logger.finfo(
+                        f"Added {n_ions} {ion} ions to bulk", indent="\t"
+                    )
                     self.stack.reset_universe()
                     self.stack.write(self.top)
             logger.debug(f"n_atoms: {self.stack.universe.atoms.n_atoms}")
-            logger.finfo(f"\t\tReplaced {replaced} SOL molecules")
+            logger.finfo(f"Replaced {replaced} SOL molecules", indent="\t")
             logger.finfo(
                 f"Saving solvated box with ions as {self.stack.stem!r}"
             )
@@ -534,19 +605,18 @@ class Builder:
             logger.finfo("\tSkipping bulk ion addition.")
 
     def stack_sheets(self, extra=2.0, backup=False) -> None:
+        """Stack clay sheets.
+        :param extra: Offset for stacking.
+        :type extra: float
+        :param backup: Whether to back up existing files.
+        :type backup: bool
+        :return: None"""
         try:
             il_crds: GROFile = self.il_solv
             il_u: Universe = il_crds.universe
-            if (
-                "SOL" in il_u.residues.resnames
-                or "iSL" in il_u.residues.resnames
-            ):
-                for residue in il_u.residues:
-                    if residue.resname in ["SOL", "iSL"]:
-                        residue.atoms.guess_bonds()
-                        assert len(residue.atoms.bonds) == 2
-                sol = il_u.select_atoms("resname iSL SOL")
-                sol.positions = sol.unwrap(compound="residues")
+
+            il_u = self.unwrap_il_solv(il_u)
+            self.il_solv.universe = il_u
             il_solv = True
         except AttributeError:
             il_solv = False
@@ -562,7 +632,9 @@ class Builder:
             sheet_u = self.sheet.universe.copy()
             sheet_u.dimensions[2] = sheet_u.dimensions[2] + extra
             if il_solv is not False:
-                il_u_copy = il_u.copy()
+                self.get_il_ions(sheet_id=sheet_id)
+                il_u_copy = self.il.universe.copy()
+                il_u_copy = self.unwrap_il_solv(il_u_copy)
                 il_ions = il_u_copy.select_atoms("not resname SOL iSL")
                 il_ions.positions = np.roll(il_ions.positions, 3, axis=0)
                 if sheet_id == self.args.n_sheets - 1:
@@ -597,15 +669,46 @@ class Builder:
             backup_files(self.args.outpath / crdout.top.name)
         crdout.universe: Universe = combined
         logger.finfo(
-            kwd_str=f"\tClay stack height: ",
+            kwd_str=f"Clay stack height: ",
             message=f"{combined.dimensions[2]:2.2f} {ANGSTROM}",
+            initial_linebreak=True,
         )
         crdout.write(self.top)
         add_resnum(crdin=crdout, crdout=crdout)
         self.stack: GROFile = crdout
-        logger.finfo(f"Saved sheet stack as {self.stack.stem!r}\n")
+        logger.finfo(f"Saving sheet stack as {self.stack.stem!r}\n")
+
+    def unwrap_il_solv(self, universe: Universe) -> Universe:
+        """Unwrap interlayer solvent.
+        :param universe: Universe to unwrap.
+        :type universe: Universe
+        :return: Universe with unwrapped interlayer solvent.
+        :rtype: Universe"""
+        if (
+            "SOL" in universe.residues.resnames
+            or "iSL" in universe.residues.resnames
+        ):
+            for residue in universe.residues:
+                if residue.resname in ["SOL", "iSL"]:
+                    residue.atoms.guess_bonds()
+                    if (
+                        len(residue.atoms.bonds) not in [2, 3]
+                        or residue.atoms.n_atoms != 3
+                    ):
+                        logger.error(
+                            f"Found number of bonds {len(residue.atoms.bonds)} < 2"
+                        )
+                        sys.exit(1)
+            sol = universe.select_atoms("resname iSL SOL")
+            sol.positions = sol.unwrap(compound="residues")
+        return universe
 
     def __path_getter(self, property_name) -> GROFile:
+        """Get path to file.
+        :param property_name: Name of property.
+        :type property_name: str
+        :return: Path to file.
+        :rtype: GROFile"""
         path = getattr(self, f"__{property_name}")
         if path is not None:
             return path
@@ -702,46 +805,97 @@ class Builder:
 
     @property
     def il_solv(self) -> GROFile:
+        """Interlayer solvent GRO filename.
+        :return: Interlayer solvent GRO filename.
+        :rtype: GROFile"""
+
         return self.__path_getter("il_solv")
 
     @il_solv.setter
     def il_solv(self, il_solv: Union[Path, str, GROFile]) -> None:
+        """Set interlayer solvent GRO filename.
+        :param il_solv: Interlayer solvent GRO filename.
+        :type il_solv: Union[Path, str, GROFile]
+        :return: None"""
         self.__path_setter_copy("il_solv", il_solv)
+
+    @property
+    def il(self) -> GROFile:
+        """Interlayer GRO filename.
+        :return: Interlayer GRO filename.
+        :rtype: GROFile"""
+        return self.__path_getter("il")
+
+    @il.setter
+    def il(self, il: Union[Path, str, GROFile]) -> None:
+        """Set interlayer GRO filename.
+        :param il: Interlayer GRO filename.
+        :type il: Union[Path, str, GROFile]
+        :return: None"""
+        self.__path_setter_copy("il", il)
 
     def __path_setter_copy(
         self, property_name: str, file: Union[Path, str, GROFile], backup=False
     ) -> None:
+        """Set path to file.
+        :param property_name: Name of property.
+        :type property_name: str
+        :param file: Path to file.
+        :type file: Union[Path, str, GROFile]
+        :param backup: Whether to back up existing files.
+        :type backup: bool
+        :return: None"""
         path: GROFile = getattr(self, property_name, None)
-        if path is None:
+        if file is None:
             path = file
+        else:
+            file = GROFile(Path(file).with_suffix(".gro"))
+            if path is None:
+                path = file
+            elif file.is_file() and path.is_file():
+                if file.newer(path):
+                    path = file
+            elif file.is_file():
+                path = file
+        # path already set, copy to new path
         if path is not None:
-            shutil.copy(path, self.args.outpath / path.name)
-            logger.debug(
-                f"\nResetting {property_name}\nCopied {path.name} to {self.args.outpath.name}"
+            new_path = GROFile(
+                self.args.outpath / file.with_suffix(".gro").name
             )
             try:
-                shutil.copy(path.top, self.args.outpath / path.top.name)
+                shutil.copy(path, new_path)
+                logger.debug(
+                    f"\nResetting {property_name}\nCopied {path.name} to {new_path.parent.name}\n"
+                )
+            except shutil.SameFileError:
+                pass
+            try:
+                shutil.copy(path.top, new_path.top)
             except FileNotFoundError:
-                path.write(topology=self.top)
-                shutil.copy(path.top, self.args.outpath / path.top.name)
+                GROFile(new_path).write(topology=self.top)
+            except shutil.SameFileError:
+                pass
             finally:
                 logger.debug(
-                    f"Copied {path.top.name} to {self.args.outpath.name}\n"
+                    f"Copied {path.top.name} to {new_path.parent.name}\n"
                 )
-        file = FileFactory(Path(file).with_suffix(".gro"))
-        file.description = f"{file.stem.split('_')[0]} " + " ".join(
-            property_name.split("_")
-        )
-        setattr(self, f"__{property_name}", file)
+                path = new_path
+                path.description = f"{path.stem.split('_')[0]} " + " ".join(
+                    property_name.split("_")
+                )
+        setattr(self, f"__{property_name}", path)
 
     def add_il_ions(self) -> None:
+        """Add interlayer ions.
+        :return: None"""
         logger.finfo("Adding interlayer ions:", initial_linebreak=True)
         infile: GROFile = self.il_solv
+        add_resnum(crdin=infile, crdout=infile)
         with tempfile.NamedTemporaryFile(
             suffix=self.il_solv.suffix
         ) as temp_outfile:
             temp_gro: GROFile = GROFile(temp_outfile.name)
-            shutil.copy(infile, temp_gro)
+            shutil.copy2(infile, temp_gro)
             dr: NDArray = self.sheet.dimensions[:3] / 10
             dr[-1] *= 0.4
             if isinstance(self.args.n_il_ions, dict):
@@ -799,16 +953,42 @@ class Builder:
                                     f"Number of inserted molecules ({replace_check}) does not match target number "
                                     f"({n_ions})!"
                                 )
-            infile.universe: Universe = temp_gro.universe
-            infile.write(topology=self.top)
-            self.il_solv: GROFile = infile
+            # if sheet_num is not None:
+            #     numstr = f"_{sheet_num}"
+            # else:
+            #     numstr = ""
+            il = self.get_filename(f"interlayer_ions", suffix=".gro")
+            il.universe: Universe = temp_gro.universe
+            il.write(topology=self.top)
+            self.il: GROFile = il
 
     def center_clay_in_box(self) -> None:
+        """Center clay in box.
+        :return: None"""
         center_clay(self.stack, self.stack, uc_name=self.args.uc_stem)
         self.stack.reset_universe()
 
 
 class Sheet:
+    """Clay sheet class.
+    :param uc_data: Unit cell data.
+    :type uc_data: UCData
+    :param uc_ids: Unit cell IDs.
+    :type uc_ids: List[int]
+    :param uc_numbers: Unit cell numbers.
+    :type uc_numbers: List[int]
+    :param x_cells: Number of unit cells in x-direction.
+    :type x_cells: int
+    :param y_cells: Number of unit cells in y-direction.
+    :type y_cells: int
+    :param fstem: Filestem.
+    :type fstem: str
+    :param outpath: Output path.
+    :type outpath: Path
+    :param n_sheet: Sheet number.
+    :type n_sheet: int
+    :return: None"""
+
     def __init__(
         self,
         uc_data: UCData,
@@ -819,9 +999,12 @@ class Sheet:
         fstem: str,
         outpath: Path,
         n_sheet: int = None,
+        debug: bool = False,
     ):
+        self.debug = debug
         self.uc_data: UCData = uc_data
         self.uc_ids: list = uc_ids
+        self._uc_charges: list = uc_data.tot_charge[uc_ids]
         self.uc_numbers: list = uc_numbers
         self.dimensions: NDArray = self.uc_data.dimensions[:3] * [
             x_cells,
@@ -835,12 +1018,21 @@ class Sheet:
         self.__n_sheet = None
         self.n_sheet = n_sheet
         self.__random = None
+        self._res_n_atoms = None
 
     def __adjust_z_to_bbox(self):
+        """Adjust z-dimension to bounding box.
+        :return: None"""
         u_file = self.filename
-        u = u_file.universe
+        u = self.filename.universe
         u.atoms.translate([0, 0, self.uc_data.bbox_z_shift])
-        u.dimensions[2] = self.uc_data.bbox_height
+        triclinic_dims = triclinic_vectors(u.dimensions)
+        triclinic_dims[2, 2] = self.uc_data.bbox_height
+        new_dims = u.dimensions
+        new_dims[2] = triclinic_box(*triclinic_dims)[
+            2
+        ]  # self.uc_data.bbox_height
+        u.dimensions = new_dims
         u_file.universe = u
         u_file.write()
 
@@ -851,6 +1043,9 @@ class Sheet:
 
     @property
     def n_sheet(self) -> Union[int, None]:
+        """Sheet number.
+        :return: Sheet number.
+        :rtype: Union[int, None]"""
         if self.__n_sheet is not None:
             return self.__n_sheet
         else:
@@ -858,6 +1053,10 @@ class Sheet:
 
     @n_sheet.setter
     def n_sheet(self, n_sheet: int):
+        """Set sheet number.
+        :param n_sheet: Sheet number.
+        :type n_sheet: int
+        :return: None"""
         if type(n_sheet) == int:
             self.__n_sheet: int = n_sheet
             self.__random = np.random.default_rng(n_sheet)
@@ -869,6 +1068,9 @@ class Sheet:
 
     @property
     def random_generator(self) -> Union[None, np.random._generator.Generator]:
+        """Random number generator.
+        :return: Random number generator.
+        :rtype: Union[None, np.random._generator.Generator]"""
         if self.__random is not None:
             return self.__random
         else:
@@ -876,14 +1078,30 @@ class Sheet:
 
     @property
     def uc_array(self) -> NDArray:
+        """Unit cell array.
+        :return: Unit cell index array.
+        :rtype: NDArray"""
         uc_array: NDArray = np.repeat(self.uc_ids, self.uc_numbers)
         return sorted(uc_array)
 
     @property
+    def uc_charges(self) -> NDArray:
+        uc_charges = self._uc_charges[self.uc_array]
+        return uc_charges
+
+    @property
     def filename(self) -> GROFile:
+        """Sheet filename.
+        :return: Sheet filename.
+        :rtype: GROFile"""
         return self.get_filename(suffix=".gro")
 
-    def write_gro(self, backup=False) -> None:
+    def write_gro(self, backup: bool = False) -> None:
+        """Write sheet coordinates.
+        :param backup: Whether to back up existing files.
+        :type backup: bool, default=False
+        :return: None"""
+
         filename: GROFile = self.filename
         filename.description = (
             f'{self.filename.stem.split("_")[0]} sheet {self.n_sheet}'
@@ -894,12 +1112,16 @@ class Sheet:
             )
             backup_files(filename)
         gro_df: pd.DataFrame = self.uc_data.gro_df
-        uc_array = self.uc_array.copy()
-        self.random_generator.shuffle(uc_array)
+        uc_array = False
+        while uc_array is False:
+            uc_array = self.get_uc_sheet_array()
+        logger.finfo(f"Unit cell arrangement in sheet {self.n_sheet}:")
+        for line in uc_array:
+            logger.finfo(" ".join(map(str, line)), indent="\t")
         sheet_df = pd.concat(
             [
                 gro_df.filter(regex=f"[A-Z]([A-Z]|[0-9]){uc_id}", axis=0)
-                for uc_id in uc_array
+                for uc_id in uc_array.flatten(order="C")
             ]
         )
         sheet_df.reset_index(["atom-id"], inplace=True)
@@ -927,57 +1149,497 @@ class Sheet:
                     )
                 )
             grofile.write(f"{self.format_dimensions(self.dimensions / 10)}\n")
-        add_resnum(crdin=filename, crdout=filename)
-        uc_array = self.uc_array.copy()
-        self.random_generator.shuffle(uc_array)
-        uc_n_atoms: NDArray = (
-            np.array([self.uc_data.n_atoms[uc_id] for uc_id in uc_array])
-            .reshape(self.x_cells, self.y_cells)
-            .astype(np.int32)
+        add_resnum(
+            crdin=filename, crdout=filename, res_n_atoms=self.res_n_atoms
         )
-        x_repeats: Callable = lambda n_atoms: self.__cells_shift(
-            n_atoms=n_atoms, n_cells=self.x_cells
+        uc_n_atoms: NDArray = np.array(
+            [self.uc_data.n_atoms[uc_id] for uc_id in uc_array]
+        ).astype(np.int32)
+        y_repeats: Callable = lambda n_atoms: self._cells_shift(
+            n_atoms=n_atoms, n_cells=self.y_cells, axis=1
         )
-        y_repeats: Callable = lambda n_atoms: self.__cells_shift(
-            n_atoms=n_atoms, n_cells=self.y_cells
-        )
-        x_pos_shift: NDArray = np.ravel(
-            np.apply_along_axis(x_repeats, arr=uc_n_atoms, axis=0), order="F"
+        x_repeats: Callable = lambda n_atoms: self._cells_shift(
+            n_atoms=n_atoms, n_cells=self.x_cells, axis=1
         )
         y_pos_shift: NDArray = np.ravel(
-            np.apply_along_axis(y_repeats, arr=uc_n_atoms, axis=1), order="F"
+            np.apply_along_axis(y_repeats, arr=uc_n_atoms, axis=1), order="C"
         )
-        new_positions: NDArray = filename.universe.atoms.positions
-        new_positions[:, 0] += self.uc_dimensions[0] * x_pos_shift
-        new_positions[:, 1] += self.uc_dimensions[1] * y_pos_shift
+        x_pos_shift: NDArray = np.ravel(
+            np.apply_along_axis(x_repeats, arr=uc_n_atoms, axis=0), order="C"
+        )
         new_universe = filename.universe
+        new_positions: NDArray = new_universe.atoms.positions
+        new_positions[:, 0] += (
+            triclinic_vectors(self.uc_dimensions)[0, 0] * x_pos_shift
+        )
+        new_positions[:, 1] += (
+            triclinic_vectors(self.uc_dimensions)[1, 1] * y_pos_shift
+        )
         new_universe.atoms.positions = new_positions
-        logger.finfo(f"Writing sheet {self.n_sheet} to {filename.name}")
+        logger.finfo(
+            f"Writing sheet {self.n_sheet} to {filename.name}",
+            initial_linebreak=True,
+        )
         filename.universe = new_universe
         filename.write()
         self.__adjust_z_to_bbox()
+        if np.any(filename.universe.dimensions[3:5] != 90):
+            self.shift_sheet()
 
-    def __cells_shift(self, n_cells: int, n_atoms: int) -> NDArray:
+    def get_charge_groups(self) -> Tuple[int, NDArray]:
+        for charge_group in (
+            self.uc_charges.sort_values(
+                ascending=bool(np.min(self.uc_charges))
+            )
+            .round(0)
+            .unique()
+        ):
+            uc_array = self.uc_charges[
+                self.uc_charges.round(0) == charge_group
+            ].index.values
+            # self.random_generator.shuffle(uc_array)
+            n_ucs: NDArray = len(uc_array)
+            if n_ucs != 0:
+                yield charge_group, n_ucs, uc_array
+
+    def get_uc_sheet_array(self):
+        max_dict = {self.x_cells: 0, self.y_cells: 1}
+        max_ax_len = max(max_dict.keys())
+        other_ax_len = min(max_dict.keys())
+        remaining_add = {}
+        uc_ids = np.empty((max_ax_len, other_ax_len), dtype=object)
+        prev_id = {}
+        idxs_mask = np.full((self.x_cells, self.y_cells), fill_value=np.NaN)
+        remainder_choices = np.arange(max_ax_len)
+        self.random_generator.shuffle(remainder_choices)
+        lines = {}
+        if self.debug:
+            symbols = np.array(["x", "o", "+", "#", "-", "*"])
+            symbols = itertools.cycle(symbols)
+            symbol_arr = np.full((self.x_cells, self.y_cells), fill_value=" ")
+            symbol_dict = {}
+        for charge_group_id, (
+            charge,
+            charge_group_n_ucs,
+            charge_group,
+        ) in enumerate(self.get_charge_groups()):
+            if self.debug:
+                symbol = next(symbols)
+                symbol_dict[symbol] = charge
+            uc_array = charge_group.copy()
+            self.random_generator.shuffle(uc_array)
+            remaining_add[charge_group_id] = 0
+            n_per_line = charge_group_n_ucs // max_ax_len
+            per_line_remainder = charge_group_n_ucs % max_ax_len
+            n_per_col = charge_group_n_ucs // other_ax_len
+            per_col_remainder = charge_group_n_ucs % other_ax_len
+            # per_diag_col_remainder = charge_group_n_ucs % (other_ax_len)
+            # per_opp_diag_col_remainder = charge_group_n_ucs % (other_ax_len)
+            lines[charge_group_id], remainder_choices = np.split(
+                remainder_choices, [per_line_remainder]
+            )
+            prev = np.array([])
+            for axis_id in range(max_ax_len):
+                if charge_group_id == 0:
+                    prev_id[axis_id] = 0
+                n_add_ucs = n_per_line
+                n_col_ucs = n_per_col
+                if axis_id in lines[charge_group_id]:
+                    n_add_ucs += 1
+                if n_add_ucs == 0:
+                    prev = np.array([])
+                    continue
+                free = np.isnan(idxs_mask[axis_id])
+                occ_cols = np.select([idxs_mask == charge], [1], 0)
+                occ_counts = np.sum(occ_cols, axis=0)
+                diag_counts = np.sum(
+                    np.array(
+                        [
+                            *np.fromiter(
+                                self.get_all_diagonals(occ_cols),
+                                dtype=np.ndarray,
+                            )
+                        ]
+                    ),
+                    axis=1,
+                )
+                opposite_diag_counts = np.flip(
+                    np.sum(
+                        np.array(
+                            [
+                                *np.fromiter(
+                                    self.get_all_diagonals(
+                                        np.flip(occ_cols, axis=1)
+                                    ),
+                                    dtype=np.ndarray,
+                                )
+                            ]
+                        ),
+                        axis=1,
+                    )
+                )
+                idx_choices = None
+                counts = np.array(
+                    [
+                        np.roll(diag_counts, axis_id),
+                        np.roll(opposite_diag_counts, -axis_id),
+                        occ_counts,
+                    ]
+                )
+                combined_counts = np.max(
+                    [
+                        np.roll(diag_counts, axis_id),
+                        np.roll(opposite_diag_counts, -axis_id),
+                        occ_counts,
+                    ],
+                    axis=0,
+                )
+                free_cols = np.logical_and(
+                    free,
+                    combined_counts < n_col_ucs + min(1, per_col_remainder),
+                )
+                init_i = np.array([0, 0, 0])
+                if free_cols[free_cols].size <= n_add_ucs:
+                    free_cols = np.logical_and(
+                        free,
+                        combined_counts
+                        < n_col_ucs + max(1, per_col_remainder),
+                    )
+                while np.all(init_i < per_col_remainder + n_per_col) and (
+                    idx_choices is None
+                    or (idx_choices.flatten().size < n_add_ucs)
+                ):
+                    allowed_cols = free_cols.copy()
+                    idx_choices = None
+                    occ_devs = np.std(counts, axis=1)
+                    order = np.argsort(occ_devs)[::-1]
+                    if self.debug:
+                        logger.finfo("Occupancy deviations:")
+                        pm = "\u00B1"
+                        logdict = {
+                            0: "right diagonal",
+                            1: "left diagonal",
+                            2: "columns",
+                        }
+                        logstr = list(
+                            map(
+                                lambda x, y, z: f"\t{logdict[x]:15}: {y:.1f} {pm} {z:.1f}",
+                                order,
+                                np.mean(counts, axis=1),
+                                occ_devs,
+                            )
+                        )
+                        logger.finfo("\n".join(logstr))
+                    for occ_id in order:  # self.random_generator.choice(
+                        # [0, 1, 2], 3, replace=False
+                        # ):
+                        (
+                            idx_choices,
+                            allowed_cols,
+                            init_i[occ_id],
+                        ) = self.get_idxs(
+                            init_i[occ_id],
+                            n_col_ucs,
+                            n_add_ucs,
+                            counts[occ_id],
+                            free_cols,
+                            intersect_idxs=idx_choices,
+                            intersect_allowed=allowed_cols,
+                            remainder=per_col_remainder,
+                        )
+                    if free[free].flatten().size == n_add_ucs:
+                        idx_choices = np.argwhere(free).flatten()
+                    if (
+                        idx_choices.flatten().size == prev.flatten().size
+                        and np.equal(
+                            idx_choices.flatten(), prev.flatten()
+                        ).all()
+                        and idx_choices.flatten().size
+                        != free_cols[free_cols].flatten().size
+                    ):
+                        continue
+                    elif idx_choices.flatten().size >= n_add_ucs:
+                        if self.debug:
+                            logger.finfo(f"Row {axis_id}:", indent="\t")
+                            logger.finfo(
+                                f"Adding {n_add_ucs} from {idx_choices.flatten()}",
+                                indent="\t\t",
+                            )
+                        break
+                    else:
+                        return False
+                if (
+                    idx_choices is None
+                    or idx_choices.flatten().size < n_add_ucs
+                ):
+                    return False
+                # if
+                continuous_choices = idx_choices[
+                    [
+                        *(
+                            idx_choices[:-1] + 1
+                            == np.roll(idx_choices, -1)[:-1]
+                        ),
+                        *(
+                            idx_choices[-1:] - 1
+                            == np.roll(idx_choices, 1)[-1:]
+                        ),
+                    ]
+                ]
+                if n_add_ucs <= continuous_choices.size // 2 and n_add_ucs > 1:
+                    p = np.zeros_like(idx_choices, dtype=np.float_)
+                    start_idx = self.random_generator.choice(
+                        [0, 1], 1, replace=False
+                    )[0]
+                    p[np.sort(continuous_choices)[start_idx::2]] = 1
+                    if p[0] == 1 and p[-1] == 1:
+                        p[
+                            self.random_generator.choice(
+                                [0, -1], 1, replace=False
+                            )[0]
+                        ] = 0
+                    p = np.divide(p, np.sum(p), where=p != 0)
+                else:
+                    p = np.full_like(
+                        idx_choices,
+                        np.divide(1, idx_choices.size),
+                        dtype=np.float_,
+                    )
+                idx_sel = None
+                if idx_choices.size == n_add_ucs:
+                    idx_sel = idx_choices
+                else:
+                    while idx_sel is None or (
+                        idx_sel.size == prev.size
+                        and np.equal(np.sort(idx_sel), prev).all()
+                        and free_cols[free_cols].size != idx_sel.size
+                    ):
+                        idx_sel = self.random_generator.choice(
+                            idx_choices.flatten(),
+                            n_add_ucs,
+                            replace=False,
+                            p=p,
+                        )
+                        if idx_sel.size == idx_choices.size:
+                            idx_sel = idx_choices
+                if self.debug:
+                    logger.finfo(f"Selected {idx_sel}", indent="\t")
+                idxs_mask[axis_id, idx_sel] = charge
+                uc_ids[axis_id, idx_sel], uc_array = np.split(
+                    uc_array, [n_add_ucs]
+                )
+                if self.debug:
+                    symbol_arr[axis_id, idx_sel] = symbol
+                if idx_sel.size != 0:
+                    prev = np.sort(idx_sel)
+        if max_dict[max_ax_len] == 1:
+            uc_ids = uc_ids.T
+        if self.debug:
+            logger.finfo("Added charges:")
+            for k, v in symbol_dict.items():
+                logger.finfo(
+                    kwd_str=f"{k}: ", message=f"{v:2.1f}", indent="\t"
+                )
+            logger.finfo("Final symbol matrix:")
+            for line in symbol_arr:
+                logger.finfo("  ".join(line), indent="\t")
+        return uc_ids
+
+    def get_all_diagonals(self, arr):
+        x_dim, y_dim = arr.shape
+        arr_p = np.pad(arr, ((0, 0), (0, x_dim)), mode="wrap")
+        for d in range(y_dim):
+            yield np.diagonal(arr_p, offset=d)
+
+    def get_weights(
+        self,
+        idxs_mask,
+        axis_id,
+        idx_choices,
+        n_ucs,
+        charge_group_id=0,
+        all_same=False,
+    ):
+        arr = np.abs(idxs_mask[axis_id - 1, :])
+        idx_choices = idx_choices.astype(int)
+        if (
+            (axis_id == 0 and charge_group_id == 0)
+            or n_ucs == len(idx_choices)
+            or all_same
+        ):
+            p = np.ones_like(arr, dtype=np.float_)
+            if n_ucs != len(idx_choices) and not all_same:
+                start_id = int(self.random_generator.choice([0, 1], 1))
+                p[start_id::2] -= 0.75
+        else:
+            p = np.divide(1, arr, where=arr > 0, out=np.full_like(arr, 1.5))
+        p = np.ravel(np.where(p < 0, 0, p)[idx_choices])
+        if n_ucs != len(idx_choices) and not all_same:
+            for pi in range(len(p)):
+                if p[pi] == np.roll(p, 1)[pi]:
+                    p[pi] -= (
+                        0.75 * p[pi]
+                    )  # np.divide(0.5, p[pi], where=p[pi] > 0, out=np.full_like(p[pi], 0))
+        return np.divide(p, np.sum(p))
+
+    @staticmethod
+    def choose_idx(
+        occ_counts,
+        max_n_per_col,
+        free_cols,
+        diag_axis_id=None,
+        n_remainder=0,
+        min_length=0,
+    ):
+        # if diag_axis_id is not None:
+        #     occ_counts = np.roll(occ_counts, diag_axis_id)
+        allowed_cols = occ_counts < max_n_per_col
+        idx_choices = np.argwhere(
+            np.logical_and(free_cols.flatten(), allowed_cols.flatten())
+        ).flatten()
+        if n_remainder > 0:
+            extra = 0
+            while len(idx_choices) < min_length and extra <= n_remainder:
+                add_allowed = occ_counts <= max_n_per_col + extra
+                if len(add_allowed[add_allowed == True].flatten()) != 0:
+                    add_idxs = np.argwhere(
+                        np.logical_and(
+                            free_cols.flatten(), add_allowed.flatten()
+                        )
+                    ).flatten()
+                    add_idxs = np.random.choice(
+                        add_idxs,
+                        min(n_remainder, len(add_idxs)),
+                        replace=False,
+                    )
+                    idx_choices = np.union1d(idx_choices, add_idxs)
+                extra += 1
+        return idx_choices, allowed_cols
+
+    def get_idxs(
+        self,
+        init_i: int,
+        per_col_ucs: int,
+        per_line_ucs: int,
+        occ_counts,
+        free_cols,
+        intersect_idxs=None,
+        intersect_allowed=None,
+        remainder=0,
+    ):
+        n_remaining = 0
+        for i in range(init_i, per_col_ucs + remainder + 1):
+            if i == per_col_ucs:
+                n_remaining = remainder
+            new_idx_choices, allowed_cols = self.choose_idx(
+                occ_counts,
+                max_n_per_col=i,
+                free_cols=free_cols,
+                n_remainder=n_remaining,
+                min_length=per_line_ucs,
+            )
+            if intersect_idxs is not None:
+                idx_choices = np.intersect1d(
+                    new_idx_choices.flatten(), intersect_idxs.flatten()
+                )
+            else:
+                idx_choices = new_idx_choices
+            if intersect_allowed is not None:
+                allowed_cols = np.where(
+                    intersect_allowed == allowed_cols, intersect_allowed, False
+                )
+            if len(idx_choices.flatten()) < per_line_ucs:
+                init_i = i
+                continue
+            else:
+                return (
+                    idx_choices.flatten(),
+                    allowed_cols,
+                    min(i, np.sort(occ_counts)[-per_line_ucs]),
+                )
+        return (
+            idx_choices.flatten(),
+            allowed_cols,
+            min(init_i, np.sort(occ_counts)[-per_line_ucs]),
+        )
+
+    def shift_sheet(self):
+        u = self.filename.universe
+        u.atoms.translate(
+            np.array(
+                [
+                    u.dimensions[0] * math.sin(u.dimensions[4]),
+                    u.dimensions[1] * math.sin(u.dimensions[5]),
+                    0,
+                ]
+            )
+            * self.n_sheet
+        )
+        self.filename.universe = u
+        self.filename.write()
+
+    @property
+    def res_n_atoms(self) -> pd.Series:
+        if self._res_n_atoms is None:
+            self._res_n_atoms = self.get_system_n_atoms()
+        return self._res_n_atoms
+
+    @res_n_atoms.setter
+    def res_n_atoms(self) -> pd.Series:
+        self._res_n_atoms = self.get_system_n_atoms()
+
+    def get_system_n_atoms(self) -> pd.Series:
+        return get_system_n_atoms(crds=self.universe, write=False)
+
+    def _cells_shift(
+        self, n_cells: int, n_atoms: int, axis: Literal[0, 1] = 1
+    ) -> NDArray:
+        """Get shift for unit cells in sheet.
+        :param n_cells: Number of cells.
+        :type n_cells: int
+        :param n_atoms: Number of atoms.
+        :type n_atoms: int
+        :return: Shift.
+        :rtype: NDArray"""
         shift: NDArray = np.atleast_2d(np.arange(n_cells)).repeat(
-            n_atoms, axis=1
+            n_atoms, axis=axis
         )
         return shift
 
     @staticmethod
     def format_dimensions(dimensions: NDArray) -> str:
+        """Format dimension string for GRO file.
+        :param dimensions: Dimensions.
+        :type dimensions: NDArray
+        :return: Formatted dimensions.
+        :rtype: str"""
         return "".join([f"{dimension:12.4f}" for dimension in dimensions])
 
     @cached_property
     def uc_dimensions(self) -> NDArray:
+        """Unit cell dimensions.
+        :return: Unit cell dimensions.
+        :rtype: NDArray"""
+
         return self.uc_data.dimensions
 
     @property
     def universe(self) -> Universe:
-        return Universe(str(self.get_filename(suffix=".gro")))
+        """Sheet universe.
+        :return: Sheet universe.
+        :rtype: Universe"""
+
+        return (
+            self.filename.universe
+        )  # Universe(str(self.get_filename(suffix=".gro")))
 
     # TODO: add n_atoms and uc data to match data
 
     def backup(self, filename: Path) -> None:
+        """Backup files.
+        :param filename: Filename.
+        :type filename: Path
+        :return: None"""
         sheets_backup: Path = filename.with_suffix(f"{filename.suffix}.1")
         backups = filename.parent.glob(f"*.{filename.suffix}.*")
         for backup in reversed(list(backups)):
@@ -990,6 +1652,23 @@ class Sheet:
 
 
 class Solvent:
+    """Solvent class.
+    :param x_dim: X-dimension.
+    :type x_dim: Optional[Union[int, float]]
+    :param y_dim: Y-dimension.
+    :type y_dim: Optional[Union[int, float]]
+    :param z_dim: Z-dimension.
+    :type z_dim: Optional[Union[int, float]]
+    :param n_mols: Number of molecules.
+    :type n_mols: Optional[Union[int]]
+    :param n_ions: Number of ions.
+    :type n_ions: Optional[Union[int]]
+    :param z_padding: Z-padding.
+    :type z_padding: float
+    :param min_height: Minimum height.
+    :type min_height: float
+    :return: None"""
+
     solv_density = 1000e-27  # g/L 1L = 10E27 A^3
     mw_sol = 18
 
@@ -1030,15 +1709,24 @@ class Solvent:
 
     @property
     def z_dim(self) -> float:
+        """Z-dimension.
+        :return: Z-dimension.
+        :rtype: float"""
         return self._z_dim + self._z_padding
 
     @property
     def universe(self) -> Universe:
+        """Solvent universe.
+        :return: Universe.
+        :rtype: Universe"""
         universe = getattr(self, "__universe", None)
         return universe
 
     @property
     def topology(self) -> TopologyConstructor:
+        """Solvent topology.
+        :return: Topology.
+        :rtype: TopologyConstructor"""
         top = getattr(self, "__top", None)
         return top
 
@@ -1049,6 +1737,10 @@ class Solvent:
         return self.__repr__()
 
     def get_solvent_sheet_height(self, mols_sol: int) -> float:
+        """Get solvent sheet height from number of solvent molecules..
+                :param mols_sol: Number of solvent molecules.
+        :type mols_sol: int
+        """
         z_dim = (self.mw_sol * mols_sol) / (
             constants["N_Avogadro"]
             * self.x_dim
@@ -1058,6 +1750,11 @@ class Solvent:
         return z_dim
 
     def get_sheet_solvent_mols(self, z_dim: Union[float, int]) -> int:
+        """Get number of solvent molecules from solvent sheet height.
+        :param z_dim: Solvent sheet height.
+        :type z_dim: Union[float, int]
+        """
+
         mols_sol = (
             z_dim
             * constants["N_Avogadro"]
@@ -1121,7 +1818,9 @@ class Solvent:
             else:
                 break
 
-        logger.debug(f"Saving solvent sheet as {spc_gro.stem!r}")
+        logger.debug(
+            f"Saving solvent sheet as {spc_gro.stem!r}", initial_linebreak=True
+        )
         self.__universe: Universe = spc_gro.universe
         self.__top: TopologyConstructor = topology
 

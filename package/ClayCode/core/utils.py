@@ -5,6 +5,7 @@ r""":mod:`ClayCode.core.utils` --- Utility functions
 """
 from __future__ import annotations
 
+import io
 import logging
 import math
 import os
@@ -194,6 +195,14 @@ def get_logfname(
     return f"{logpath}/{logname}-{run_name}{time}.log"
 
 
+def substitute_kwds(
+    string: str, substitutions: dict[str, str], flags: re.RegexFlag
+) -> str:
+    for key, value in substitutions.items():
+        string = re.sub(key, f"{value}", string, flags=flags)
+    return string
+
+
 @singledispatch
 def get_search_str(match_obj) -> str:
     raise TypeError(
@@ -288,9 +297,12 @@ class SubprocessProgressBar:
         self.start()
         try:
             result = f(*args, **kwargs)
-        except BaseException as e:
-            return e
-        self.stop()
+        # except BaseException as e:
+        #     return e
+        except sp.CalledProcessError as e:
+            result = e
+        finally:
+            self.stop()
         return result
 
 
@@ -554,7 +566,11 @@ def get_file_or_str(f):
         import yaml
 
         read_dict = {".yaml": yaml.safe_load, ".json": json.load}
-        if isinstance(file_or_str, str):
+        # if isinstance(file_or_str, str):
+        #
+        if not file_or_str:
+            file_str = None
+        elif isinstance(file_or_str, dict):
             file_str = file_or_str
         else:
             try:
@@ -562,8 +578,11 @@ def get_file_or_str(f):
             except KeyError:
                 read_func = lambda x: x.read()
             finally:
-                with open(file_or_str, "r") as file:
-                    file_str = read_func(file)
+                if isinstance(file_or_str, str):
+                    file_str = read_func(io.StringIO(file_or_str))
+                else:
+                    with open(file_or_str, "r") as file:
+                        file_str = read_func(file)
         # except FileNotFoundError:
         #     file_str = get_file_or_str
         # except OSError:

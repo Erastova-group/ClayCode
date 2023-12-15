@@ -8,10 +8,13 @@ O,D11,0,0,False
 T,T11,4,8,False
 O,T11,0,0,False
 T,L21,0,0,True
-O,L21,2,4,True
+O,L21,2,6,True
 T,L31,0,0,True
 O,L31,3,4,True
 T,SEP,0,24,False
 O,SEP,3,8,False
-T,TD21,4,8,True
-O,TD21,3,4,True
+T,CD21,4,8,True
+O,CD21,3,4,True
+T,CD11,4,4,False
+O,CD11,3,4,False
+

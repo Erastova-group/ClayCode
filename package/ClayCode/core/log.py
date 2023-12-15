@@ -165,5 +165,29 @@ class ClayCodeLogger(logging.Logger):
         )
         self.info(f"{initial_chars}{message_str}")
 
+    def fdebug(
+        self,
+        debug: bool,
+        message: str,
+        line_width=LINE_LENGTH,
+        kwd_str="",
+        indent="",
+        fix_sentence_endings=True,
+        initial_linebreak=False,
+        expand_tabs=False,
+        replace_whitespace=False,
+    ):
+        if debug:
+            self.finfo(
+                message,
+                line_width=line_width,
+                kwd_str=kwd_str,
+                indent=indent,
+                fix_sentence_endings=fix_sentence_endings,
+                initial_linebreak=initial_linebreak,
+                expand_tabs=expand_tabs,
+                replace_whitespace=replace_whitespace,
+            )
+
 
 logging.setLoggerClass(ClayCodeLogger)
