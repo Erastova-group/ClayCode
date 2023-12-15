@@ -565,7 +565,7 @@ class Builder:
                 self.stack.reset_universe()
                 self.stack.write(self.top)
             excess_charge = int(self.args.il_ions.clay_charge + ion_charge)
-            logger.finfo(f"\tNeutralising charge:")
+            logger.finfo(f"Neutralising charge:", indent="\t")
             if excess_charge != 0:
                 neutral_bulk_ions = InterlayerIons(
                     excess_charge,
@@ -593,7 +593,7 @@ class Builder:
                     self.stack.reset_universe()
                     self.stack.write(self.top)
             logger.debug(f"n_atoms: {self.stack.universe.atoms.n_atoms}")
-            logger.finfo(f"\t\tReplaced {replaced} SOL molecules")
+            logger.finfo(f"Replaced {replaced} SOL molecules", indent="\t\t")
             logger.finfo(
                 f"Saving solvated box with ions as {self.stack.stem!r}"
             )
@@ -1115,6 +1115,8 @@ class Sheet:
         uc_array = False
         while uc_array is False:
             uc_array = self.get_uc_sheet_array()
+        for line in uc_array:
+            logger.finfo(" ".join(map(str, line)), indent="\t")
         sheet_df = pd.concat(
             [
                 gro_df.filter(regex=f"[A-Z]([A-Z]|[0-9]){uc_id}", axis=0)
