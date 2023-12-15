@@ -565,7 +565,7 @@ class Builder:
                 self.stack.reset_universe()
                 self.stack.write(self.top)
             excess_charge = int(self.args.il_ions.clay_charge + ion_charge)
-            logger.finfo(f"Neutralising charge:", indent="\t")
+            logger.finfo(f"Neutralising charge:")
             if excess_charge != 0:
                 neutral_bulk_ions = InterlayerIons(
                     excess_charge,
@@ -588,12 +588,12 @@ class Builder:
                         f"after n_atoms: {self.stack.universe.atoms.n_atoms}"
                     )
                     logger.finfo(
-                        f"Added {n_ions} {ion} ions to bulk", indent="\t\t"
+                        f"Added {n_ions} {ion} ions to bulk", indent="\t"
                     )
                     self.stack.reset_universe()
                     self.stack.write(self.top)
             logger.debug(f"n_atoms: {self.stack.universe.atoms.n_atoms}")
-            logger.finfo(f"Replaced {replaced} SOL molecules", indent="\t\t")
+            logger.finfo(f"Replaced {replaced} SOL molecules", indent="\t")
             logger.finfo(
                 f"Saving solvated box with ions as {self.stack.stem!r}"
             )
@@ -1115,6 +1115,7 @@ class Sheet:
         uc_array = False
         while uc_array is False:
             uc_array = self.get_uc_sheet_array()
+        logger.finfo(f"Unit cell arrangement in sheet {self.n_sheet}:")
         for line in uc_array:
             logger.finfo(" ".join(map(str, line)), indent="\t")
         sheet_df = pd.concat(
@@ -1175,7 +1176,10 @@ class Sheet:
             triclinic_vectors(self.uc_dimensions)[1, 1] * y_pos_shift
         )
         new_universe.atoms.positions = new_positions
-        logger.finfo(f"Writing sheet {self.n_sheet} to {filename.name}")
+        logger.finfo(
+            f"Writing sheet {self.n_sheet} to {filename.name}",
+            initial_linebreak=True,
+        )
         filename.universe = new_universe
         filename.write()
         self.__adjust_z_to_bbox()
