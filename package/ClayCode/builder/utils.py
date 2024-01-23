@@ -80,7 +80,7 @@ def select_input_option(
     :rtype: Any
     """
     while result not in options:
-        result = input(query).lower()
+        result = input(query).lower().strip(" ")
     if result_map is not None:
         result = result_map[result]
     return result
@@ -117,7 +117,9 @@ def get_checked_input(
     :rtype: Any
     """
     while not isinstance(result, result_type):
-        result_input = input(f"{query} (or exit with {exit_val!r})\n")
+        result_input = input(f"{query} (or exit with {exit_val!r})\n").strip(
+            " "
+        )
         if result_input == exit_val:
             logger.info(f"Selected {exit_val!r}, exiting.")
             sys.exit(0)

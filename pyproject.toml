@@ -49,6 +49,7 @@ include-package-data = true
 "ClayCode.siminp.config" = ["defaults.yaml"]
 "ClayCode.siminp.scripts" = ["*.sh"]
 "ClayCode.addmols.config" = ["defaults.yaml", "addtypes.yaml"]
+"ClayCode.analysis.data" = ['peaks_edges/*.p']
 
 [project.urls]
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"

@@ -94,7 +94,7 @@ class UnitCell(ITPFile):
         """Unit cell stem
         :return: unit cell stem
         :rtype: str"""
-        return self.stem[:2]
+        return self.stem[:-3]
 
     @cached_property
     def atom_df(self) -> pd.DataFrame:
@@ -131,7 +131,7 @@ class UCData(Dir):
         from ClayCode.core.classes import ForceField
 
         if uc_stem is None:
-            self.uc_stem = self.itp_filelist[0].stem[:-3]
+            self.uc_stem = self.uc_itp_filelist[0].stem[:-3]
         else:
             self.uc_stem: str = uc_stem
         logger.info(get_subheader("Getting unit cell data"))
@@ -156,6 +156,10 @@ class UCData(Dir):
         self.idx_sel = (
             self.df.index.get_level_values("sheet").unique().to_list()
         )
+
+    @property
+    def uc_gro_filelist(self):
+        return self.gro_filelist.filter(f"{self.uc_stem}[0-9][0-9][0-9]")
 
     def check_ucs(self):
         uc_error_charges = {}
@@ -205,7 +209,7 @@ class UCData(Dir):
         self.__bbox_height = {}
         extract_id = lambda file: file.stem[-3:]
         if not (self.path / "uc_groups.pkl").is_file() or not write:
-            for uc in sorted(self.gro_filelist):
+            for uc in sorted(self.uc_gro_filelist):
                 uc_dimensions = uc.universe.dimensions
                 bbox_height_new = np.ediff1d(uc.universe.atoms.bbox()[:, 2])[0]
                 dim_str = "_".join(uc_dimensions.round(3).astype(str))
@@ -252,6 +256,10 @@ class UCData(Dir):
             self.__gro_groups = uc_groups["gro_groups"]
             self.__itp_groups = uc_groups["itp_groups"]
         self.__base_ucs = {}
+
+    @property
+    def uc_itp_filelist(self):
+        return self.itp_filelist.filter(f"{self.uc_stem}[0-9][0-9][0-9]")
 
     @property
     def bbox_height(self):
@@ -316,7 +324,7 @@ class UCData(Dir):
         gro_df.set_index("uc-id", inplace=True, append=True)
         gro_df.index = gro_df.index.reorder_levels(["uc-id", "atom-id"])
         gro_df.sort_index(level="uc-id", inplace=True, sort_remaining=True)
-        for gro in self.gro_filelist:
+        for gro in self.uc_gro_filelist:
             n_atoms = self.n_atoms.filter(regex=gro.stem[-3:]).values[0]
             gro_df.update(gro.df.set_index("atom-id", append=True))
         return gro_df
@@ -392,58 +400,86 @@ class UCData(Dir):
         )
 
     def __get_full_df(self, write=True, reset=False):
-        if reset is True and (self.path / "full_df.csv").is_file():
-            os.remove(self.path / "full_df.csv")
-        idx = self.atomtypes.iloc[:, 0]
-        cols = [*self.uc_idxs, "charge", "sheet"]
-        self._full_df: pd.DataFrame = pd.DataFrame(
-            index=idx, columns=cols, dtype=np.float64
-        )
-        self._full_df["charge"].update(
-            self.atomtypes.set_index("at-type")["charge"]
-        )
-        self.__get_df_sheet_annotations()
-        self._full_df["sheet"].fillna("X", inplace=True)
-        self._full_df.fillna(0, inplace=True)
-        # self._full_df = dd.from_pandas(self._full_df, chunksize=1000)
-        if not (self.path / "full_df.csv").is_file() or not write:
-            for uc in self.uc_list:
+        finished = False
+        while finished is False:
+            finished = True
+            if reset is True and (self.path / "full_df.csv").is_file():
+                os.remove(self.path / "full_df.csv")
+                if (self.path / "uc_groups.pkl").is_file():
+                    os.remove(self.path / "uc_groups.pkl")
+            idx = self.atomtypes.iloc[:, 0].copy()
+            idx = idx.reindex([*idx.index.values, len(idx)])
+            idx.iloc[-1] = "itp_charge"
+            cols = [*self.uc_idxs, "charge", "sheet"]
+            self._full_df: pd.DataFrame = pd.DataFrame(
+                index=idx, columns=cols, dtype=np.float64
+            )
+            self._full_df["charge"].update(
+                self.atomtypes.set_index("at-type")["charge"]
+            )
+            self.__get_df_sheet_annotations()
+            self._full_df["sheet"].fillna("X", inplace=True)
+            self._full_df.fillna(0, inplace=True)
+            # self._full_df = dd.from_pandas(self._full_df, chunksize=1000)
+            if not (self.path / "full_df.csv").is_file() or not write:
+                for uc in self.uc_list:
+                    try:
+                        atoms: UnitCell = uc.atom_df
+                        self._full_df[f"{uc.idx}"].update(
+                            atoms.value_counts("at-type")
+                        )
+                        self._full_df.loc[
+                            "itp_charge", f"{uc.idx}"
+                        ] = uc.charge
+                        self._full_df[f"{uc.idx}"].fillna(0, inplace=True)
+                    except AttributeError:
+                        logger.finfo(f"Invalid unit cell {uc.name!r}")
+                        for suffix in [".gro", ".itp"]:
+                            try:
+                                remove = select_input_option(
+                                    instance_or_manual_setup=True,
+                                    query=f"Remove invalid unit cell {uc.idx}? [y]es/[n]o (default y)\n",
+                                    options=["y", "n", ""],
+                                    result=None,
+                                    result_map={
+                                        "y": True,
+                                        "n": False,
+                                        "": True,
+                                    },
+                                )
+                                if remove:
+                                    os.remove(uc.with_suffix(suffix))
+                            except FileNotFoundError:
+                                pass
+                self._full_df.set_index("sheet", append=True, inplace=True)
+                self._full_df.sort_index(
+                    inplace=True, level=1, sort_remaining=True
+                )
+                self._full_df.index = self._full_df.index.reorder_levels(
+                    ["sheet", "at-type"]
+                )
+                self.check_ucs()
+                if write:
+                    self._full_df.to_csv(self.path / "full_df.csv")
+            else:
+                self._full_df = pd.read_csv(
+                    self.path / "full_df.csv", index_col=[0, 1]
+                )
                 try:
-                    atoms = uc["atoms"].df
-                    self._full_df[f"{uc.idx}"].update(
-                        atoms.value_counts("at-type")
-                    )
-                except AttributeError:
-                    logger.finfo(f"Invalid unit cell {uc.name!r}")
-                    for suffix in [".gro", ".itp"]:
-                        try:
-                            remove = select_input_option(
-                                instance_or_manual_setup=True,
-                                query=f"Remove invalid unit cell {uc.idx}? [y]es/[n]o (default y)\n",
-                                options=["y", "n", ""],
-                                result=None,
-                                result_map={"y": True, "n": False, "": True},
-                            )
-                            if remove:
-                                os.remove(uc.with_suffix(suffix))
-                        except FileNotFoundError:
-                            pass
-            self._full_df.set_index("sheet", append=True, inplace=True)
-            self._full_df.sort_index(
-                inplace=True, level=1, sort_remaining=True
-            )
-            self._full_df.index = self._full_df.index.reorder_levels(
-                ["sheet", "at-type"]
-            )
-            self.check_ucs()
-            if write:
-                self._full_df.to_csv(self.path / "full_df.csv")
-        else:
-            self._full_df = pd.read_csv(
-                self.path / "full_df.csv", index_col=[0, 1]
-            )
-            if len(self._full_df.columns) == len(self.itp_filelist):
-                return False
+                    if not np.equal(
+                        self._full_df.loc["itp_charge", "itp_charge"],
+                        np.rint(self._full_df.loc["itp_charge", "itp_charge"]),
+                    ).all():
+                        finished = False
+                except KeyError:
+                    finished = False
+            if (
+                sorted(self._full_df.columns)[:-1] != sorted(self.uc_idxs)
+            ) or finished is False:
+                os.remove(self.path / "full_df.csv")
+                if (self.path / "uc_groups.pkl").is_file():
+                    os.remove(self.path / "uc_groups.pkl")
+                finished = False
 
     def __get_df_sheet_annotations(self):
         old_index = self._full_df.index
@@ -461,23 +497,27 @@ class UCData(Dir):
         new_index = pd.MultiIndex.from_tuples(index_extension_list)
         new_index = new_index.to_frame().set_index(1)
         self._full_df["sheet"].update(new_index[0])
+        self._full_df.loc["itp_charge", "sheet"] = "itp_charge"
 
     def __get_df(self):
         # self._df = dd.from_pandas(self._full_df, chunksize=1000)
         # self._df.reset_index('at-type', inplace=True)
         # self._df.filter(regex=r"^(?![X].*)", axis=0, inplace=True)
-        self._df = self.full_df.reset_index("at-type").filter(
-            regex=r"^(?![X].*)", axis=0
+        self._df = (
+            self.full_df.copy()
+            .reset_index("at-type")
+            .filter(regex=r"^(?![X].*)", axis=0)
         )
         self._df = (
             self._df.reset_index()
             .set_index(["sheet", "at-type"])
             .sort_index(axis=1)
         )
+        self._df.drop("itp_charge", inplace=True)
 
     @cached_property
     def uc_list(self) -> List[UnitCell]:
-        uc_list = [UnitCell(itp) for itp in self.itp_filelist]
+        uc_list = [UnitCell(itp) for itp in self.uc_itp_filelist]
         return uc_list
 
     @cached_property
@@ -485,7 +525,7 @@ class UCData(Dir):
         return self._get_occupancies(self.df)
 
     @cached_property
-    def tot_charge(self) -> pd.Series:
+    def ff_charge(self) -> pd.Series:
         charge = self.full_df.apply(
             lambda x: x * self.full_df["charge"], raw=True
         )
@@ -505,8 +545,20 @@ class UCData(Dir):
         return total_charge
 
     @cached_property
+    def tot_charge(self) -> pd.Series:
+        total_charge = self.full_df.loc[("itp_charge", "itp_charge")].filter(
+            regex="[0-9]+"
+        )
+        return total_charge.sort_index()
+
+    @cached_property
     def n_atoms(self):
-        return self.full_df.filter(regex="[0-9]+").astype(int).sum(axis=0)
+        return (
+            self.full_df.drop("itp_charge")
+            .filter(regex="[0-9]+")
+            .astype(int)
+            .sum(axis=0)
+        )
 
     @cached_property
     def uc_composition(self) -> pd.DataFrame:
@@ -534,7 +586,9 @@ class UCData(Dir):
 
     @cached_property
     def available(self) -> List[ITPFile]:
-        return self.itp_filelist.extract_fstems()
+        return self.uc_itp_filelist._extract_parts(
+            part="stem", pre_reset=False
+        )
 
     # def __str__(self):
     #     return f"{self.__class__.__name__}({self.name!r})"
@@ -608,7 +662,7 @@ class UCData(Dir):
         ox_dict = UCData._get_ox_dict()
         # df = df.loc[['T','O']]
         ox_df: pd.DataFrame = df.copy()
-
+        # ox_df = ox_df.drop('itp_charge')
         try:
             ox_df = ox_df.loc[~(ox_df == 0).all(1), :]
         except ValueError:
@@ -618,6 +672,12 @@ class UCData(Dir):
             "at-type"
         ).to_frame()
         at_types.index = ox_df.index
+        # for idx_entry in ("O", "fe_tot"), ('itp_charge', 'itp_charge')]:
+        try:
+            at_types.drop(("O", "fe_tot"), inplace=True)
+
+        except KeyError:
+            pass
         at_types = at_types.applymap(lambda x: ox_dict[x])
         if tot_charge is not None:
             _ox_df = ox_df.loc[:, tot_charge.abs() == tot_charge.abs().min()]
@@ -649,10 +709,6 @@ class UCData(Dir):
             )
             # _ox_df = ox_df.groupby('sheet', group_keys=False, sort=True).apply(lambda x: x.sort_values(ascending=False).first())
             # ox_df[:] = ox_df.groupby('sheet', group_keys=True).sum()
-        try:
-            at_types.drop(("O", "fe_tot"), inplace=True)
-        except KeyError:
-            pass
 
         if type(ox_df) == pd.DataFrame:
             ox: pd.DataFrame = ox_df.apply(lambda x: x * at_types["at-type"])
@@ -983,9 +1039,14 @@ class TargetClayComposition:
 
     @property
     def df(self):
-        return self._df.dropna().sort_index(
+        df = self._df.dropna().sort_index(
             ascending=False, level="sheet", sort_remaining=True
         )
+        # try:
+        #     df = df.drop('itp_charge')
+        # except KeyError:
+        #     pass
+        return df
 
     def reduce_charge(
         self,

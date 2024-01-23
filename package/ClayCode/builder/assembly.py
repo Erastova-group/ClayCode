@@ -1116,7 +1116,7 @@ class Sheet:
         while uc_array is False:
             uc_array = self.get_uc_sheet_array()
         logger.finfo(f"Unit cell arrangement in sheet {self.n_sheet}:")
-        for line in uc_array:
+        for line in uc_array.T:
             logger.finfo(" ".join(map(str, line)), indent="\t")
         sheet_df = pd.concat(
             [
@@ -1213,19 +1213,19 @@ class Sheet:
         remainder_choices = np.arange(max_ax_len)
         self.random_generator.shuffle(remainder_choices)
         lines = {}
-        if self.debug:
-            symbols = np.array(["x", "o", "+", "#", "-", "*"])
-            symbols = itertools.cycle(symbols)
-            symbol_arr = np.full((self.x_cells, self.y_cells), fill_value=" ")
-            symbol_dict = {}
+        # if self.debug:
+        symbols = np.array(["x", "o", "+", "#", "-", "*"])
+        symbols = itertools.cycle(symbols)
+        symbol_arr = np.full((self.x_cells, self.y_cells), fill_value=" ")
+        symbol_dict = {}
         for charge_group_id, (
             charge,
             charge_group_n_ucs,
             charge_group,
         ) in enumerate(self.get_charge_groups()):
-            if self.debug:
-                symbol = next(symbols)
-                symbol_dict[symbol] = charge
+            # if self.debug:
+            symbol = next(symbols)
+            symbol_dict[symbol] = charge
             uc_array = charge_group.copy()
             self.random_generator.shuffle(uc_array)
             remaining_add[charge_group_id] = 0
@@ -1286,29 +1286,40 @@ class Sheet:
                         occ_counts,
                     ]
                 )
-                combined_counts = np.max(
-                    [
-                        np.roll(diag_counts, axis_id),
-                        np.roll(opposite_diag_counts, -axis_id),
-                        occ_counts,
-                    ],
-                    axis=0,
+                combined_counts = np.rint(
+                    np.mean(
+                        [
+                            np.roll(diag_counts, axis_id),
+                            np.roll(opposite_diag_counts, -axis_id),
+                            occ_counts,
+                        ],
+                        axis=0,
+                    )
                 )
                 free_cols = np.logical_and(
                     free,
-                    combined_counts < n_col_ucs + min(1, per_col_remainder),
+                    combined_counts < n_col_ucs,
                 )
                 init_i = np.array([0, 0, 0])
-                if free_cols[free_cols].size <= n_add_ucs:
+                minmax = itertools.cycle([min, max])
+                while free_cols[free_cols].size < n_add_ucs:
                     free_cols = np.logical_and(
                         free,
                         combined_counts
-                        < n_col_ucs + max(1, per_col_remainder),
+                        < n_col_ucs + next(minmax)(1, per_col_remainder),
                     )
-                while np.all(init_i < per_col_remainder + n_per_col) and (
+                extra_remainder = np.zeros_like(init_i, dtype=np.int32)
+                while np.any(
+                    np.less(
+                        init_i, extra_remainder + per_col_remainder + n_per_col
+                    )
+                ) and (
                     idx_choices is None
                     or (idx_choices.flatten().size < n_add_ucs)
                 ):
+                    if free[free].flatten().size == n_add_ucs:
+                        idx_choices = np.argwhere(free).flatten()
+                        break
                     allowed_cols = free_cols.copy()
                     idx_choices = None
                     occ_devs = np.std(counts, axis=1)
@@ -1324,12 +1335,13 @@ class Sheet:
                         logstr = list(
                             map(
                                 lambda x, y, z: f"\t{logdict[x]:15}: {y:.1f} {pm} {z:.1f}",
-                                order,
-                                np.mean(counts, axis=1),
-                                occ_devs,
+                                np.sort(order),
+                                np.mean(counts[np.argsort(order)], axis=1),
+                                occ_devs[np.argsort(order)],
                             )
                         )
                         logger.finfo("\n".join(logstr))
+                    prev_choices = None
                     for occ_id in order:  # self.random_generator.choice(
                         # [0, 1, 2], 3, replace=False
                         # ):
@@ -1345,20 +1357,60 @@ class Sheet:
                             free_cols,
                             intersect_idxs=idx_choices,
                             intersect_allowed=allowed_cols,
-                            remainder=per_col_remainder,
+                            remainder=per_col_remainder
+                            + extra_remainder[occ_id],
                         )
-                    if free[free].flatten().size == n_add_ucs:
-                        idx_choices = np.argwhere(free).flatten()
+                        if idx_choices.flatten().size == n_add_ucs:
+                            print(
+                                occ_id,
+                                f": stopping with {idx_choices.flatten()}, n_add_ucs = {n_add_ucs}",
+                            )
+                            break
+                        elif (
+                            idx_choices.flatten().size < n_add_ucs
+                            and prev_choices is not None
+                            and prev_choices.flatten().size >= n_add_ucs
+                        ):
+                            idx_choices = prev_choices
+
+                        prev_choices = idx_choices
                     if (
-                        idx_choices.flatten().size == prev.flatten().size
-                        and np.equal(
-                            idx_choices.flatten(), prev.flatten()
-                        ).all()
-                        and idx_choices.flatten().size
-                        != free_cols[free_cols].flatten().size
+                        idx_choices.flatten().size > n_add_ucs
+                        and np.unique(counts).size > 1
                     ):
-                        continue
-                    elif idx_choices.flatten().size >= n_add_ucs:
+                        min_count = np.argwhere(
+                            np.min(counts, axis=0) == np.min(counts)
+                        ).flatten()
+                        try:
+                            if (
+                                min_count.size >= n_add_ucs
+                                and min_count.size != combined_counts.size
+                                and np.all(min_count != idx_choices)
+                            ):
+                                pass
+                        except ValueError:
+                            pass
+                        if (
+                            min_count.size >= n_add_ucs
+                            and min_count.size != combined_counts.size
+                            and np.all(min_count != idx_choices)
+                        ):
+                            intersect_idxs = np.intersect1d(
+                                idx_choices, min_count
+                            ).flatten()
+                            if intersect_idxs.size >= n_add_ucs:
+                                idx_choices = intersect_idxs
+                    elif idx_choices.flatten().size < n_add_ucs:
+                        return False
+                    # if idx_choices.flatten().size > n_add_ucs:
+                    #     if prev.flatten().size != 0:
+                    #         _, prev_idxs, _ = np.intersect1d(
+                    #             idx_choices.flatten(), prev.flatten(), assume_unique=True, return_indices=True
+                    #         )
+                    #         if prev_idxs.flatten().size != 0:
+                    #             remove_idxs = np.random.choice(prev_idxs, idx_choices.size - n_add_ucs, replace=False)
+                    #             idx_choices = np.delete(idx_choices, remove_idxs)
+                    if idx_choices.flatten().size >= n_add_ucs:
                         if self.debug:
                             logger.finfo(f"Row {axis_id}:", indent="\t")
                             logger.finfo(
@@ -1367,44 +1419,145 @@ class Sheet:
                             )
                         break
                     else:
-                        return False
+                        if np.any(
+                            np.greater_equal(
+                                init_i,
+                                extra_remainder
+                                + per_col_remainder
+                                + n_per_col,
+                            )
+                        ):
+                            if np.any(
+                                np.greater_equal(
+                                    init_i,
+                                    np.sort(counts, axis=1)[:, n_add_ucs - 1],
+                                )
+                            ):
+                                init_i[
+                                    np.argwhere(
+                                        np.greater_equal(
+                                            init_i,
+                                            np.sort(counts, axis=1)[
+                                                :, n_add_ucs - 1
+                                            ],
+                                        )
+                                    )
+                                ] -= 1
+
+                            else:
+                                extra_remainder[
+                                    np.argwhere(
+                                        np.greater_equal(
+                                            init_i,
+                                            extra_remainder
+                                            + per_col_remainder
+                                            + n_per_col,
+                                        )
+                                    )
+                                ] = 1
+                        # init_i = np.apply_along_axis(lambda arr: np.where(sorted(arr)[:n_add_ucs], )
+                        continue
+                    # if idx_choices.flatten().size == 0:
+                    #     return False
+                    # if np.any(extra_remainder == 0) and idx_choices.flatten().size < n_col_ucs + per_col_remainder and np.all(init_i == n_per_col + per_col_remainder):
+                    #     if np.all(init_i + extra_remainder == n_per_col + per_col_remainder):
+                    #     extra_remainder[np.intersect1d(order, np.argwhere(extra_remainder == 0))[-1]] += 1
+                    #     continue
+                    #     else:
+                    #     return False
+                    # elif (
+                    #     idx_choices.flatten().size == prev.flatten().size
+                    #     and np.equal(
+                    #         idx_choices.flatten(), prev.flatten()
+                    #     ).all()) and np.all(init_i + extra_remainder <= n_per_col + per_col_remainder):
+                    #         if np.all(init_i + extra_remainder == n_per_col + per_col_remainder):
+                    #             extra_remainder = 1
+                    #         continue
+                    # elif np.min(init_i) < n_per_col - per_col_remainder - 1:
+                    #     new_init_i = np.where(init_i == min(min(init_i), n_per_col - per_col_remainder - 1), init_i + 1, init_i)
+                    #     if not np.equal(new_init_i, init_i).all():
+                    #         init_i = new_init_i
+                    #         continue
+                    #     elif n_col_ucs <= n_per_col:
+                    #         n_col_ucs = n_per_col + 1
+                    #         continue
+                    # elif n_col_ucs <= n_per_col:
+                    #     n_col_ucs += 1
+                    # elif n_add_ucs == idx_choices.flatten().size:
+                    #     if self.debug:
+                    #         logger.finfo(f"Row {axis_id}:", indent="\t")
+                    #         logger.finfo(
+                    #             f"Adding {n_add_ucs} from {idx_choices.flatten()}",
+                    #             indent="\t\t",
+                    #         )
+                    #     break
+                    # elif np.any(init_i == extra_remainder + n_per_col + per_col_remainder - 1):
+                    #     init_i_idxs = np.argwhere(init_i < n_per_col + per_col_remainder + extra_remainder - 1)
+                    #     if init_i_idxs.size == 0:
+                    #         init_i_idxs = np.argwhere(init_i < n_per_col + per_col_remainder + extra_remainder)
+                    #         remainder_idxs = np.argwhere(extra_remainder == 0)
+                    #         order_idxs = np.intersect1d(init_i_idxs, remainder_idxs, assume_unique=True)
+                    #         if order_idxs.size == 0:
+                    #             return False
+                    #         order_idxs = np.intersect1d(order, order_idxs, assume_unique=True)
+                    #         extra_remainder[order[order_idxs[-1]]] = 1
+                    #     else:
+                    #         order_idxs = np.intersect1d(order, init_i_idxs, assume_unique=True)
+                    # init_i[order[order_idxs[-1]]] += 1
+
+                    # elif extra_remainder == 0 and np.all(init_i >= n_per_col + per_col_remainder - 1):
+                    #     extra_remainder = 1
+                    #     continue
+                    # elif np.any(init_i < extra_remainder + n_per_col + per_col_remainder) and np.any(extra_remainder == 0):
+
+                    # free_cols = np.logical_and(
+                    #     free,
+                    #     combined_counts
+                    #     < n_col_ucs + max(1, per_col_remainder),
+                    # )
                 if (
                     idx_choices is None
                     or idx_choices.flatten().size < n_add_ucs
                 ):
                     return False
                 # if
-                continuous_choices = idx_choices[
-                    [
-                        *(
-                            idx_choices[:-1] + 1
-                            == np.roll(idx_choices, -1)[:-1]
-                        ),
-                        *(
-                            idx_choices[-1:] - 1
-                            == np.roll(idx_choices, 1)[-1:]
-                        ),
-                    ]
-                ]
-                if n_add_ucs <= continuous_choices.size // 2 and n_add_ucs > 1:
-                    p = np.zeros_like(idx_choices, dtype=np.float_)
-                    start_idx = self.random_generator.choice(
-                        [0, 1], 1, replace=False
-                    )[0]
-                    p[np.sort(continuous_choices)[start_idx::2]] = 1
-                    if p[0] == 1 and p[-1] == 1:
-                        p[
-                            self.random_generator.choice(
-                                [0, -1], 1, replace=False
-                            )[0]
-                        ] = 0
-                    p = np.divide(p, np.sum(p), where=p != 0)
-                else:
-                    p = np.full_like(
-                        idx_choices,
-                        np.divide(1, idx_choices.size),
-                        dtype=np.float_,
-                    )
+                # continuous_choices = np.intersect1d(
+                #     idx_choices,
+                #     idx_choices[
+                #         [
+                #             *(
+                #                 idx_choices[:-1] + 1
+                #                 == np.roll(idx_choices, -1)[:-1]
+                #             ),
+                #             *(
+                #                 idx_choices[-1:] - 1
+                #                 == np.roll(idx_choices, 1)[-1:]
+                #             ),
+                #         ]
+                #     ],
+                #     assume_unique=True,
+                #     return_indices=True,
+                # )[1]
+                # if n_add_ucs <= continuous_choices.size // 2 and n_add_ucs > 1:
+                #     p = np.zeros_like(idx_choices, dtype=np.float_)
+                #     start_idx = self.random_generator.choice(
+                #         [0, 1], 1, replace=False
+                #     )[0]
+                #     p[np.sort(continuous_choices)[start_idx::2]] = 1
+                #     # pass
+                #     if p[0] == 1 and p[-1] == 1:
+                #         p[
+                #             self.random_generator.choice(
+                #                 [0, -1], 1, replace=False
+                #             )[0]
+                #         ] = 0
+                #     p = np.divide(p, np.sum(p), where=p != 0)
+                # else:
+                p = np.full_like(
+                    idx_choices,
+                    np.divide(1, idx_choices.size),
+                    dtype=np.float_,
+                )
                 idx_sel = None
                 if idx_choices.size == n_add_ucs:
                     idx_sel = idx_choices
@@ -1424,25 +1577,30 @@ class Sheet:
                             idx_sel = idx_choices
                 if self.debug:
                     logger.finfo(f"Selected {idx_sel}", indent="\t")
+                    logger.finfo(
+                        f"Occupancy counts:\n"
+                        + "\n\t".join([f"{c}" for c in counts.tolist()]),
+                        indent="\t",
+                    )
                 idxs_mask[axis_id, idx_sel] = charge
                 uc_ids[axis_id, idx_sel], uc_array = np.split(
                     uc_array, [n_add_ucs]
                 )
-                if self.debug:
-                    symbol_arr[axis_id, idx_sel] = symbol
+                # if self.debug:
+                symbol_arr[axis_id, idx_sel] = symbol
                 if idx_sel.size != 0:
                     prev = np.sort(idx_sel)
         if max_dict[max_ax_len] == 1:
             uc_ids = uc_ids.T
-        if self.debug:
-            logger.finfo("Added charges:")
-            for k, v in symbol_dict.items():
-                logger.finfo(
-                    kwd_str=f"{k}: ", message=f"{v:2.1f}", indent="\t"
-                )
-            logger.finfo("Final symbol matrix:")
-            for line in symbol_arr:
-                logger.finfo("  ".join(line), indent="\t")
+        else:
+            symbol_arr = symbol_arr.T
+        # if self.debug:
+        logger.finfo("Added charges:")
+        for k, v in symbol_dict.items():
+            logger.finfo(kwd_str=f"{k}: ", message=f"{v:2.1f}", indent="\t")
+        logger.finfo("Final charge arrangement:")
+        for line in symbol_arr:
+            logger.finfo("  ".join(line), indent="\t")
         return uc_ids
 
     def get_all_diagonals(self, arr):
@@ -1528,6 +1686,7 @@ class Sheet:
         remainder=0,
     ):
         n_remaining = 0
+        init_i = max(1, init_i)
         for i in range(init_i, per_col_ucs + remainder + 1):
             if i == per_col_ucs:
                 n_remaining = remainder
