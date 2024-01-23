@@ -133,12 +133,19 @@ from typing import Literal, Optional, Sequence, TypeVar, Union
 
 import numpy as np
 import pandas as pd
+import zarr
+from ClayCode.analysis.lib import Bins, Cutoff
+from ClayCode.core.utils import (
+    SubprocessProgressBar,
+    get_header,
+    get_subheader,
+)
 from MDAnalysis import coordinates
 from MDAnalysis.core.groups import AtomGroup
 from MDAnalysis.lib.log import ProgressBar
 from numpy.typing import NDArray
 
-logger = logging.getLogger(Path(__file__).stem)
+logger = logging.getLogger(__name__)
 
 analysis_class = TypeVar("analysis_class")
 analysis_data = TypeVar("analysis_data")
@@ -282,10 +289,16 @@ class AnalysisData(UserDict):
     _default_bin_step = 0.1
     _default_cutoff = 20
 
-    # __slots__ = ['name', 'bins', 'timeseries', 'hist', 'edges', '_n_bins', 'n_bins', 'cutoff', 'bin_step']
+    # __slots__ = ['name', 'bins', 'timeseries', 'hist', 'ads_edges', '_n_bins', 'n_bins', 'cutoff', 'bin_step']
 
     def __init__(
-        self, name: str, cutoff=None, bin_step=None, n_bins=None, min=0.0
+        self,
+        name: str,
+        cutoff=None,
+        bin_step=None,
+        n_bins=None,
+        min=0.0,
+        verbose=True,
     ):
         self.name = name
         assert (
@@ -310,10 +323,11 @@ class AnalysisData(UserDict):
         elif self.n_bins is None:
             # print('n_bins None')
             self.n_bins = np.rint(self.cutoff / self.bin_step)
-        logger.info(f"{name!r}:")
-        logger.info(f"cutoff: {self.cutoff}")
-        logger.info(f"n_bins: {self.n_bins}")
-        logger.info(f"bin_step: {self.bin_step}")
+        if verbose:
+            logger.info(get_subheader(f" Initialising {name!r} analysis"))
+            logger.finfo(f"{self.cutoff}", kwd_str=f"cutoff: ")
+            logger.finfo(f"{self.n_bins}", kwd_str=f"n_bins: ")
+            logger.finfo(f"{self.bin_step}", kwd_str=f"bin_step: ")
         hist, edges = np.histogram(
             [-1], bins=self.n_bins, range=(self._min, self.cutoff)
         )
@@ -326,42 +340,59 @@ class AnalysisData(UserDict):
         self.df = pd.DataFrame(index=self.bins)
         self.df.index.name = "bins"
         self.hist2d = {}
+        self._verbose = verbose
 
     @property
-    def n_bins(self):
+    def n_bins(self) -> int:
+        """Number of bins in data histogram"""
         return self._n_bins
 
     @n_bins.setter
-    def n_bins(self, n_bins):
+    def n_bins(self, n_bins: Union[int, str]):
+        """Number of bins in data histogram"""
         if n_bins is not None:
             self._n_bins = int(n_bins)
             if self.cutoff / self.n_bins != self.bin_step:
                 self.bin_step = self.cutoff / self.n_bins
 
     @property
-    def cutoff(self):
+    def cutoff(self) -> float:
+        """Maximum value for included perpendicular distance from a surface"""
         return self._cutoff
 
     @cutoff.setter
-    def cutoff(self, cutoff):
+    def cutoff(self, cutoff: Union[float, int, str]) -> None:
+        """Maximum value for included perpendicular distance from a surface"""
         if cutoff is not None:
             self._cutoff = float(cutoff)
         # else:
         #     self._cutoff = self._default_cutoff
 
     @property
-    def bin_step(self):
+    def bin_step(self) -> float:
+        """Bin size in data histogram"""
         return self._bin_step
 
     @bin_step.setter
-    def bin_step(self, bin_step):
+    def bin_step(self, bin_step: Union[float, int, str]):
+        """Bin size in data histogram"""
         if bin_step is not None:
             self._bin_step = float(bin_step)
 
-    def get_hist_data(self, use_abs=True, guess_min=True):
-        data = np.ravel(self.timeseries)
+    def get_hist_data(
+        self, use_abs: bool = True
+    ) -> None:  # , guess_min=True):
+        r"""Create histogram data from timeseries.
+        :param use_abs: use absolute values of timeseries
+        :type use_abs: bool
+        """
+        data = zarr.array(
+            np.ravel(self.timeseries),
+            chunks=(1000000,),
+            write_empty_chunks=True,
+        )
         if use_abs == True:
-            data = np.abs(data)
+            data[:] = np.abs(data)
         # if guess_min == True:
         #     ll = np.min(data)
         # else:
@@ -372,36 +403,43 @@ class AnalysisData(UserDict):
         hist = hist / len(self.timeseries)
         self.hist[:] = hist
 
-    def get_rel_data(self, other: analysis_data, use_abs=True, **kwargs):
+    def get_rel_data(
+        self, other: analysis_data, use_abs=True, **kwargs
+    ) -> analysis_data:
         r"""Create new instance with modified data values.
 
-        :param other:
-        :type other:
-        :param use_abs:
-        :type use_abs:
-        :param kwargs:
-        :type kwargs:
-        :return:
-        :rtype:
+        :param other: other data to compare
+        :type other: analysis_data
+        :param use_abs: use absolute values of timeseries
+        :type use_abs: bool
+        :param kwargs: additional arguments
+        :type kwargs: dict
+        :return: new instance with modified data values
+        :rtype: analysis_data
         """
-        data = np.concatenate(
-            [[np.ravel(self.timeseries)], [np.ravel(other.timeseries)]], axis=0
+        data = zarr.array(
+            np.concatenate(
+                [[np.ravel(self.timeseries)], [np.ravel(other.timeseries)]],
+                axis=0,
+            ),
+            chunks=(1000000,),
+            write_empty_chunks=True,
         )
         if use_abs == False:
             pass
         elif use_abs == True:
-            data = np.abs(data)
+            data[:] = np.abs(data)
         elif len(use_abs) == 2:
             use_abs = np.array(use_abs)
             mask = np.broadcast_to(use_abs[:, np.newaxis], data.shape)
             data[mask] = np.abs(data[mask])
-        data = np.divide(data[0], data[1], where=data != 0)[0]
+        data[:] = np.divide(data[0], data[1], where=data != 0)[0]
         if "cutoff" in kwargs.keys():
-            cutoff = kwargs["cutoff"]
+            cutoff = float(kwargs["cutoff"])
         else:
             cutoff = self.cutoff
         if "bin_step" in kwargs.keys():
-            bin_step = kwargs["bin_step"]
+            bin_step = float(kwargs["bin_step"])
         else:
             bin_step = self.bin_step
         new_data = self.__class__(
@@ -472,7 +510,7 @@ class AnalysisData(UserDict):
     def __repr__(self):
         return (
             f"AnalysisData({self.name!r}, "
-            f"edges = ({self._min}, {self.cutoff}), "
+            f"ads_edges = ({self._min}, {self.cutoff}), "
             f"bin_step = {self.bin_step}, "
             f"n_bins = {self.n_bins}, "
             f"has_data = {self.has_hist})"
@@ -615,7 +653,7 @@ class ClayAnalysisBase(object):
     """
     # histogram attributes format:
     # --------------------------
-    # name: [name, bins, timeseries, hist, hist2d, edges, n_bins, cutoff, bin_step]
+    # name: [name, bins, timeseries, hist, hist2d, ads_edges, n_bins, cutoff, bin_step]
 
     _attrs = []
 
@@ -625,6 +663,7 @@ class ClayAnalysisBase(object):
         self.results = Results()
         self.sel_n_atoms = None
         self._abs = True
+        self._get_new_data = True
 
     def _init_data(self, **kwargs):
         data = self.__class__._attrs
@@ -632,10 +671,13 @@ class ClayAnalysisBase(object):
             data = [self.__class__.__name__.lower()]
         self.data = {}
         for item in data:
-            if item in kwargs.keys():
-                args = kwargs[item]
-            else:
-                args = kwargs
+            args = {}
+            for key, val in kwargs.items():
+                if isinstance(val, dict):
+                    if item in val.keys():
+                        args[key] = val[item]
+                else:
+                    args[key] = val
             self.data[item] = AnalysisData(item, **args)
 
     def _setup_frames(
@@ -723,8 +765,14 @@ class ClayAnalysisBase(object):
         #     n_atoms = int(n_atoms)
         if type(self._abs) == bool:
             self._abs = [self._abs for a in range(len(self.data))]
+            logger.finfo(
+                f"Using absolute " + ", ".join(self.data.keys()) + " values.\n"
+            )
             # print(self._abs, len(self.data))
         for vi, v in enumerate(self.data.values()):
+            logger.finfo(
+                f"Getting {v.name!r} histogram", initial_linebreak=True
+            )
             v.get_hist_data(use_abs=self._abs[vi])
             v.get_norm(self.sel_n_atoms)
             v.get_df()
@@ -738,6 +786,7 @@ class ClayAnalysisBase(object):
         for key, val in self.__dict__.items():
             if not key.startswith("_") and key != "results":
                 self.results[key] = val
+                # logger.info(f"{val}")
         logger.info(f"{self.save}")
         if self.save is False:
             pass
@@ -745,7 +794,7 @@ class ClayAnalysisBase(object):
             outdir = Path(self.save).parent
             logger.info(f"Saving results in {str(outdir.absolute())!r}")
             if not outdir.is_dir():
-                os.mkdir(outdir)
+                os.makedirs(outdir, exist_ok=True)
                 logger.info(f"Created {outdir}")
             with open(f"{self.save}.p", "wb") as outfile:
                 pkl.dump(self.results, outfile)
@@ -778,42 +827,63 @@ class ClayAnalysisBase(object):
             frame indices in the `frames` keyword argument.
 
         """
-        logger.info("Choosing frames to analyze")
-        # if verbose unchanged, use class default
-        verbose = (
-            getattr(self, "_verbose", False) if verbose is None else verbose
-        )
+        if self._get_new_data is False:
+            logger.finfo(
+                "Not running new analysis. Output file exists and overwrite not selected."
+            )
+        else:
+            logger.info(get_subheader("Starting analysis run"))
+            logger.finfo("Choosing frames to analyze")
+            # if verbose unchanged, use class default
+            verbose = (
+                getattr(self, "_verbose", False)
+                if verbose is None
+                else verbose
+            )
 
-        self._setup_frames(
-            self._trajectory, start=start, stop=stop, step=step, frames=frames
-        )
-        logger.info("Starting preparation")
-        self._prepare()
-        logger.info(
-            "Starting analysis loop over %d trajectory frames", self.n_frames
-        )
-        for i, ts in enumerate(
-            ProgressBar(self._sliced_trajectory, verbose=verbose)
-        ):
-            self._frame_index = i
-            self._ts = ts
-            self.frames[i] = ts.frame
-            self.times[i] = ts.time
-            self._single_frame()
-        logger.info("Finishing up")
-        self._conclude(self.sel_n_atoms)
-        logger.info(f"Getting results")
-        self._get_results()
-        self._save()
+            self._setup_frames(
+                self._trajectory,
+                start=start,
+                stop=stop,
+                step=step,
+                frames=frames,
+            )
+            logger.info("Starting preparation")
+            self._prepare()
+            logger.finfo(
+                f"Starting analysis loop over {self.n_frames} trajectory frames"
+            )
+            for i, ts in enumerate(
+                ProgressBar(self._sliced_trajectory, verbose=verbose)
+            ):
+                self._frame_index = i
+                self._ts = ts
+                self.frames[i] = ts.frame
+                self.times[i] = ts.time
+                self._single_frame()
+            self._post_process()
+            logger.info(get_subheader("Finishing up"))
+            progress_bar = SubprocessProgressBar(label="Getting results")
+            progress_bar.run_with_progress(
+                lambda: self._conclude(self.sel_n_atoms)
+            )
+            logger.info(get_header(f"Writing results"))
+            self._get_results()
+            self._save()
+        logger.info("Done!\n")
         return self
+
+    def _post_process(self):
+        """Post processing of data."""
+        pass
 
     def _save(self):
         pass
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(data: {self._attrs}, "
-            f"loaded frames: {self.n_frames})"
+            f"{self.__class__.__name__}(data: " + ", ".join(self._attrs) + ")"
+            f"loaded frames: {self._universe.trajectory.n_frames})"
         )
 
 
@@ -869,6 +939,9 @@ class AnalysisFromFunction(ClayAnalysisBase):
     """
 
     def __init__(self, function, trajectory=None, *args, **kwargs):
+        logger.info(
+            get_header(f"Selected {self.__class__.__name__} analysis.")
+        )
         if (trajectory is not None) and (
             not isinstance(trajectory, coordinates.base.ProtoReader)
         ):
