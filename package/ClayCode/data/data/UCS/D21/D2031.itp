@@ -1,0 +1,57 @@
+;
+;
+[ moleculetype ]
+; name		nrexcl
+  D2031		1
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   1 D2031rtp D2031 q  -1.0
+     1         ho      1    D2031   HO1      1      0.425      1.008   
+     2         ho      1    D2031   HO2      2      0.425      1.008   
+     3         ho      1    D2031   HO3      3      0.425      1.008   
+     4         ho      1    D2031   HO4      4      0.425      1.008   
+     5         oh      1    D2031   OH1      5      -0.95         16   
+     6         oh      1    D2031   OH2      6      -0.95         16   
+     7         oh      1    D2031   OH3      7      -0.95         16   
+     8         oh      1    D2031   OH4      8      -0.95         16   
+     9         ob      1    D2031   OB1      9      -1.05         16   
+    10       obts      1    D2031  OBT2     10   -1.16875         16    ; Ob on Td Al
+    11         ob      1    D2031   OB3     11      -1.05         16   
+    12         ob      1    D2031   OB4     12      -1.05         16   
+    13         ob      1    D2031   OB5     13      -1.05         16   
+    14         ob      1    D2031   OB6     14      -1.05         16   
+    15         ob      1    D2031   OB7     15      -1.05         16   
+    16         ob      1    D2031   OB8     16      -1.05         16   
+    17       obts      1    D2031  OBT9     17   -1.16875         16    ; Ob on Td Al
+    18       obts      1    D2031 OBT10     18   -1.16875         16    ; Ob on Td Al
+    19       obts      1    D2031 OBT11     19   -1.16875         16    ; Ob on Td Al
+    20         ob      1    D2031  OB12     20      -1.05         16   
+    21         ob      1    D2031  OB13     21      -1.05         16   
+    22         ob      1    D2031  OB14     22      -1.05         16   
+    23         ob      1    D2031  OB15     23      -1.05         16   
+    24         ob      1    D2031  OB16     24      -1.05         16   
+    25         ob      1    D2031  OB17     25      -1.05         16   
+    26         ob      1    D2031  OB18     26      -1.05         16   
+    27         ob      1    D2031  OB19     27      -1.05         16   
+    28         ob      1    D2031  OB20     28      -1.05         16   
+    29         ao      1    D2031   AO1     29      1.575      26.98   
+    30         ao      1    D2031   AO2     30      1.575      26.98   
+    31         ao      1    D2031   AO3     31      1.575      26.98   
+    32        feo      1    D2031   FO4     32      1.575      55.85   ; subst Fe III 
+    33         st      1    D2031   ST1     33        2.1      28.09   
+    34         at      1    D2031   AT2     34      1.575      26.98   ; subst to Td Al
+    35         st      1    D2031   ST3     35        2.1      28.09   
+    36         st      1    D2031   ST4     36        2.1      28.09   
+    37         st      1    D2031   ST5     37        2.1      28.09   
+    38         st      1    D2031   ST6     38        2.1      28.09   
+    39         st      1    D2031   ST7     39        2.1      28.09   
+    40         st      1    D2031   ST8     40        2.1      28.09   
+
+
+[ bonds ]
+; i	j	funct	length	force.c.					
+1	5     1         0.1    463532.808
+2	6     1		0.1    463532.808
+3	7     1		0.1    463532.808
+4	8     1		0.1    463532.808	

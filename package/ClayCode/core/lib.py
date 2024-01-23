@@ -167,6 +167,7 @@ def run_analysis(instance: analysis_class, start: int, stop: int, step: int):
         if v is not None:
             kwarg_dict[k] = v
     instance.run(**kwarg_dict)
+    return instance
 
 
 @overload
@@ -217,42 +218,75 @@ def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
     u = MDAnalysis.Universe(*infiles, in_memory=in_memory)
     # only resname specified
     if len(sel) == 1:
+        sel_str = sel[0]
         sel = u.select_atoms(f"resname {sel[0]}")
+
     # rename and atom type specified
     elif len(sel) == 2:
         # expand search string for terminal O atom types
         if sel[1] == "OT*":
             sel[1] = "OT* O OXT"
+        sel_str = "{}: {}".format(*sel)
         sel = u.select_atoms(f"resname {sel[0]}* and name {sel[1]}")
+
     else:
         raise ValueError('Expected 1 or 2 arguments for "sel"')
+
     if other is None:
         pass
     elif len(other) == 1:
         logger.debug(f"other: {other}")
+        other_str = other[0]
         other = u.select_atoms(f"resname {other[0]}")
+
     elif len(other) == 2:
         logger.debug(f"other: {other}")
         if other[1] == "OT*":
             other[1] = "OT* O OXT"
+        other_str = "{}: {}".format(*other)
         other = u.select_atoms(f"resname {other[0]}* and name {other[1]}")
     else:
         raise ValueError('Expected 1 or 2 arguments for "other"')
     clay = u.select_atoms(f"resname {clay_type}* and name OB* o*")
-    logger.finfo(
-        f"'clay': Selected {clay.n_atoms} atoms of "
-        f"{clay.n_residues} {clay_type!r} unit cells"
+    # logger.finfo(
+    #     f"'clay': Selected {clay.n_atoms} atoms of "
+    #     f"{clay.n_residues}  unit cells"
+    # )
+    log_atomgroup_info(
+        ag=clay, ag_name=clay_type, kwd_str="Clay unit cell type"
     )
 
     sel = select_outside_clay_stack(sel, clay)
     # Clay + two other atom groups selected
+    log_atomgroup_info(ag=sel, ag_name=sel_str, kwd_str="Atom selection")
+
     if other is not None:
         other = select_outside_clay_stack(other, clay)
+        log_atomgroup_info(
+            ag=other, ag_name=other_str, kwd_str="Second atom selection"
+        )
         return sel, clay, other
 
     # Only clay + one other atom group selected
     else:
         return sel, clay
+
+
+def get_ag_numbers_info(ag: AtomGroup) -> Tuple[int, int]:
+    return "Selected {} atoms in {} residues.".format(
+        ag.n_atoms, ag.n_residues
+    )
+
+
+def log_atomgroup_info(ag: AtomGroup, kwd_str: str, ag_name: str):
+    if ag.n_atoms > 0:
+        logger.finfo(f"{ag_name!r}", kwd_str=f"{kwd_str}: ")
+        logger.finfo(get_ag_numbers_info(ag))
+    else:
+        logger.error(
+            f"{ag_name} contains 0 atoms. Check atom selection parameters."
+        )
+        sys.exit(1)
 
 
 def select_clay(
@@ -568,7 +602,7 @@ def select_cyzone(
     :rtype: NoReturn
     """
     z_col = distances[:, :, 2]
-    z_col.mask = np.abs(distances[:, :, 2]) > z_dist
+    z_col.mask = np.abs(z_col) > z_dist
     distances.mask = np.broadcast_to(
         z_col.mask[:, :, np.newaxis], distances.shape
     )
