@@ -2007,6 +2007,13 @@ class FileList(BasicPathList):
         #     self._data.append(FileFactory(file, check=check))
         self.data = self._data
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}({self.path.name}: "
+            + ", ".join([file.name for file in self.data])
+            + ")"
+        )
+
 
 class PathList(FileList):
     pass

@@ -275,6 +275,127 @@ analysisparser = subparsers.add_parser(
     "analyse", help="Analyse clay simulations."
 )
 
+analysisparser.add_argument(
+    "-name", type=str, help="System name", dest="sysname", required=True
+)
+analysisparser.add_argument(
+    "-inp",
+    type=str,
+    help="Input file names",
+    nargs=2,
+    metavar=("coordinates", "trajectory"),
+    dest="infiles",
+    required=False,
+)
+analysisparser.add_argument(
+    "-inpname",
+    type=str,
+    help="Input file names",
+    metavar="name_stem",
+    dest="inpname",
+    required=False,
+)
+analysisparser.add_argument(
+    "-uc",
+    type=str,
+    help="Clay unit cell type",
+    dest="clay_type",
+    required=True,
+)
+analysisparser.add_argument(
+    "-sel",
+    type=str,
+    nargs="+",
+    help="Atom type selection",
+    dest="sel",
+    required=True,
+)
+analysisparser.add_argument(
+    "-n_bins",
+    default=None,
+    type=int,
+    help="Number of bins in histogram",
+    dest="n_bins",
+)
+analysisparser.add_argument(
+    "-bin_step",
+    type=float,
+    default=None,
+    help="bin size in histogram",
+    dest="bin_step",
+)
+analysisparser.add_argument(
+    "-xyrad",
+    type=float,
+    default=3,
+    help="xy-radius for calculating z-position clay surface",
+    dest="xyrad",
+)
+analysisparser.add_argument(
+    "-cutoff",
+    type=float,
+    default=20,
+    help="cutoff in z-direction",
+    dest="cutoff",
+)
+
+analysisparser.add_argument(
+    "-start",
+    type=int,
+    default=None,
+    help="First frame for analysis.",
+    dest="start",
+)
+analysisparser.add_argument(
+    "-step",
+    type=int,
+    default=None,
+    help="Frame steps for analysis.",
+    dest="step",
+)
+analysisparser.add_argument(
+    "-stop",
+    type=int,
+    default=None,
+    help="Last frame for analysis.",
+    dest="stop",
+)
+analysisparser.add_argument(
+    "-out",
+    type=str,
+    help="Filename for results pickle.",
+    dest="save",
+    default=True,
+)
+analysisparser.add_argument(
+    "-check_traj",
+    type=int,
+    default=False,
+    help="Expected trajectory length.",
+    dest="check_traj_len",
+)
+analysisparser.add_argument(
+    "--write_z",
+    type=str,
+    default=True,
+    help="Binary array output of selection z-distances.",
+    dest="write",
+)
+analysisparser.add_argument(
+    "--overwrite",
+    action="store_true",
+    default=False,
+    help="Overwrite existing z-distance array data.",
+    dest="overwrite",
+)
+analysisparser.add_argument(
+    "--update",
+    action="store_true",
+    default=False,
+    help="Overwrite existing trajectory and coordinate array data.",
+    dest="new",
+)
+
 # plot analysis results
 plotparser = subparsers.add_parser(
     "plot", help="Plot simulation analysis results"
@@ -308,6 +429,7 @@ dataparser.add_argument(
     required=True,
     dest="yaml_file",
 )
+
 
 # siminp_subparsers = siminpparser.add_subparsers()
 
@@ -703,7 +825,9 @@ class BuildArgs(_Args):
                 )
                 if tbc_match:
                     pass
-                self.uc_stem = self._uc_path.itp_filelist[0].stem[:-3]
+                self.uc_stem = self._uc_path.itp_filelist.filter(
+                    "[A-Z][A-Z0-9]\d\d\d"
+                )[0].stem[:-3]
                 logger.debug(f"Setting unit cell type: {self._uc_name!r}")
             else:
                 raise ValueError(f"Unknown unit cell type {uc_type!r}!")
