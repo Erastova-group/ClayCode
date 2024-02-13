@@ -1,8 +1,14 @@
 name: ci
-on:
+on: 
   push:
     branches:
       - main
+      - gh-pages
+      - website-edits
+  pull_request:
+    branches:
+      - main
+      - gh-pages
       - website-edits
 jobs:
   deploy:
@@ -11,7 +17,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
         with:
-          python-version: 3.x
+          python-version: 3.9
       - run: pip install --upgrade pip && pip install mkdocs mkdocs-gen-files mkdocs-bibtex python-markdown-math
       - run: mkdocs gh-deploy --force
 
