@@ -18,19 +18,18 @@ OUTGRO="$2"
 THRESHOLD=$3
 NUMWATERS=$4
 YAML="$5"
-if [[ $# -ge 6 ]]; then
-  INTOP="$6"
-else
-  INTOP="${INGRO%.*}.top"
-fi
-if [[ $# -ge 7 ]]; then
-  OUTTOP="$7"
-else
-  OUTTOP="${OUTGRO%.*}.top"
-fi
+INTOP="$6"
+OUTTOP="$7"
+GMX="$8"
+ODIR="$9"
+OUTPNAME="${10}"
+MDP="${11}"
+
 
 echo "Input gro file: $INGRO"
 echo "Output gro file: $OUTGRO"
+echo "Input top file: $INTOP"
+echo "Output top file: $OUTTOP"
 echo "Threshold: $THRESHOLD"
 echo "Number of waters to remove: $NUMWATERS"
 echo "YAML file: $YAML"
@@ -195,8 +194,9 @@ if grep -q "iSL" $INGRO; then
   }
 }' "$INGRO")
   remove_waters_true=$(sed -n '/BEGIN REMOVE_WATERS/,/END REMOVE_WATERS/p' <<< "$remove_wat" )
+  printf "$remove_waters_true"
   if [[ "$remove_waters_true" != "" ]]; then
-    cp $INGRO $OUTGRO
+    cp -u $INGRO $OUTGRO
     log_str=$(sed -n '/BEGIN REMOVE_WATERS/q;p' <<< "$remove_wat")
     echo "$log_str"
     il_count=$(sed -n '/Number of clay_sheets:\s\+\([0-9]\+\)/s//\1/p' <<< "$log_str")
@@ -204,12 +204,19 @@ if grep -q "iSL" $INGRO; then
     # get column 1 and 2 from awk output after "Removing waters from interlayers:" to get residues and number of waters to remove
 #    remove_pattern=$(sed '/Removing waters from interlayers/,$!d' <<< "$remove_wat" | awk '{print $1}' | sed -E -n 's/([0-9]+)$/\1/p')
     remove_pattern=$(awk '{print $1}' <<< "$remove_waters_true" | sed -E -n 's/([0-9]+)$/\1/p')
-#    echo "Removing $remove_pattern waters from interlayers"
-    remove_str=$(awk -v remove_pattern="$remove_pattern" -v numwat="$NUMWATERS" -F "[-,]" '
+#    echo "Removing $remove_pattern waters from interlayers" #-F "[-,]" '
+    remove_str=$(awk -v remove_pattern="$remove_pattern" -v numwat="$NUMWATERS" '
+#    function substitute(pattern, replace, string)
+#    {
+#      match(string, pattern);
+#      pre_match = substr(string, 1, RSTART - 1);
+#      post_match = substr(string, RSTART + RLENGTH);
+#      print post_match;
+#      return pre_match replace post_match;
+#    }
     BEGIN {
-    FS=" +";
-#    OFS="\n";
-    ORS="\n";
+    OFS=FS=" ";
+#    ORS="\n";
     split(remove_pattern, remove_array, "\n");
     lines[0] = 0;
     n_remove_lines = 0;
@@ -224,6 +231,8 @@ if grep -q "iSL" $INGRO; then
       resnum = substr($0, 1, 5);
       resname = substr($0, 6, 5);
       atomnum = substr($0, 16, 5);
+      atomname = substr($0, 11, 5);
+#      print atomname;
       if (resname ~/iSL/)
       {
         for (i in remove_array)
@@ -232,7 +241,7 @@ if grep -q "iSL" $INGRO; then
           {
             if (resnum ~ "[ \t]+" j "[ \t]*$")
             {
-#              lines[n_remove_lines] = NR;
+              lines[n_remove_lines] = NR;
               n_remove_lines++;
               n_remove_atoms++;
               if (prev_resnum != resnum)
@@ -251,33 +260,40 @@ if grep -q "iSL" $INGRO; then
     else
     {
       new_resnum = resnum - n_remove_molecules;
-      new_atomnum = new_atomnum - n_remove_atoms;
+      new_atomnum = atomnum - n_remove_atoms;
       new_str = $0;
-      sub(/(^[ \t])([0-9]+)([a-zA-Z]+[ \t]+[A-Za-z]+[0-9]*?[ \t]+)([0-9]+)(.*$)/, "\\1" new_resnum "\\3" new_atomnum "\\4", $new_str);
+        sub(/ */, "", resnum);
+        sub(resnum, new_resnum, new_str);
+        sub(/ */, "", atomnum);
+        sub(atomname " *" atomnum, atomname new_atomnum, new_str);
+#      a=sub(/( 0)([0-9]+)[a-zA-Z]+[0-9 ]+[a-zA-Z]+[0-9]? *[0-9]+ .*(0)/, "\1" new_resnum "\2" new_atomnum " \3", new_str);
       outfile[NR] = new_str;
     }
     }
     END {
     tot_atoms-=n_remove_lines;
-#    for (i = 0; i < length(lines); i++){
-#      print "Removing line", lines[i], "/", FNR;
-#      }
+    for (i = 0; i < length(lines); i++){
+      outfile[lines[i]] = "";
+#      print "Removing line", lines[i], "/", FNR, "\n";
+      }
     print "Removed ", n_remove_molecules, "iSL molecules (",n_remove_lines, "atoms from", tot_atoms, "atoms in system )";
 #    print "Removed", n_remove_atoms, "atoms from", tot_atoms, "atoms in system"
     outfile[2] = tot_atoms - n_remove_atoms;
     print "BEGIN GRO";
-    for (i = 0; i < length(outfile); i++){
+    for (i = 0; i < length(outfile); i++)
+    {
       if (outfile[i] != "")
       {
         print outfile[i];
       }
     }
+#    print dimensions;
     print "END GRO";
     } ' $OUTGRO)
 
     new_file=$(sed -n '/BEGIN GRO/,/END GRO/p' <<< "$remove_str" | sed '/BEGIN GRO/d' | sed '/END GRO/d')
     log_str=$(sed -n '/BEGIN/q;p' <<< "$remove_str")
-    echo $log_str
+    printf "$log_str"
     echo "$new_file" > "${OUTGRO}"
     echo Wrote new coordinates to $OUTGRO
 
@@ -289,6 +305,16 @@ if grep -q "iSL" $INGRO; then
     printf "$header\n$system_str" > $OUTTOP
     echo "New interlayers have ${new_nwat} iSL residues in interlayers"
     echo Wrote new topology to $OUTTOP
+    if [[ "${12}" == '--debug' ]]; then
+      echo $GMX grompp -f "${MDP}" -p ${OUTTOP} -c ${OUTGRO} -o "${ODIR}/${OUTPNAME}/${OUTPNAME}.tpr" -po "${ODIR}/${OUTPNAME}/${OUTPNAME}.mdp" -pp "${ODIR}/${OUTPNAME}/${OUTPNAME}.top"
+      echo $GMX mdrun -v -s "${ODIR}/${OUTPNAME}/${OUTPNAME}.tpr" -deffnm "${ODIR}/${OUTPNAME}/${OUTPNAME}" -pin on -ntomp 32 -ntmpi 1
+      cp $OUTGRO "${ODIR}/${OUTPNAME}/${OUTPNAME}.gro"
+      cp $OUTTOP "${ODIR}/${OUTPNAME}/${OUTPNAME}.top"
+    else
+      $GMX grompp -f "${MDP}" -p ${OUTTOP} -c ${OUTGRO} -o "${ODIR}/${OUTPNAME}/${OUTPNAME}.tpr" -po "${ODIR}/${OUTPNAME}/${OUTPNAME}.mdp" -pp "${ODIR}/${OUTPNAME}/${OUTPNAME}.top"
+      $GMX mdrun -v -s "${ODIR}/${OUTPNAME}/${OUTPNAME}.tpr" -deffnm "${ODIR}/${OUTPNAME}/${OUTPNAME}" -pin on -ntomp 32 -ntmpi 1
+
+    fi
     exit 0
   else
     echo "Not removing iSL residues from $INGRO"
