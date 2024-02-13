@@ -1408,13 +1408,13 @@ class GROFile(File):
         self.description = None
 
     @property
-    def string(self):
+    def string(self) -> str:
         with open(self, "r") as file:
             string = file.read()
         return string
 
     @property
-    def df(self):
+    def df(self) -> pd.DataFrame:
         df = pd.read_fwf(
             str(self.resolve()),
             index_col=[0],

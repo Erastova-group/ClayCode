@@ -313,7 +313,7 @@ def select_named_file(
     searchlist: List[str] = ["*"],
     how: Literal["latest", "largest"] = "latest",
 ) -> Union[None, Path]:
-    """Select latest or largest file in `path` directory.
+    """Select the latest or largest file in `path` directory.
     Must contain `searchstr` in filename and suffix `suffix`.
     Filter results by `searchlist`.
     :param path: path to directory

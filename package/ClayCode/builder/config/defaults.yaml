@@ -129,7 +129,7 @@ SEL_PRIORITY: charges
 CHARGE_PRIORITY: total_charge
 
 # Maximum total occupancy deviation from the corrected target stoichiometry
-MATCH_TOLERANCE: 0.02
+MATCH_TOLERANCE: 0.025
 
 # -----------------------------------------------------------------------------
 # Parameters for EM run
