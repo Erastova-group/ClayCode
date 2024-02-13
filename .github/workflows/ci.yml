@@ -3,13 +3,9 @@ on:
   push:
     branches:
       - main
-      - gh-pages
-      - website-edits
   pull_request:
     branches:
       - main
-      - gh-pages
-      - website-edits
 jobs:
   deploy:
     runs-on: ubuntu-latest 
