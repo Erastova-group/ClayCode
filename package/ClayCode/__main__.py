@@ -50,7 +50,10 @@ def run_builder(args: BuildArgs):
                 solvent_remove_func=clay_builder.remove_SOL,
                 backup=clay_builder.args.backup,
             )
-        completed = clay_builder.run_em(backup=clay_builder.args.backup)
+        completed = clay_builder.run_em(
+            backup=clay_builder.args.backup,
+            freeze_clay=clay_builder.args.em_freeze_clay,
+        )
         if completed is None:
             if clay_builder.extended_box and (
                 args.bulk_solv or args.bulk_ion_conc != 0.0

@@ -189,5 +189,36 @@ class ClayCodeLogger(logging.Logger):
                 replace_whitespace=replace_whitespace,
             )
 
+    def ferror(
+        self,
+        message,
+        line_width=LINE_LENGTH,
+        kwd_str="",
+        indent="",
+        fix_sentence_endings=True,
+        initial_linebreak=False,
+        expand_tabs=False,
+        replace_whitespace=False,
+        error: str = "ERROR",
+    ):
+        if initial_linebreak:
+            initial_chars = "\n"
+        else:
+            initial_chars = ""
+        message_str = textwrap.fill(
+            f"{'!'*(line_width-len(indent.expandtabs(TABSIZE)))}\n{error}: {kwd_str.expandtabs(TABSIZE)}{message.expandtabs(TABSIZE)}\n{'!'*(line_width-len(indent.expandtabs(TABSIZE)))}",
+            initial_indent=indent,
+            width=line_width,
+            fix_sentence_endings=fix_sentence_endings,
+            replace_whitespace=replace_whitespace,
+            expand_tabs=expand_tabs,
+            break_on_hyphens=False,
+            break_long_words=False,
+            subsequent_indent=" " * len(kwd_str) + indent,
+            tabsize=4,
+            drop_whitespace=False,
+        )
+        self.info(f"{initial_chars}{message_str}")
+
 
 logging.setLoggerClass(ClayCodeLogger)
