@@ -69,9 +69,9 @@ def remove_files(path, searchstr):
         if fname.exists():
             removing = True
             os.remove(fname)
-            logger.debug(f"Removing {fname.name}.")
+            logger.fdebug(f"Removing {fname.name}.")
         else:
-            logger.debug(f"No backups to remove {fname.name}.")
+            logger.fdebug(f"No backups to remove {fname.name}.")
     return removing
 
 
@@ -97,11 +97,11 @@ def get_sequence_element(f):
             if len(list(seq)) < 2:
                 pass
             else:
-                logger.debug(1, seq)
+                logger.fdebug(1, seq)
         except TypeError:
-            logger.debug(2, seq)
+            logger.fdebug(2, seq)
             seq = [seq]
-        logger.debug(3, seq)
+        logger.fdebug(3, seq)
         # if type(seq) == str:
         #     try:
         #         seq = int(seq)
@@ -113,7 +113,7 @@ def get_sequence_element(f):
             raise TypeError(f"Expected int index, found {type(element_id)}")
         else:
             result = f(seq[element_id])
-            logger.debug(4, result)
+            logger.fdebug(4, result)
             return result
 
     return wrapper
@@ -159,23 +159,56 @@ def execute_shell_command(command):
             check=True,
             capture_output=True,
         ).stdout.strip()
-        output = sp.run(
-            [shell, "-c", "-i", command],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        try:
+            output = sp.run(
+                [shell, "-c", "-i", command],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except sp.CalledProcessError:
+            output = sp.run(
+                [shell, "-c", "-i", command],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
     return output
 
 
-def get_file_diff(file_1, file_2):
+def get_file_diff(file_1: Union[Path, str], file_2: Union[Path, str]) -> str:
+    """Get diff between two files.
+    :param file_1: file 1
+    :param file_2: file 2
+    :return: diff between files"""
     diff = execute_shell_command(f"diff {file_1} {file_2}")
     return diff.stdout
 
 
 def grep_file(file, regex: str) -> str:
+    """Get lines from file matching regex pattern.
+    :param file: file to search
+    :param regex: regex pattern
+    :return: lines matching regex pattern"""
     diff = execute_shell_command(f'grep -E "{regex}" {file}')
     return diff.stdout
+
+
+def get_ls_files(
+    path: Union[Path, str], fname_regex: str, ls_flags: str = ""
+) -> List[Path]:
+    """Get files in `path` directory with filenames matching `fname_regex`.
+    :param path: path to directory
+    :param fname_regex: regex pattern for filename
+    :param ls_flags: flags for `ls` command
+    :return: list of files"""
+    ls_path = Path(path) / fname_regex
+    ls = execute_shell_command(f"ls {ls_flags} {ls_path} 2>/dev/null")
+    files = re.findall(
+        f"{path}/.*{ls_path.suffix}", ls.stdout, flags=re.DOTALL | re.MULTILINE
+    )
+    files = list(map(lambda file: Path(file), files))
+    return files
 
 
 def get_logfname(
@@ -229,9 +262,9 @@ def convert_str_list_to_arr(
     try:
         array = arr_strip(array)
     except TypeError:
-        logger.debug("Could not convert list to array")
+        logger.fdebug("Could not convert list to array")
     except IndexError:
-        logger.debug("Could not convert list to array")
+        logger.fdebug("Could not convert list to array")
     return array
 
 
@@ -281,8 +314,7 @@ class SubprocessProgressBar:
                 print(
                     f"{self.label}  {item} {time.time() - self.t1:3.2f} s elapsed",
                     end="\r",
-                )
-                # sys.stdout.flush()
+                )  # sys.stdout.flush()
 
     def stop(self):
         self.running = False
@@ -348,7 +380,7 @@ def select_named_file(
     elif len(f_list) == 0:
         match = None
     else:
-        logger.error(
+        logger.ferror(
             f"Found {len(f_list)} matches: "
             + ", ".join([f.name for f in f_list])
         )
@@ -393,7 +425,7 @@ def select_file(
         "largest": lambda x: x.st_size,
     }
     check_func = check_func_dict[how]
-    logger.debug(f"Getting {how} file:")
+    logger.fdebug(f"Getting {how} file:")
     if type(path) != Path:
         path = Path(path)
     if searchstr is None and suffix is None:
@@ -423,9 +455,9 @@ def select_file(
                 prev_file_stat = last_file_stat
                 last_file = file
     if last_file is None:
-        logger.debug(f"No matching files found in {path.resolve()}!")
+        logger.fdebug(f"No matching files found in {path.resolve()}!")
     else:
-        logger.debug(f"{last_file.name} matches")
+        logger.fdebug(f"{last_file.name} matches")
     return last_file
 
 
@@ -526,7 +558,7 @@ def _get_info_box(header_str, fill, n_linechars=line_length, n_fillchars=0):
     n_linechars -= 2 * fill_len
     return (
         f"\n{' ':{' '}>{fill_len}}{fill:{fill}>{n_linechars}}\n"
-        f"{' ':{' '}>{fill_len}}|{header_str:^{n_linechars-2}}|\n"
+        f"{' ':{' '}>{fill_len}}|{header_str:^{n_linechars - 2}}|\n"
         f"{' ':{' '}>{fill_len}}{fill:{fill}>{n_linechars}}\n"
     )
 
@@ -659,7 +691,7 @@ def parse_yaml_with_duplicate_keys(yaml_source):
                 mapping[k] = v[0]
             else:
                 for i in range(len(v)):
-                    mapping[f"{k}_{i+1}"] = v[i]
+                    mapping[f"{k}_{i + 1}"] = v[i]
                 remove_keys.append(k)
         for k in remove_keys:
             mapping.pop(k)

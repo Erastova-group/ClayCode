@@ -25,17 +25,14 @@ from pathlib import Path as _Path
 from pathlib import PosixPath as _PosixPath
 from typing import (
     Any,
-    AnyStr,
     Callable,
     Dict,
     Iterable,
     List,
     Literal,
     Mapping,
-    NewType,
     NoReturn,
     Optional,
-    Set,
     Tuple,
     Union,
     cast,
@@ -47,7 +44,6 @@ import yaml
 from caseless_dictionary import CaselessDict
 from ClayCode.core.cctypes import (
     FileNameMatchSelector,
-    PathOrStr,
     PathType,
     StrNum,
     StrNumOrListDictOf,
@@ -69,6 +65,8 @@ from parmed import Atom, Residue
 # logging.getLogger("numexpr").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
+
+
 # -----------------------------------------------------------------------------
 # class decorators
 # -----------------------------------------------------------------------------
@@ -845,13 +843,9 @@ class MoleculeParameter(ParameterBase):
     ]
     collection = MoleculeParameters
 
-    # def __init__(self, name: Optional[str]=None, **kwargs):
-    #     self._data = {}
-    #     if name is not None:
-    #         self._data[name] = {**kwargs}
+    # def __init__(self, name: Optional[str]=None, **kwargs):  #     self._data = {}  #     if name is not None:  #         self._data[name] = {**kwargs}
 
-    # def append(self, name, _data):
-    #     self._data[name] = _data
+    # def append(self, name, _data):  #     self._data[name] = _data
 
 
 class SystemParameter(ParameterBase):
@@ -860,8 +854,7 @@ class SystemParameter(ParameterBase):
     kwd_list = ["system", "molecules"]
     collection = SystemParameters
 
-    # def __repr__(self):
-    #     return method'{self.__class__.__name__}({self.name})'
+    # def __repr__(self):  #     return method'{self.__class__.__name__}({self.name})'
 
 
 class ParameterFactory:
@@ -1373,11 +1366,9 @@ class ITPFile(File):
 
     def assign_parameter(self, parameter, definition_id: Literal[0, 1] = 0):
         if parameter.__class__ in self._prm_types:
-            self._prms[definition_id] = parameter
-            # if hasattr(self, parameter.kwd):
-            #     pass
-            # else:
-            #     self.__setattr__(parameter.kwd, parameter.kwd)
+            self._prms[
+                definition_id
+            ] = parameter  # if hasattr(self, parameter.kwd):  #     pass  # else:  #     self.__setattr__(parameter.kwd, parameter.kwd)
         elif parameter.__class__ in self._mol_types:
             self._mols[definition_id] += parameter
         elif parameter.__class__ in self._sys_types:
@@ -1419,8 +1410,7 @@ class GROFile(File):
             str(self.resolve()),
             index_col=[0],
             skiprows=2,
-            header=None,
-            # sep="\s+",
+            header=None,  # sep="\s+",
             widths=[10, 5, 5, 8, 8, 8],
             names=["at-type", "atom-id", "x", "y", "z"],
             nrows=self.n_atoms,
@@ -1553,9 +1543,9 @@ class MDPFile(File):
             if not re.search(
                 k, search_str, flags=re.IGNORECASE | re.MULTILINE
             ):
-                logger.error(f"Invalid parameter {k} for {self.gmx_version}")
-                # print(f'{k}: ""')
-                # # raise KeyError(f"Invalid parameter {k} for {self.gmx_version}")
+                logger.error(
+                    f"Invalid parameter {k} for {self.gmx_version}"
+                )  # print(f'{k}: ""')  # # raise KeyError(f"Invalid parameter {k} for {self.gmx_version}")
 
     @property
     def parameters(self):
@@ -1805,16 +1795,7 @@ class Dir(BasicPath):
                 for e in ext:
                     filelist.append(ext_match_list(e))
         filelist = PathListFactory(filelist)
-        return filelist
-        # if hasattr(self, '_order'):
-        #     order = {}
-        #     for file in filelist:
-        #         if file.stem in self._order.keys():
-        #             order[file] =
-        #     filelist = sorted(filelist, key=lambda file: self._order[file])
-        # else:
-        #     filelist = sorted(filelist)
-        # return filelist
+        return filelist  # if hasattr(self, '_order'):  #     order = {}  #     for file in filelist:  #         if file.stem in self._order.keys():  #             order[file] =  #     filelist = sorted(filelist, key=lambda file: self._order[file])  # else:  #     filelist = sorted(filelist)  # return filelist
 
     def with_suffix(self, suffix):
         """Return a new path with the file suffix changed.  If the path
@@ -1883,12 +1864,7 @@ class FFDir(Dir):
                 split_str = itp[prm_name]
         return split_str
 
-    # def atomtypes(self):
-    #     for itp in self.itp_filelist:
-    #         if 'atomtypes' in itp.kwds:
-    #             split_str = itp.string.split('[ ')
-    #             for split in split_str:
-    #                 if re.match('')
+    # def atomtypes(self):  #     for itp in self.itp_filelist:  #         if 'atomtypes' in itp.kwds:  #             split_str = itp.string.split('[ ')  #             for split in split_str:  #                 if re.match('')
 
 
 class BasicPathList(UserList):
@@ -2283,10 +2259,7 @@ class SimDir(Dir):
             logger.finfo(kwd_str=f"{suffix!r}: ", message=f"{f.name!r}")
         except AttributeError:
             logger.finfo(kwd_str=f"{suffix!r}: ", message="No file found")
-        return f
-        # return select_named_file(
-        #     path=self.resolve(), suffix="gro", searchlist=FILE_SEARCHSTR_LIST
-        # )
+        return f  # return select_named_file(  #     path=self.resolve(), suffix="gro", searchlist=FILE_SEARCHSTR_LIST  # )
 
     @cached_property
     def tpr(self) -> _PosixPath:
@@ -2300,19 +2273,14 @@ class SimDir(Dir):
                 how="latest",
             )
             if f is None:
-                continue
-                # method = select_named_file(self.resolve(),
-                #                       searchlist=[''])
+                continue  # method = select_named_file(self.resolve(),  #                       searchlist=[''])
             else:
                 break
         try:
             logger.debug(f"{suffix!r}: {f.name!r}")
         except AttributeError:
             logger.debug(f"{suffix!r}: No file found")
-        return f
-        # return select_named_file(
-        #     path=self.resolve(), suffix="gro", searchlist=FILE_SEARCHSTR_LIST
-        # )
+        return f  # return select_named_file(  #     path=self.resolve(), suffix="gro", searchlist=FILE_SEARCHSTR_LIST  # )
 
     @cached_property
     def top(self) -> _PosixPath:
@@ -2333,10 +2301,7 @@ class SimDir(Dir):
             logger.finfo(f"{suffix!r}: {f.name!r}")
         except AttributeError:
             logger.finfo(f"{suffix!r}: No file found")
-        return f
-        # return select_named_file(
-        #     path=self.resolve(), suffix="top", searchlist=FILE_SEARCHSTR_LIST
-        # )
+        return f  # return select_named_file(  #     path=self.resolve(), suffix="top", searchlist=FILE_SEARCHSTR_LIST  # )
 
     @cached_property
     def trr(self) -> _PosixPath:
@@ -2351,10 +2316,7 @@ class SimDir(Dir):
             logger.debug(f"{suffix!r}: {f.name!r}")
         except AttributeError:
             logger.debug(f"{suffix!r}: No file found")
-        return f
-        # return select_named_file(
-        #     path=self.resolve(), suffix="trr", searchlist=FILE_SEARCHSTR_LIST
-        # )
+        return f  # return select_named_file(  #     path=self.resolve(), suffix="trr", searchlist=FILE_SEARCHSTR_LIST  # )
 
     @cached_property
     def log(self) -> _PosixPath:
@@ -2497,12 +2459,13 @@ def set_mdp_freeze_groups(
     if not np.isin(freezearray, ["Y", "N"]).all():
         raise ValueError
     for freeze_str, freeze_value in zip(
-        ["freezegrps", "freezedim"], [freezegrpstr, freezedimstr]
+        ["freezegrps", "freezedim", "comm-mode"],
+        [freezegrpstr, freezedimstr, "none"],
     ):
         if re.search(
             freeze_str, input_string, flags=re.IGNORECASE | re.MULTILINE
         ):
-            if replace:
+            if replace or freeze_str == "comm-mode":
                 input_string = set_mdp_parameter(
                     freeze_str, freeze_value, input_string
                 )
@@ -2514,7 +2477,6 @@ def set_mdp_freeze_groups(
             input_string = add_new_mdp_parameter(
                 freeze_str, freeze_value, input_string
             )
-
     return input_string
 
 

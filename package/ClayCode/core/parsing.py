@@ -47,7 +47,6 @@ __all__ = {
     "AnalysisArgs",
 }
 
-
 logger = logging.getLogger(__name__)
 
 parser: ArgumentParser = ArgumentParser(
@@ -99,7 +98,6 @@ buildparser.add_argument(
     dest="mdp_prms",
     required=False,
 )
-
 
 buildparser.add_argument(
     "--manual_setup",
@@ -251,7 +249,6 @@ ion_parser.add_argument(
     metavar="anion_type",
 )
 
-
 ion_add_group = ion_parser.add_mutually_exclusive_group(required=True)
 ion_add_group.add_argument(
     "-n_atoms",
@@ -399,6 +396,34 @@ analysisparser.add_argument(
 # plot analysis results
 plotparser = subparsers.add_parser(
     "plot", help="Plot simulation analysis results"
+)
+plotparser.add_argument(
+    "-f",
+    required=True,
+    type=File,
+    help="File with plotting specifications",
+    metavar="yaml_file",
+)
+plotgroup = plotparser.add_mutually_exclusive_group()
+plotgroup.add_argument("-lines", action="store_true", default=False)
+plotgroup.add_argument("-bars", action="store_true", default=False)
+plotgroup.add_argument("-gbars", action="store_true", default=False)
+atype_split_parser = plotparser.add_subparsers(dest="split_atypes")
+atype_data_parser = atype_split_parser.add_parser("get_data")
+atype_data_parser.add_argument(
+    "-new_bins", type=float, default=None, required=False, dest="new_bins"
+)
+atype_data_parser.add_argument(
+    "--overwrite", default=False, action="store_true", dest="overwrite"
+)
+atype_data_parser.add_argument(
+    "-datadir", type=Dir, required=True, dest="datadir"
+)
+atype_data_parser.add_argument(
+    "--load", type=bool, required=False, dest="load"
+)
+atype_data_parser.add_argument(
+    "-save", type=BasicPath, default=False, dest="save"
 )
 
 # Clay simulation check parser
@@ -717,6 +742,7 @@ class BuildArgs(_Args):
         "MIN_IL_HEIGHT",
         "MAX_UCS",
         "MATCH_TOLERANCE",
+        "EM_FREEZE_CLAY",
     ]
     _arg_defaults = _build_defaults
 
@@ -892,6 +918,9 @@ class BuildArgs(_Args):
                 self.mdp_parameters.update_mdp_parameters("EM", mdp_prms)
         except KeyError:
             pass
+        self.em_freeze_clay = self._charge_occ_df.loc[
+            pd.IndexSlice["T", self._uc_name], ["em_freeze"]
+        ].values[0]
         self._get_outpath()
         self._get_gmx_prms()
 
@@ -1003,10 +1032,7 @@ class BuildArgs(_Args):
                 self.il_solv_height = self.data["SPACING_WATERS"]
             else:
                 self.n_waters = n_ions
-                self.il_solv_height = None
-                # self.il_solv_height = (
-                #     n_ions * self.default_d_space
-                # ) / self.sheet_n_cells
+                self.il_solv_height = None  # self.il_solv_height = (  #     n_ions * self.default_d_space  # ) / self.sheet_n_cells
 
     @property
     def uc_df(self):
@@ -1226,9 +1252,64 @@ class PlotArgs(_Args):
     :type data: Dict[str, Any]"""
 
     option = "plot"
+    _arg_names = [
+        "plot_type",
+        "PLOT_SEL",
+        "OUTPATH",
+        "INPATH",
+        "IGNORE_SUM",
+        "YMIN",
+        "YMAX",
+        "XMIN",
+        "XMAX",
+        "YLABEL",
+        "XLABEL",
+        "CUTOFF",
+        "BINS",
+        "USE_ABS",
+        "NAMESTEM",
+        "ANALYSIS",
+        "ATOMS",
+        "AAS",
+        "IONS",
+        "CLAYS",
+        "OTHER",
+        "PH",
+        "GROUPED",
+        "TABLE",
+        "EDGES",
+        "ADD_BULK",
+        "X",
+        "Y",
+        "PLSEL",
+        "COLOURS",
+        "NO_ATOMNAME",
+        "FIGSIZE",
+        "DATA2D",
+        "ZDATA",
+        "NEW_BINS",
+        "OVERWRITE",
+        "DATADIR",
+        "LOAD",
+        "SAVE",
+    ]
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: Dict[str, Any], debug_run: bool = False):
         super().__init__(data)
+        self.debug_run = debug_run
+        self.process()
+
+    def process(self):
+        """Process simulation input arguments."""
+        logger.info(get_header("Getting simulation input parameters"))
+        self.read_yaml(enumerate_duplicates=True)
+        self.check()
+
+    @read_yaml_path_decorator("OUTPATH", "INPATH", "INGRO", "INTOP")
+    def read_yaml(self, enumerate_duplicates=True) -> None:
+        """Read clay model builder specifications
+        and mdp_parameter defaults from yaml file."""
+        pass
 
 
 class SiminpArgs(_Args):
@@ -1305,12 +1386,9 @@ class SiminpArgs(_Args):
                     if match:
                         # run_type = match.group(0)
                         matches.append((run_spec, match.group(0), run_options))
-                        remove_keys.append(run_spec)
-                    # else:
-                    # run_type = run_spec
-                    # non_matches.append((run_spec, run_spec, run_options))
-                    # matches[run_spec] = (match.group(0), run_options)
-                    # matches.append(run_spec, match.group(0), run_options)
+                        remove_keys.append(
+                            run_spec
+                        )  # else:  # run_type = run_spec  # non_matches.append((run_spec, run_spec, run_options))  # matches[run_spec] = (match.group(0), run_options)  # matches.append(run_spec, match.group(0), run_options)
                 for match in remove_keys:
                     run_specs.pop(match)
             non_matches = [(k, k, v) for k, v in sorted(run_specs.items())]
@@ -1346,8 +1424,7 @@ class SiminpArgs(_Args):
                 # run = run_factory.init_subclass(
                 #     match_run, run_id, run_options
                 # )
-                logger.finfo(f"\t{run_id}: {run_name}")
-            # return runs
+                logger.finfo(f"\t{run_id}: {run_name}")  # return runs
 
     def check(self):
         """Check that all required arguments are present and set instance attributes."""
@@ -1415,55 +1492,7 @@ class SiminpArgs(_Args):
                 mdp_prms=prms_dict["mdp_prms"],
                 run_options=prms_dict["run_prms"],
             )
-        self._get_run_specs()
-        # if "dspace" in self.data:
-        #     logger.info(get_subheader("d-spacing equilibration parameters"))
-        #     self.d_spacing = self.data[
-        #         "D_SPACE"
-        #     ]  # convert d-spacing from A to nm
-        #     self.n_wat = self.data["n_wat"]
-        #     self.n_steps = self.data["n_steps"]
-        #     self.data["runs"].append("D_SPACE")
-        #     logger.finfo(f"Target spacing: {self.d_spacing:2.2f} {ANGSTROM}")
-        #     logger.finfo(
-        #         f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"
-        #     )
-        # if len(self.mdp_generator._runs) != 0:
-        #     prms_dict = {"mdp_prms": None, "run_prms": None}
-        #     for k in prms_dict:
-        #         try:
-        #             prms_dict[k] = self.data[k.upper()]
-        #         except KeyError:
-        #             pass
-        #     self.run_sequence = self.data["runs"]
-        #     assigned_id = 1
-        #     logger.info(get_subheader("Selected the following run types:"))
-        #     for run_id, run_dict in sorted(self.run_sequence.items()):
-        #         for run_name, run_prms in run_dict.items():
-        #             try:
-        #                 run_type, assigned_id = run_name.split("_")
-        #             except ValueError:
-        #                 run_type = run_name
-        #                 assigned_id = run_id
-        #             finally:
-        #                 # if run_id != 1:
-        #         if prev == run_type:
-        #             if assigned_id == 1:
-        #                 self.run_sequence[run_id - 1] = {
-        #                     f"{prev}_{assigned_id}": run_prms
-        #                 }
-        #             assigned_id += 1
-        #             self.run_sequence[run_id] = {
-        #                 f"{run_type}_{assigned_id}": run_prms
-        #             }
-        #         else:
-        #             assigned_id = 1
-        # prev = run_type
-        #
-        # # for run_id, run_name in enumerate(self.run_sequence):
-        # logger.finfo(
-        #     f"\t{run_id}: {next(iter(self.run_sequence[run_id].keys()))}"
-        # )
+        self._get_run_specs()  # if "dspace" in self.data:  #     logger.info(get_subheader("d-spacing equilibration parameters"))  #     self.d_spacing = self.data[  #         "D_SPACE"  #     ]  # convert d-spacing from A to nm  #     self.n_wat = self.data["n_wat"]  #     self.n_steps = self.data["n_steps"]  #     self.data["runs"].append("D_SPACE")  #     logger.finfo(f"Target spacing: {self.d_spacing:2.2f} {ANGSTROM}")  #     logger.finfo(  #         f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"  #     )  # if len(self.mdp_generator._runs) != 0:  #     prms_dict = {"mdp_prms": None, "run_prms": None}  #     for k in prms_dict:  #         try:  #             prms_dict[k] = self.data[k.upper()]  #         except KeyError:  #             pass  #     self.run_sequence = self.data["runs"]  #     assigned_id = 1  #     logger.info(get_subheader("Selected the following run types:"))  #     for run_id, run_dict in sorted(self.run_sequence.items()):  #         for run_name, run_prms in run_dict.items():  #             try:  #                 run_type, assigned_id = run_name.split("_")  #             except ValueError:  #                 run_type = run_name  #                 assigned_id = run_id  #             finally:  #                 # if run_id != 1:  #         if prev == run_type:  #             if assigned_id == 1:  #                 self.run_sequence[run_id - 1] = {  #                     f"{prev}_{assigned_id}": run_prms  #                 }  #             assigned_id += 1  #             self.run_sequence[run_id] = {  #                 f"{run_type}_{assigned_id}": run_prms  #             }  #         else:  #             assigned_id = 1  # prev = run_type  #  # # for run_id, run_name in enumerate(self.run_sequence):  # logger.finfo(  #     f"\t{run_id}: {next(iter(self.run_sequence[run_id].keys()))}"  # )
 
     def write_runs(self):
         self.mdp_generator.write_runs(

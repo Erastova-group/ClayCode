@@ -283,10 +283,10 @@ def log_atomgroup_info(ag: AtomGroup, kwd_str: str, ag_name: str):
         logger.finfo(f"{ag_name!r}", kwd_str=f"{kwd_str}: ")
         logger.finfo(get_ag_numbers_info(ag))
     else:
-        logger.error(
+        logger.ferror(
             f"{ag_name} contains 0 atoms. Check atom selection parameters."
         )
-        sys.exit(1)
+        sys.exit(4)
 
 
 def select_clay(
@@ -345,7 +345,7 @@ def generate_restraints(
             )
         for atom in atom_group:
             outfile.write(
-                f'{atom.index+1:6} {1:5} {" ".join([f"{fci:6}" for fci in fc])}\n'
+                f'{atom.index + 1:6} {1:5} {" ".join([f"{fci:6}" for fci in fc])}\n'
             )
 
 
@@ -862,8 +862,7 @@ def add_ions_n_mols(
         gmx_commands.run_gmx_grompp(
             c=crdin,
             p=topin,
-            o=tpr,
-            # pp=topout,
+            o=tpr,  # pp=topout,
             po=tpr.with_suffix(".mdp"),
             v="",
             maxwarn=1,
@@ -887,12 +886,11 @@ def add_ions_n_mols(
         )
         logger.debug(
             f"Replaced {len(replaced)} SOL molecules with {ion} in {crdin.name!r}"
-        )
-        # add_resnum(crdin=crdin, crdout=crdin)
-        # rename_il_solvent(crdin=crdin, crdout=crdin)
+        )  # add_resnum(crdin=crdin, crdout=crdin)  # rename_il_solvent(crdin=crdin, crdout=crdin)
     else:
-        raise RuntimeError(f"No index file {ndx.name} created!")
-        # replaced = []
+        raise RuntimeError(
+            f"No index file {ndx.name} created!"
+        )  # replaced = []
     return len(replaced)
 
 
@@ -967,12 +965,9 @@ def add_ions_neutral(
         )
         logger.debug(
             f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}"
-        )
-        # add_resnum(crdin=crdout, crdout=crdout)
-        # rename_il_solvent(crdin=crdout, crdout=crdout)
-        # shutil.move('processed.top', topin)
+        )  # add_resnum(crdin=crdout, crdout=crdout)  # rename_il_solvent(crdin=crdout, crdout=crdout)  # shutil.move('processed.top', topin)
     else:
-        logger.error(f"No index file {ndx.name} created!")
+        logger.ferror(f"No index file {ndx.name} created!")
         replaced = []
     return len(replaced)
 
@@ -1429,7 +1424,9 @@ def get_all_prms(
                         )
                     )
         except Exception as e:
-            logger.error(f"{e}\nError getting {uc.name} unit cell parameters.")
+            logger.ferror(
+                f"{e}\nError getting {uc.name} unit cell parameters."
+            )
             sys.exit(1)
         sol_dict = get_sol_prms(prm_str=prm_str, force_update=force_update)
         charge_dict = {**ion_dict, **clay_dict, **sol_dict, **aa_dict}
@@ -1475,7 +1472,7 @@ def get_system_prms(
             u = Universe(str(crds))
             name = Path(crds).stem
         except ValueError:
-            logger.error(f"Could not create Universe from {crds}")
+            logger.ferror(f"Could not create Universe from {crds}")
             return None
     prm_df = pd.Series(
         get_all_prms(prm_str, write=write, force_update=force_update),
@@ -1559,7 +1556,10 @@ def add_mols_to_top(
 
 
 def remove_replaced_SOL(
-    topin: Union[str, pl.Path], topout: Union[str, pl.Path], n_mols: int
+    topin: Union[str, pl.Path],
+    topout: Union[str, pl.Path],
+    n_mols: int,
+    debug_mode=False,
 ) -> None:
     """Remove specified number of SOL molecules from topology.
     :param topin: input topology filename
@@ -1586,7 +1586,9 @@ def remove_replaced_SOL(
         except IndexError:
             raise IndexError("Not enough interlayer solvent groups found!")
             n_sol = int(topmatch) - n_mols
-        logger.debug(f"Removing {n_mols} SOL residues from topology.")
+        logger.fdebug(
+            debug_mode, "Removing {n_mols} SOL residues from topology."
+        )
 
         if n_sol < 0:
             raise ValueError(f"Invalid number of solvent residues: {n_sol}")
@@ -1597,8 +1599,9 @@ def remove_replaced_SOL(
             )
 
             with open(topout, "w") as topfile:
-                logger.debug(
-                    f"New topology {topout.name!r} has {n_sol} SOL molecules."
+                logger.fdebug(
+                    debug_mode,
+                    f"New topology {topout.name!r} has {n_sol} SOL molecules.",
                 )
                 topfile.write(topstr)
 
@@ -1663,9 +1666,10 @@ def remove_ag(
     selstr: str,
     last: Union[bool, int],
     first: Union[bool, int],
+    debug_mode=False,
 ) -> None:
     sel = u.select_atoms(selstr)
-    logger.debug(
+    logger.fdebug(
         f"Before: {u.atoms.n_atoms}. "
         f"Removing first {first} last {last} {np.unique(sel.residues.resnames)}"
     )
@@ -1676,11 +1680,11 @@ def remove_ag(
             )
     elif last is not False:
         first = -last
-        logger.debug("last not false", first)
+        logger.fdebug("last not false", first)
     else:
         first = 0
     u.atoms -= sel[first:]
-    logger.debug(f"After: {u.atoms.n_atoms}")
+    logger.fdebug(debug_mode, f"After: {u.atoms.n_atoms}")
     u.atoms.write(crdout)
 
 
@@ -1696,6 +1700,7 @@ def add_ions_conc(
     ion_charge: float,
     conc: float,
     gmx_commands,
+    debug_mode=False,
 ):
     """Add ions to system at specified concentration.
     :param odir: output directory
@@ -1717,7 +1722,7 @@ def add_ions_conc(
     :return: number of replaced molecules
     :rtype: int
     """
-    logger.debug(f"Adding {conc} mol/L {ion}")
+    logger.fdebug(debug_mode, "Adding {conc} mol/L {ion}")
     odir = Path(odir).resolve()
     assert odir.is_dir()
     tpr = odir / "conc.tpr"
@@ -1752,7 +1757,7 @@ def add_ions_conc(
             f"Replaced {len(replaced)} SOL molecules in {crdin.name!r}"
         )
     else:
-        logger.error(f"No index file {ndx.name} created!")
+        logger.ferror(f"No index file {ndx.name} created!")
         replaced = []
     return len(replaced)
 
@@ -1778,20 +1783,19 @@ def check_insert_numbers(
 
 
 # @gmx_command_wrapper
-def run_em(
-    # mdp: str,
+def run_em(  # mdp: str,
     crdin: Union[str, Path],
     topin: Union[str, Path],
     odir: Path,
     gmx_commands,
     outname: str = "em",
     mdp_prms: Optional[Dict[str, str]] = None,
-    freeze_grps: Optional[
-        Union[List[Union[Literal["Y"], Literal["N"]]], bool]
-    ] = None,
+    freeze_grps: Optional[Union[List[str], str], bool] = None,
     freeze_dims: Optional[
         Union[List[Union[Literal["Y"], Literal["N"]]], bool]
     ] = ["Y", "Y", "Y"],
+    ndx=None,
+    debug_mode=False,
 ) -> Union[str, None]:
     """
     Run an energy minimisation using gmx and
@@ -1832,7 +1836,7 @@ def run_em(
     else:
         otop_copy = False
     tpr = outname.with_suffix(".tpr")
-    gmx_commands.run_gmx_grompp(
+    grompp = gmx_commands.run_gmx_grompp(
         c=crdin,
         p=topin,
         o=tpr,
@@ -1844,6 +1848,7 @@ def run_em(
         freeze_grps=freeze_grps,
         freeze_dims=freeze_dims,
         renum="",
+        n=ndx,
     )
     error, em, out = gmx_commands.run_gmx_mdrun(s=tpr, deffnm=outname, v="")
     if error is None:
@@ -1853,9 +1858,8 @@ def run_em(
             flags=re.MULTILINE | re.DOTALL,
         )
         if conv is None:
-            logger.error("Energy minimisation run not converged!\n")
-            logger.finfo(em)
-            # logger.finfo(out)
+            logger.ferror("Energy minimisation run not converged!\n")
+            logger.finfo(em)  # logger.finfo(out)
         else:
             fmax, n_steps = conv.groups()
             final_str = (
@@ -1868,7 +1872,7 @@ def run_em(
                 .strip("\n")
             )
             logger.info(f"{final_str}\n")
-            logger.debug(f"Output written to {outname.name!r}")
+            logger.fdebug(debug_mode, "Output written to {outname.name!r}")
             conv = (
                 f"Fmax: {fmax}, reached in {n_steps} steps."
                 f"Output written to {outname!r}\n"
