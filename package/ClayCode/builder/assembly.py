@@ -4,7 +4,6 @@ r""":mod:`ClayCode.builder.assembly` --- Assembly of clay models
 ==============================================================="""
 from __future__ import annotations
 
-import copy
 import itertools
 import logging
 import math
@@ -19,26 +18,14 @@ from typing import Any, Callable, List, Literal, Optional, Tuple, Type, Union
 
 import numpy as np
 import pandas as pd
+import unicodeit
 from ClayCode.builder.claycomp import InterlayerIons, UCData
 from ClayCode.builder.topology import TopologyConstructor
-from ClayCode.core.classes import (
-    Dir,
-    FileFactory,
-    GROFile,
-    TOPFile,
-    set_mdp_freeze_groups,
-    set_mdp_parameter,
-)
-from ClayCode.core.consts import ANGSTROM, LINE_LENGTH
-from ClayCode.core.gmx import (
-    GMXCommands,
-    add_gmx_args,
-    check_box_lengths,
-    gmx_command_wrapper,
-)
+from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
+from ClayCode.core.consts import ANGSTROM
+from ClayCode.core.gmx import GMXCommands, add_gmx_args, check_box_lengths
 from ClayCode.core.lib import (
     add_ions_n_mols,
-    add_ions_neutral,
     add_resnum,
     center_clay,
     check_insert_numbers,
@@ -48,7 +35,7 @@ from ClayCode.core.lib import (
     write_insert_dat,
 )
 from ClayCode.core.utils import backup_files, get_header, get_subheader
-from ClayCode.data.consts import FF, GRO_FMT, MDP, MDP_DEFAULTS
+from ClayCode.data.consts import GRO_FMT
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.lib.mdamath import triclinic_box, triclinic_vectors
 from MDAnalysis.units import constants
@@ -233,6 +220,7 @@ class Builder:
 
     rename_il_solv = partialmethod(rename_solv, solv="il_solv")
     rename_il = partialmethod(rename_solv, solv="il")
+
     # def rename_il_solv(self) -> None:
     #     """Rename interlayer solvent residues from 'SOl' to 'iSL'.
     #     :return: None"""
@@ -250,80 +238,135 @@ class Builder:
         self,
         freeze_clay: Optional[
             Union[List[Union[Literal["Y"], Literal["N"]]], bool]
-        ] = ["Y", "Y", "Y"],
+        ] = False,
+        # ["Y", "Y", "Y"],
         backup=False,
     ) -> None:
         """Run energy minimisation.
         :param freeze_clay: Whether to freeze the clay stack during energy minimisation. If a list of three booleans is provided, the corresponding dimensions will be frozen. If True, all three dimensions will be frozen. If False, no dimensions will be frozen.
         :type freeze_clay: Optional[Union[List[Union[Literal["Y"], Literal["N"]]], bool]]
-        :param backup: Whether to backup existing files.
+        :param backup: Whether to back up existing files.
         :type backup: bool
         :return: None"""
         logger.info(get_subheader("Minimising energy"))
+        # outgro = None
+        outname_list = [f"{self.stack.stem.strip('_pre_em').strip('_em')}_em"]
+        ndx_list = [None]
         if freeze_clay:
             if isinstance(freeze_clay, bool):
-                freeze_dims = ["Y", "Y", "Y"]
+                freeze_dims_list = [["Y", "Y", "Y"]]
             else:
-                freeze_dims = freeze_clay
-            freeze_grps = np.unique(self.clay.residues.resnames)
+                freeze_dims_list = [freeze_clay]
+            freeze_grps_list = [np.unique(self.clay.residues.resnames)]
         else:
-            freeze_grps = None
-            freeze_dims = None
-        result = run_em(
-            crdin=self.stack,
-            topin=self.stack.top,
-            odir=self.args.outpath,
-            outname=f"{self.stack.stem.strip('_em')}_em",
-            gmx_commands=self.gmx_commands,
-            freeze_grps=freeze_grps,
-            freeze_dims=freeze_dims,
-        )
-        outpath = Dir(self.args.outpath)
-        crd_top_files = [
-            *outpath.gro_filelist,
-            *outpath.itp_filelist,
-            *outpath._get_filelist(ext=".top"),
-            *outpath._get_filelist(ext=".csv"),
-            *outpath._get_filelist(ext=".mdp"),
-            *outpath._get_filelist(ext=".edr"),
-            *outpath._get_filelist(ext=".trr"),
-            *outpath._get_filelist(ext=".log"),
-        ]
-        em_files = []
-        backups = []
-        for file in outpath.iterdir():
-            if file not in crd_top_files and not file.is_dir():
-                file.unlink(missing_ok=True)
-            else:
-                if file.stem.split("_")[-1] == "em":
-                    if outpath.name != "EM":
-                        em_path = outpath / "EM"
-                        os.makedirs(em_path, exist_ok=True)
-                        if backup:
-                            backups.append(
-                                backup_files(new_filename=em_path / file.name)
-                            )
-                        new_file = em_path / file.name
-                        try:
-                            shutil.copy2(file, new_file)
-                        except shutil.SameFileError:
-                            pass
-                        else:
-                            file.unlink(missing_ok=True)
-                            file = new_file
-                    if file.suffix == ".gro":
-                        self.stack = file
-                        logger.finfo(
-                            f"Writing final output from energy minimisation to {str(file.parent)!r}:"
-                        )
-                    em_files.append(file.name)
-        if backups:
             logger.finfo(
-                "\t" + "\n\t".join([backup for backup in backups if backup]),
-                initial_linebreak=True,
+                f"1. Energy minimisation with frozen clay hydroxyl atom positions."
             )
-        em_files = "'\n\t - '".join(sorted(em_files))
-        logger.info(f"\t - '{em_files}'")
+            freeze_grps = "clay_hydroxyl_groups"
+            freeze_dims = ["Y", "Y", "Y"]
+            self.gmx_commands.run_gmx_make_ndx_with_new_sel(
+                f=self.stack,
+                o=self.stack.with_suffix(".ndx"),
+                sel_str="r "
+                + " ".join(np.unique(self.clay.residues.resnames))
+                + " & ! a OH* HO*",
+                sel_name=freeze_grps,
+            )
+            freeze_grps_list = [freeze_grps, None]
+            freeze_dims_list = [freeze_dims, None]
+            outname_list.insert(
+                0, f"{self.stack.stem.strip('_pre_em').strip('_em')}_pre_em"
+            )
+            ndx_list.insert(0, self.stack.with_suffix(".ndx"))
+        for freeze_grps, freeze_dims, outname, ndx in zip(
+            freeze_grps_list, freeze_dims_list, outname_list, ndx_list
+        ):
+            result = run_em(
+                crdin=self.stack,
+                topin=self.stack.top,
+                odir=self.args.outpath,
+                outname=outname,
+                gmx_commands=self.gmx_commands,
+                freeze_grps=freeze_grps,
+                freeze_dims=freeze_dims,
+                ndx=ndx,
+            )
+            outgro = GROFile(self.args.outpath / f"{outname}.gro")
+            if result is not None and outgro.exists():
+                self.stack = outgro
+            else:
+                logger.ferror(f"Energy minimisation failed.")
+                outgro = None
+                break
+            # freeze_grps = None
+            # freeze_dims = None
+        # if outgro is not False:
+        #     result = run_em(
+        #         crdin=self.stack,
+        #         topin=self.stack.top,
+        #         odir=self.args.outpath,
+        #         outname=f"{self.stack.stem.strip('_pre_em').strip('_em')}_em",
+        #         gmx_commands=self.gmx_commands,
+        #         freeze_grps=freeze_grps,
+        #         freeze_dims=freeze_dims,
+        #     )
+        #     if result is not None:
+        #         outgro = self.args.outpath / f"{outname}.gro"
+        #         if GROFile(outgro).exists():
+        #             self.stack = outgro
+        #         else:
+        #             outgro = False
+        #             logger.ferror(f"Energy minimisation failed.")
+        if outgro is not None:
+            outpath = Dir(self.args.outpath)
+            crd_top_files = [
+                *outpath.gro_filelist,
+                *outpath.itp_filelist,
+                *outpath._get_filelist(ext=".top"),
+                *outpath._get_filelist(ext=".csv"),
+                *outpath._get_filelist(ext=".mdp"),
+                *outpath._get_filelist(ext=".edr"),
+                *outpath._get_filelist(ext=".trr"),
+                *outpath._get_filelist(ext=".log"),
+            ]
+            em_files = []
+            backups = []
+            for file in outpath.iterdir():
+                if file not in crd_top_files and not file.is_dir():
+                    file.unlink(missing_ok=True)
+                else:
+                    if file.stem.split("_")[-1] == "em":
+                        if outpath.name != "EM":
+                            em_path = outpath / "EM"
+                            os.makedirs(em_path, exist_ok=True)
+                            if backup:
+                                backups.append(
+                                    backup_files(
+                                        new_filename=em_path / file.name
+                                    )
+                                )
+                            new_file = em_path / file.name
+                            try:
+                                shutil.copy2(file, new_file)
+                            except shutil.SameFileError:
+                                pass
+                            else:
+                                file.unlink(missing_ok=True)
+                                file = new_file
+                        if file.suffix == ".gro":
+                            self.stack = file
+                            logger.finfo(
+                                f"Writing final output from energy minimisation to {str(file.parent)!r}:"
+                            )
+                        em_files.append(file.name)
+            if backups:
+                logger.finfo(
+                    "\t"
+                    + "\n\t".join([backup for backup in backups if backup]),
+                    initial_linebreak=True,
+                )
+            em_files = "'\n\t - '".join(sorted(em_files))
+            logger.info(f"\t - '{em_files}'")
         return result
 
     def conclude(self):
@@ -503,6 +546,29 @@ class Builder:
 
         return np.max(self.clay.positions[:, 2])
 
+    @staticmethod
+    def get_formatted_ion_charges(ion_type, ion_charge) -> str:
+        """Get superscript formatted ion charges.
+        :param ion_type: Ion type.
+        :type ion_type: str
+        :param ion_charge: Ion charge.
+        :type ion_charge: float
+        :return: formatted ion charges.
+        :rtype: str
+        """
+        if ion_charge != 0:
+            ion_charge_str = f"{ion_charge:+.0f}"
+            if abs(ion_charge) == 1:
+                ion_charge_str = ion_charge_str[0]
+            else:
+                ion_charge_str = ion_charge_str[1:] + ion_charge_str[0]
+            ion_charge_str = unicodeit.replace(
+                "^" + "^".join([i for i in ion_charge_str])
+            )
+        else:
+            ion_charge_str = ""
+        return ion_charge_str
+
     def add_bulk_ions(self, backup=False) -> None:
         """Add bulk ions to bulk space.
         :param backup: Whether to back up existing files.
@@ -543,7 +609,7 @@ class Builder:
                     int
                 )  # 1 mol/L = 10^-27 mol/A
                 logger.finfo(
-                    f"\tAdding {conc} mol/L ({n_ions} atoms) {ion} ions to bulk"
+                    f"\tAdding {conc} mol/L ({n_ions} atoms) {ion}{self.get_formatted_ion_charges(ion, charge)} ions to bulk"
                 )
                 logger.debug(
                     f"before n_atoms: {self.stack.universe.atoms.n_atoms}"
@@ -565,7 +631,7 @@ class Builder:
                 self.stack.reset_universe()
                 self.stack.write(self.top)
             excess_charge = int(self.args.il_ions.clay_charge + ion_charge)
-            logger.finfo(f"Neutralising charge:")
+            logger.finfo(f"Neutralising charge:", initial_linebreak=True)
             if excess_charge != 0:
                 neutral_bulk_ions = InterlayerIons(
                     excess_charge,
@@ -588,14 +654,16 @@ class Builder:
                         f"after n_atoms: {self.stack.universe.atoms.n_atoms}"
                     )
                     logger.finfo(
-                        f"Added {n_ions} {ion} ions to bulk", indent="\t"
+                        f"Added {n_ions} {ion}{self.get_formatted_ion_charges(ion, charge)} ions to bulk",
+                        indent="\t",
                     )
                     self.stack.reset_universe()
                     self.stack.write(self.top)
             logger.debug(f"n_atoms: {self.stack.universe.atoms.n_atoms}")
             logger.finfo(f"Replaced {replaced} SOL molecules", indent="\t")
             logger.finfo(
-                f"Saving solvated box with ions as {self.stack.stem!r}"
+                f"Saving solvated box with ions as {self.stack.stem!r}",
+                initial_linebreak=True,
             )
             self.stack.reset_universe()
             self.stack.write(self.top)
@@ -624,10 +692,15 @@ class Builder:
         sheet_heights = []
         if il_solv is not False:
             logger.info(get_subheader("3. Assembling box"))
-            logger.finfo("Combining clay sheets and interlayer")
+            logger.finfo("Combining clay sheets and interlayer:")
         else:
             logger.finfo("Combining clay sheets")
         for sheet_id in range(self.args.n_sheets):
+            logger.finfo(
+                f"Sheet {sheet_id + 1} of {self.args.n_sheets}:",
+                initial_linebreak=False,
+                indent="\t",
+            )
             self.sheet.n_sheet = sheet_id
             sheet_u = self.sheet.universe.copy()
             sheet_u.dimensions[2] = sheet_u.dimensions[2] + extra
@@ -695,10 +768,10 @@ class Builder:
                         len(residue.atoms.bonds) not in [2, 3]
                         or residue.atoms.n_atoms != 3
                     ):
-                        logger.error(
+                        logger.ferror(
                             f"Found number of bonds {len(residue.atoms.bonds)} < 2"
                         )
-                        sys.exit(1)
+                        sys.exit(4)
             sol = universe.select_atoms("resname iSL SOL")
             sol.positions = sol.unwrap(compound="residues")
         return universe
@@ -888,7 +961,9 @@ class Builder:
     def add_il_ions(self) -> None:
         """Add interlayer ions.
         :return: None"""
-        logger.finfo("Adding interlayer ions:", initial_linebreak=True)
+        logger.finfo(
+            "Adding interlayer ions:", initial_linebreak=False, indent="\t\t"
+        )
         infile: GROFile = self.il_solv
         add_resnum(crdin=infile, crdout=infile)
         with tempfile.NamedTemporaryFile(
@@ -901,7 +976,14 @@ class Builder:
             if isinstance(self.args.n_il_ions, dict):
                 for ion, n_ions in self.args.n_il_ions.items():
                     if n_ions != 0:
-                        logger.finfo(f"\tInserting {n_ions} {ion} atoms")
+                        ion_charge = self.args.il_ions.df.loc[ion, "charges"]
+                        ion_charge = self.get_formatted_ion_charges(
+                            ion, ion_charge
+                        )
+                        logger.finfo(
+                            f"Inserting {n_ions} {ion}{ion_charge} atoms",
+                            indent="\t\t\t",
+                        )
                         with tempfile.NamedTemporaryFile(
                             suffix=".gro"
                         ) as ion_gro:
@@ -1113,9 +1195,13 @@ class Sheet:
             backup_files(filename)
         gro_df: pd.DataFrame = self.uc_data.gro_df
         uc_array = False
+        logger.finfo(
+            f"Getting unit cell arrangement for sheet {self.n_sheet}:",
+            initial_linebreak=True,
+        )
         while uc_array is False:
             uc_array = self.get_uc_sheet_array()
-        logger.finfo(f"Unit cell arrangement in sheet {self.n_sheet}:")
+        logger.finfo(f"Unit cell arrangement:", initial_linebreak=True)
         for line in uc_array.T:
             logger.finfo(" ".join(map(str, line)), indent="\t")
         sheet_df = pd.concat(
@@ -1325,7 +1411,9 @@ class Sheet:
                     occ_devs = np.std(counts, axis=1)
                     order = np.argsort(occ_devs)[::-1]
                     if self.debug:
-                        logger.finfo("Occupancy deviations:")
+                        logger.finfo(
+                            "Occupancy deviations:",
+                        )
                         pm = "\u00B1"
                         logdict = {
                             0: "right diagonal",
@@ -1361,10 +1449,10 @@ class Sheet:
                             + extra_remainder[occ_id],
                         )
                         if idx_choices.flatten().size == n_add_ucs:
-                            print(
-                                occ_id,
-                                f": stopping with {idx_choices.flatten()}, n_add_ucs = {n_add_ucs}",
-                            )
+                            # print(
+                            #     occ_id,
+                            #     f": stopping with {idx_choices.flatten()}, n_add_ucs = {n_add_ucs}",
+                            # )
                             break
                         elif (
                             idx_choices.flatten().size < n_add_ucs
@@ -1456,65 +1544,11 @@ class Sheet:
                                     )
                                 ] = 1
                         # init_i = np.apply_along_axis(lambda arr: np.where(sorted(arr)[:n_add_ucs], )
-                        continue
-                    # if idx_choices.flatten().size == 0:
-                    #     return False
-                    # if np.any(extra_remainder == 0) and idx_choices.flatten().size < n_col_ucs + per_col_remainder and np.all(init_i == n_per_col + per_col_remainder):
-                    #     if np.all(init_i + extra_remainder == n_per_col + per_col_remainder):
-                    #     extra_remainder[np.intersect1d(order, np.argwhere(extra_remainder == 0))[-1]] += 1
-                    #     continue
-                    #     else:
-                    #     return False
-                    # elif (
-                    #     idx_choices.flatten().size == prev.flatten().size
-                    #     and np.equal(
-                    #         idx_choices.flatten(), prev.flatten()
-                    #     ).all()) and np.all(init_i + extra_remainder <= n_per_col + per_col_remainder):
-                    #         if np.all(init_i + extra_remainder == n_per_col + per_col_remainder):
-                    #             extra_remainder = 1
-                    #         continue
-                    # elif np.min(init_i) < n_per_col - per_col_remainder - 1:
-                    #     new_init_i = np.where(init_i == min(min(init_i), n_per_col - per_col_remainder - 1), init_i + 1, init_i)
-                    #     if not np.equal(new_init_i, init_i).all():
-                    #         init_i = new_init_i
-                    #         continue
-                    #     elif n_col_ucs <= n_per_col:
-                    #         n_col_ucs = n_per_col + 1
-                    #         continue
-                    # elif n_col_ucs <= n_per_col:
-                    #     n_col_ucs += 1
-                    # elif n_add_ucs == idx_choices.flatten().size:
-                    #     if self.debug:
-                    #         logger.finfo(f"Row {axis_id}:", indent="\t")
-                    #         logger.finfo(
-                    #             f"Adding {n_add_ucs} from {idx_choices.flatten()}",
-                    #             indent="\t\t",
-                    #         )
-                    #     break
-                    # elif np.any(init_i == extra_remainder + n_per_col + per_col_remainder - 1):
-                    #     init_i_idxs = np.argwhere(init_i < n_per_col + per_col_remainder + extra_remainder - 1)
-                    #     if init_i_idxs.size == 0:
-                    #         init_i_idxs = np.argwhere(init_i < n_per_col + per_col_remainder + extra_remainder)
-                    #         remainder_idxs = np.argwhere(extra_remainder == 0)
-                    #         order_idxs = np.intersect1d(init_i_idxs, remainder_idxs, assume_unique=True)
-                    #         if order_idxs.size == 0:
-                    #             return False
-                    #         order_idxs = np.intersect1d(order, order_idxs, assume_unique=True)
-                    #         extra_remainder[order[order_idxs[-1]]] = 1
-                    #     else:
-                    #         order_idxs = np.intersect1d(order, init_i_idxs, assume_unique=True)
-                    # init_i[order[order_idxs[-1]]] += 1
+                        continue  # if idx_choices.flatten().size == 0:  #     return False  # if np.any(extra_remainder == 0) and idx_choices.flatten().size < n_col_ucs + per_col_remainder and np.all(init_i == n_per_col + per_col_remainder):  #     if np.all(init_i + extra_remainder == n_per_col + per_col_remainder):  #     extra_remainder[np.intersect1d(order, np.argwhere(extra_remainder == 0))[-1]] += 1  #     continue  #     else:  #     return False  # elif (  #     idx_choices.flatten().size == prev.flatten().size  #     and np.equal(  #         idx_choices.flatten(), prev.flatten()  #     ).all()) and np.all(init_i + extra_remainder <= n_per_col + per_col_remainder):  #         if np.all(init_i + extra_remainder == n_per_col + per_col_remainder):  #             extra_remainder = 1  #         continue  # elif np.min(init_i) < n_per_col - per_col_remainder - 1:  #     new_init_i = np.where(init_i == min(min(init_i), n_per_col - per_col_remainder - 1), init_i + 1, init_i)  #     if not np.equal(new_init_i, init_i).all():  #         init_i = new_init_i  #         continue  #     elif n_col_ucs <= n_per_col:  #         n_col_ucs = n_per_col + 1  #         continue  # elif n_col_ucs <= n_per_col:  #     n_col_ucs += 1  # elif n_add_ucs == idx_choices.flatten().size:  #     if self.debug:  #         logger.finfo(f"Row {axis_id}:", indent="\t")  #         logger.finfo(  #             f"Adding {n_add_ucs} from {idx_choices.flatten()}",  #             indent="\t\t",  #         )  #     break  # elif np.any(init_i == extra_remainder + n_per_col + per_col_remainder - 1):  #     init_i_idxs = np.argwhere(init_i < n_per_col + per_col_remainder + extra_remainder - 1)  #     if init_i_idxs.size == 0:  #         init_i_idxs = np.argwhere(init_i < n_per_col + per_col_remainder + extra_remainder)  #         remainder_idxs = np.argwhere(extra_remainder == 0)  #         order_idxs = np.intersect1d(init_i_idxs, remainder_idxs, assume_unique=True)  #         if order_idxs.size == 0:  #             return False  #         order_idxs = np.intersect1d(order, order_idxs, assume_unique=True)  #         extra_remainder[order[order_idxs[-1]]] = 1  #     else:  #         order_idxs = np.intersect1d(order, init_i_idxs, assume_unique=True)  # init_i[order[order_idxs[-1]]] += 1
 
-                    # elif extra_remainder == 0 and np.all(init_i >= n_per_col + per_col_remainder - 1):
-                    #     extra_remainder = 1
-                    #     continue
-                    # elif np.any(init_i < extra_remainder + n_per_col + per_col_remainder) and np.any(extra_remainder == 0):
+                    # elif extra_remainder == 0 and np.all(init_i >= n_per_col + per_col_remainder - 1):  #     extra_remainder = 1  #     continue  # elif np.any(init_i < extra_remainder + n_per_col + per_col_remainder) and np.any(extra_remainder == 0):
 
-                    # free_cols = np.logical_and(
-                    #     free,
-                    #     combined_counts
-                    #     < n_col_ucs + max(1, per_col_remainder),
-                    # )
+                    # free_cols = np.logical_and(  #     free,  #     combined_counts  #     < n_col_ucs + max(1, per_col_remainder),  # )
                 if (
                     idx_choices is None
                     or idx_choices.flatten().size < n_add_ucs
@@ -1595,12 +1629,14 @@ class Sheet:
         else:
             symbol_arr = symbol_arr.T
         # if self.debug:
-        logger.finfo("Added charges:")
+        logger.finfo("Added charges:", indent="\t")
         for k, v in symbol_dict.items():
-            logger.finfo(kwd_str=f"{k}: ", message=f"{v:2.1f}", indent="\t")
-        logger.finfo("Final charge arrangement:")
+            logger.finfo(kwd_str=f"{k}: ", message=f"{v:2.1f}", indent="\t\t")
+        logger.finfo(
+            "Final charge arrangement:", initial_linebreak=True, indent="\t"
+        )
         for line in symbol_arr:
-            logger.finfo("  ".join(line), indent="\t")
+            logger.finfo("  ".join(line), indent="\t\t")
         return uc_ids
 
     def get_all_diagonals(self, arr):

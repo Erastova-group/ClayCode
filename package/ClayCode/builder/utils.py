@@ -93,6 +93,7 @@ def get_checked_input(
     result: Optional[Any] = None,
     re_flags=0,
     exit_val: str = "e",
+    default_val: Optional[Any] = None,
     *result_init_args,
     **result_init_kwargs,
 ) -> Any:
@@ -116,13 +117,21 @@ def get_checked_input(
     :return: User input or result
     :rtype: Any
     """
+    if default_val is not None:
+        default_str = f" (default: {default_val!r} "
+    else:
+        default_str = " ("
+    if exit_val is not None and len(exit_val) >= 1:
+        exit_str = f" or exit with {exit_val!r})"
+    else:
+        exit_str = ")"
     while not isinstance(result, result_type):
-        result_input = input(f"{query} (or exit with {exit_val!r})\n").strip(
-            " "
-        )
+        result_input = input(f"{query}{default_str}{exit_str}:\n").strip(" ")
         if result_input == exit_val:
             logger.info(f"Selected {exit_val!r}, exiting.")
             sys.exit(0)
+        elif result_input == "" and default_val is not None:
+            result_input = default_val
         try:
             result_match = re.match(
                 check_value, result_input, flags=re_flags
