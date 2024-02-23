@@ -27,7 +27,7 @@ from ClayCode.core.classes import (
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
-from ClayCode.core.consts import ANGSTROM
+from ClayCode.core.consts import ANGSTROM, TABSIZE
 from ClayCode.core.utils import SubprocessProgressBar, execute_shell_command
 from ClayCode.data.consts import MDP, MDP_DEFAULTS
 
@@ -98,14 +98,36 @@ class GMXCommands:
         """
         self.gmx_alias = gmx_alias
         _ = self.gmx_header
-        try:
-            self._mdp_template = mdp_template
-        except TypeError:
-            pass
+        # try:
+        #     self._mdp_template = mdp_template
+        # except TypeError:
+        #     pass
         self._mdp_template = mdp_template
         self._mdp_defaults = mdp_defaults
         self.logger = logging.getLogger(self.__class__.__name__)
         logger.finfo(f"{self.gmx_info}", initial_linebreak=True)
+        self._default_mdp_file = None
+        self._init_default_mdp_file()
+
+    def _init_default_mdp_file(self):
+        if self._default_mdp_file is None:
+            _default_mdp_file = tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=".mdp",
+                prefix=f"{self.gmx_alias}_{self.version}_mdp_prms",
+            )
+
+            default_mdp = MDP_DEFAULTS[int(self.version)]
+            default_mdp = list(
+                map(
+                    lambda prms: f"{prms[0]:<30} = {prms[1]:<30}\n",
+                    default_mdp.items(),
+                )
+            )
+            default_mdp = "".join(default_mdp)
+            with open(_default_mdp_file.name, "w") as mdp_file:
+                mdp_file.write(default_mdp)
+            self._default_mdp_file = MDPFile(_default_mdp_file.name)
 
     @property
     def mdp_defaults(self) -> Dict[str, Any]:
@@ -122,7 +144,10 @@ class GMXCommands:
         """File with default MDP options for GROMACS version
         :return: MDP file
         :rtype: MDPFile"""
-        return MDPFile(MDP / self.version / "mdp_prms.mdp")
+        return MDPFile(
+            self._default_mdp_file
+        )  # MDPFile(MDP / self.version / "mdp_prms.mdp")
+        # return MDPFile(MDP / self.version / "mdp_prms.mdp")
 
     @property
     def mdp_string(self) -> str:
@@ -219,16 +244,24 @@ class GMXCommands:
             try:
                 for parameter, value in prm_dict.items():
                     logger.debug(f"{parameter}: {value}")
-                    mdp_str = set_mdp_parameter(parameter, value, mdp_str)
+                    if value != "":
+                        mdp_str = set_mdp_parameter(parameter, value, mdp_str)
             except AttributeError:
                 logger.debug("No parameters/run type defined.")
+        if isinstance(freeze_grps, str):
+            freeze_grps = [freeze_grps]
         if isinstance(freeze_dims, list) and isinstance(freeze_grps, list):
             mdp_str = set_mdp_freeze_groups(
                 uc_names=freeze_grps,
                 file_or_str=mdp_str,
                 freeze_dims=freeze_dims,
             )
-
+        mdp_str = re.sub(
+            "(^|\n)[^\n]*?\s*?=\s*?\n",
+            r"\1",
+            mdp_str,
+            flags=re.MULTILINE | re.DOTALL,
+        )
         with open(file, "w") as mdp_outfile:
             mdp_outfile.write(mdp_str)
         return mdp_temp_file
@@ -239,11 +272,17 @@ class GMXCommands:
         def func_decorator(func: Callable):
             def wrapper(self, debug_mode=False, **kwdargs):
                 gmx_args = copy.copy(commandargs_dict)
-                for arg in kwdargs.keys():
-                    if arg in gmx_args.keys():
-                        gmx_args[arg] = str(kwdargs[arg])
+                for arg, val in kwdargs.items():
+                    if val is None:
+                        logger.fdebug(
+                            debug_mode,
+                            'Skipping argument "{arg}" with value "None"',
+                        )
+                        continue
+                    elif arg in gmx_args.keys():
+                        gmx_args[arg] = str(val)
                     elif arg in opt_args_list:
-                        gmx_args[arg] = str(kwdargs[arg])
+                        gmx_args[arg] = str(val)
                     else:
                         warnings.warn(
                             rf'Invalid argument "-{arg}" passed to "gmx '
@@ -279,7 +318,6 @@ class GMXCommands:
                             gmx_args["f"] = temp_file
                     else:
                         logger.warning("Bug: This point should ot be reached!")
-
                 kwd_str = " ".join(
                     list(
                         map(
@@ -301,7 +339,7 @@ class GMXCommands:
                             f"\t{arrow} Running {self.gmx_alias} {command!r}"
                         )
                         if debug_mode:
-                            self.label += f" {kwd_str} - nobackup"
+                            self.label += f" {kwd_str} -nobackup"
                         progress_bar = SubprocessProgressBar(label=label)
                         output = progress_bar.run_with_progress(
                             execute_shell_command,
@@ -312,12 +350,12 @@ class GMXCommands:
                         #         f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
                         #     )
                     except FileNotFoundError as e:
-                        logger.error("This point should not be reached!")
-                        sys.exit()
+                        logger.ferror("This point should not be reached!")
+                        sys.exit(1)
                     except AttributeError:
                         pass
                     except sp.CalledProcessError as e:
-                        logger.error(
+                        logger.ferror(
                             f"GROMACS raised error code {e.returncode}!\n"
                         )
                         print_error = select_input_option(
@@ -341,13 +379,16 @@ class GMXCommands:
                                     temp_file.unlink()
                                 except AttributeError:
                                     pass
-                        sys.exit(e.returncode)
+                        # sys.exit(e.returncode)
+                        sys.exit(3)
                 out, err = output.stdout, output.stderr
                 error = self.search_gmx_error(err)
                 if error is None:
                     logger.debug(
                         f"{self.gmx_alias} {command} completed successfully."
                     )
+                else:
+                    pass
                 if command == "mdrun":
                     return (
                         error,
@@ -452,7 +493,7 @@ class GMXCommands:
             "maxwarn": 0,
             "renum": "",
         },
-        opt_args_list=["ndx", "v", "nov", "renum", "norenum", "t"],
+        opt_args_list=["n", "v", "nov", "renum", "norenum", "t"],
     )
     def run_gmx_grompp(
         self,
@@ -695,6 +736,55 @@ class GMXCommands:
             logger.debug(f"{self.gmx_alias} genion completed successfully.")
             return err, out  # -> gmx process stderr, gmx process stdout
 
+    def run_gmx_make_ndx_with_new_sel(
+        self, f: str, o: str, sel_str: str, sel_name: Optional[str] = None
+    ) -> str:
+        """
+        Write index for crdin file to ndx.
+        :param f: crdin filename
+        :type f: str
+        :param o: ndx filename
+        :type o: str
+        """
+        output = execute_shell_command(
+            f'echo " {sel_str} \n q" | {self.gmx_alias} make_ndx -f {f} -o {o} -nobackup'
+        )
+        outfile = Path(o)
+        if not outfile.is_file():
+            logger.ferror(f"No index file {o!r} was written.")
+            sys.exit(3)
+        out, err = output.stdout, output.stderr
+        group_outp = re.search(
+            r"\n>.*\n\s*\d+\s+(.*)\s*:\s+(\d+)\s+atoms\s*\n.*>",
+            out,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        if group_outp is None:
+            logger.ferror(
+                f"Invalid group selector: {sel_str}.\n No group was created."
+            )
+            sys.exit(3)
+        else:
+            group_name = group_outp.group(1)
+            group_n_atoms = int(group_outp.group(2))
+        if sel_name is not None:
+            with open(o, "r") as ndx_file:
+                ndx_str = ndx_file.read()
+            ndx_str = re.sub(
+                f"\[ {re.escape(group_name)} \]",
+                f"[ {sel_name} ]",
+                ndx_str,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            with open(o, "w") as ndx_file:
+                ndx_file.write(ndx_str)
+            group_name = sel_name
+        logger.finfo(
+            f"Group {group_name!r} with {group_n_atoms} atoms was created.",
+            indent="\t",
+        )
+        return out
+
     def run_gmx_genion_add_n_ions(
         self,
         s: str,
@@ -774,14 +864,14 @@ class GMXCommands:
                 out,
                 flags=re.MULTILINE | re.IGNORECASE,
             ):
-                logger.error("GROMACS terminated due to LINCS warnings!")
+                logger.ferror("GROMACS terminated due to LINCS warnings!")
             elif re.search(
                 r"The largest distance between excluded atoms is .*?"
                 r" forces and energies.",
                 out,
                 flags=re.MULTILINE | re.DOTALL,
             ):
-                logger.error(
+                logger.ferror(
                     "GROMACS terminated due to too large distance between atoms!"
                 )
             else:
@@ -805,4 +895,4 @@ def check_box_lengths(mdp_prms, box_dims):
             f"the selected GROMACS cutoff ({max_cutoff:.1f} {ANGSTROM}).\n\n"
             f"Aborting model construction."
         )
-        sys.exit(2)
+        sys.exit(4)
