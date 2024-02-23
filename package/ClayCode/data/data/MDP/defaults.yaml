@@ -963,6 +963,7 @@ EM:
   rlist: "1.2"
   rvdw: "1.2"
   tcoupl: "no"
+  comm-mode: "none"
 GENION:
   constraints: "none"
   coulombtype: "PME"
