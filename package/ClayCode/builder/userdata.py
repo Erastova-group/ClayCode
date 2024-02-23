@@ -19,7 +19,7 @@ from ClayCode.core.classes import (
     PathListFactory,
     YAMLFile,
 )
-from ClayCode.core.consts import DATA, FF, UCS
+from ClayCode.data.consts import DATA, FF, UCS, USER_FF, USER_UCS
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class UserData:
     >>> u.add("/path/to/new_ff.ff", dtype="FF", new_name="NewFF.ff", exists_ok=True, filenames=["ffnonbonded", "spc"])
     """
 
-    _dest = {"FF": FF, "UCS": UCS}
+    _dest = {"FF": USER_FF, "UCS": USER_UCS}
     _added_files_yaml = YAMLFile(DATA / "user_files.yaml")
     _odir = DATA
 
@@ -99,6 +99,11 @@ class UserData:
                     )
                     sys.exit(2)
 
+                if new_name in Dir(UCS).filelist.names:
+                    logger.error(
+                        f"New data directory {new_name!r} already exists in core unit cell database, please choose different name.\nAborting data addition."
+                    )
+                    sys.exit(2)
                 exists_ok = select_input_option(
                     instance_or_manual_setup=False,
                     query="Write into existing directory?\n [y]es/[n]o (default no)",
