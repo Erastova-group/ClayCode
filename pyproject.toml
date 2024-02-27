@@ -22,19 +22,18 @@ dependencies = ['matplotlib>=3.6.2',
     'numba>=0.57',
     'pytest',
     "nglview>=3.0",
-    ]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: BSD License",
-    "Operating System :: OS Independent"
+    "unicodeit"
 ]
+classifiers = ["Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent"]
 
 [project.scripts]
 ClayCode = "ClayCode:__main__.run"
 
 [tool.setuptools.packages.find]
 namespaces = true
-where=['package', 'tests']
+where = ['package', 'tests']
 
 [tool.setuptools]
 include-package-data = true
@@ -75,16 +74,14 @@ exclude = '''
 )/
 '''
 [project.optional-dependencies]
-test = [
-"pytest>=6.0",
-"pytest-xdist>=2.5",
-"pytest-cov>=3.0",
-
+test = ["pytest>=6.0",
+    "pytest-xdist>=2.5",
+    "pytest-cov>=3.0",
 ]
 
 [tool.pytest.ini_options]
+addopts = "-s"
 minversion = "6.0"
-testpaths = [
-"ClayCodeTests",
+testpaths = ["ClayCodeTests",
 ]
 python_files = ["test_*.py", "*_test.py", "test.py"]
