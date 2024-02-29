@@ -2201,11 +2201,12 @@ class Solvent:
             )
 
 
-if __name__ == "__main__":
-    gc = GMXCommands(gmx_alias="gmx_mpi")
-    gc.run_gmx_make_ndx_with_new_sel(
-        f=Path("/storage/new_clays/Na/NAu-1-fe/NAu-1-fe_7_5_solv_ions.gro"),
-        o=Path("index.ndx"),
-        sel_str="r T2* & ! a OH* HO*",
-        sel_name="new_sel",
-    )
+#
+# if __name__ == "__main__":
+#     gc = GMXCommands(gmx_alias="gmx_mpi")
+#     gc.run_gmx_make_ndx_with_new_sel(
+#         f=Path("/storage/new_clays/Na/NAu-1-fe/NAu-1-fe_7_5_solv_ions.gro"),
+#         o=Path("index.ndx"),
+#         sel_str="r T2* & ! a OH* HO*",
+#         sel_name="new_sel",
+#     )
