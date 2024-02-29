@@ -4,6 +4,7 @@ r""":mod:`ClayCode.builder.assembly` --- Assembly of clay models
 ==============================================================="""
 from __future__ import annotations
 
+import copy
 import itertools
 import logging
 import math
@@ -21,11 +22,24 @@ import pandas as pd
 import unicodeit
 from ClayCode.builder.claycomp import InterlayerIons, UCData
 from ClayCode.builder.topology import TopologyConstructor
-from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
-from ClayCode.core.consts import ANGSTROM
-from ClayCode.core.gmx import GMXCommands, add_gmx_args, check_box_lengths
+from ClayCode.core.classes import (
+    Dir,
+    FileFactory,
+    GROFile,
+    TOPFile,
+    set_mdp_freeze_groups,
+    set_mdp_parameter,
+)
+from ClayCode.core.consts import ANGSTROM, LINE_LENGTH
+from ClayCode.core.gmx import (
+    GMXCommands,
+    add_gmx_args,
+    check_box_lengths,
+    gmx_command_wrapper,
+)
 from ClayCode.core.lib import (
     add_ions_n_mols,
+    add_ions_neutral,
     add_resnum,
     center_clay,
     check_insert_numbers,
@@ -35,7 +49,7 @@ from ClayCode.core.lib import (
     write_insert_dat,
 )
 from ClayCode.core.utils import backup_files, get_header, get_subheader
-from ClayCode.data.consts import GRO_FMT
+from ClayCode.data.consts import FF, GRO_FMT, MDP, MDP_DEFAULTS
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.lib.mdamath import triclinic_box, triclinic_vectors
 from MDAnalysis.units import constants
@@ -635,7 +649,7 @@ class Builder:
             if excess_charge != 0:
                 neutral_bulk_ions = InterlayerIons(
                     excess_charge,
-                    ion_ratios=self.args.bulk_ions,
+                    ion_ratios=self.args.bulk_ions.df["conc"].to_dict(),
                     n_ucs=1,
                     neutral=True,
                 )
@@ -2184,3 +2198,14 @@ class Solvent:
                 f"insert {added_wat} instead of {self.n_mols} water "
                 f"molecules."
             )
+
+
+#
+# if __name__ == "__main__":
+#     gc = GMXCommands(gmx_alias="gmx_mpi")
+#     gc.run_gmx_make_ndx_with_new_sel(
+#         f=Path("/storage/new_clays/Na/NAu-1-fe/NAu-1-fe_7_5_solv_ions.gro"),
+#         o=Path("index.ndx"),
+#         sel_str="r T2* & ! a OH* HO*",
+#         sel_name="new_sel",
+#     )

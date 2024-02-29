@@ -754,8 +754,33 @@ class GMXCommands:
             logger.ferror(f"No index file {o!r} was written.")
             sys.exit(3)
         out, err = output.stdout, output.stderr
+        # group_outp_error = re.search(
+        #     r"\n>.*\n\s*\d+\s+(.*)\s*:\s+(\d+)\s+atoms\s*\n.*>",
+        #     out,
+        #     flags=re.MULTILINE | re.DOTALL,
+        # )
+        no_residue = re.search(
+            "\n>\s*?\n.*?\nFound 0 atoms with (.*?)\s*?\n",
+            out,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        if no_residue is not None:
+            logger.ferror(
+                f"Invalid group selector: {sel_str}.\n No atoms with {no_residue.group(1)} were found."
+            )
+            sys.exit(3)
+        syntax_error = re.search(
+            "\n>\s*?\n.*?\nSyntax error: (.*?)\n.*?\n>",
+            out,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        if syntax_error is not None:
+            logger.ferror(
+                f"Invalid group selector: {sel_str}.\n {syntax_error.group(1)}"
+            )
+            sys.exit(3)
         group_outp = re.search(
-            r"\n>.*\n\s*\d+\s+(.*)\s*:\s+(\d+)\s+atoms\s*\n.*>",
+            r"\n>\s*?\n.*?(\d+)\s*?(atoms)\s*?\n+?>",
             out,
             flags=re.MULTILINE | re.DOTALL,
         )
@@ -765,8 +790,11 @@ class GMXCommands:
             )
             sys.exit(3)
         else:
-            group_name = group_outp.group(1)
-            group_n_atoms = int(group_outp.group(2))
+            group_name = re.sub("\s+", "_", sel_str)
+            group_name = re.sub("[rati]_", "", group_name)
+            group_name = re.sub("!_", "!", group_name)
+            # group_name = group_outp.group(1)
+            group_n_atoms = int(group_outp.group(1))
         if sel_name is not None:
             with open(o, "r") as ndx_file:
                 ndx_str = ndx_file.read()
