@@ -780,7 +780,7 @@ class GMXCommands:
             )
             sys.exit(3)
         group_outp = re.search(
-            r"\n>\s*?\n.*?(\d+)\s*?(atoms)\s*?\n+?>",
+            r"\n>\s*?\n.*?(\d+)\s*?(atoms)?\s*?\n+?>",
             out,
             flags=re.MULTILINE | re.DOTALL,
         )
@@ -791,7 +791,7 @@ class GMXCommands:
             sys.exit(3)
         else:
             group_name = re.sub("\s+", "_", sel_str)
-            group_name = re.sub("[rati]_", "", group_name)
+            group_name = re.sub("[rati]_?", r"", group_name)
             group_name = re.sub("!_", "!", group_name)
             # group_name = group_outp.group(1)
             group_n_atoms = int(group_outp.group(1))
