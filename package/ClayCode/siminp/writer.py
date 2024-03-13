@@ -117,6 +117,11 @@ class GMXRun(UserDict, ABC):
         if run_id == 1 and igro is None:
             raise ValueError(f"First run requires GRO file specification")
         elif igro is not None:
+            igro = FileFactory(igro)
+            if not igro.__class__ == GROFile:
+                logger.error(
+                    f"GRO file does not have correct suffix: '{igro.suffix}'"
+                )
             self.gro = igro
             if itop is None:
                 self.top = self.gro.top
@@ -1048,11 +1053,10 @@ class MDPRunGenerator:
                     run.gro = prev_gro
                     new_top = run.odir / prev_top.name
                     try:
-                        shutil.copy2(init_top, new_top)
+                        shutil.copy2(prev_top, new_top)
                     except shutil.SameFileError:
                         pass
-                    else:
-                        run.top = new_top
+                    run.top = new_top
                     run.cpt = prev_cpt
                 if run.__class__.__name__ == "DSpaceRun":
                     run_name = f"{run.name}_NpT"
