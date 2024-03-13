@@ -9,6 +9,7 @@ import io
 import logging
 import math
 import os
+import pickle
 import re
 import shutil
 import subprocess as sp
@@ -60,6 +61,54 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+def progress_wrapper(f):
+    @wraps(f)
+    def wrapper(
+        instance, *args, load_progress=False, save_progress=False, **kwargs
+    ):
+        instance.loaded_data = False
+        if (load_progress or save_progress) and not hasattr(
+            instance, "_progress"
+        ):
+            instance._add_progress_file()
+        if load_progress:
+            new_instance = instance._load_progress(key=f.__name__)
+            if new_instance is not None:
+                instance = new_instance
+                instance.loaded_data = True
+            result = None
+        if not instance.loaded_data:
+            result = f(instance, *args, **kwargs)
+            if save_progress:
+                instance._save_progress(key=f.__name__)
+        return result
+
+    return wrapper
+
+
+def load_progress(instance, key):
+    if instance._progress.exists():
+        with open(instance._progress, "rb") as file:
+            progress_dict = pickle.load(file)
+        try:
+            logger.finfo(f"Loaded progress from {instance._progress.name!r}.")
+            return progress_dict[key]
+        except KeyError:
+            return None
+
+
+def save_progress(instance, key):
+    if instance._progress.exists():
+        with open(instance._progress, "rb") as file:
+            progress_dict = pickle.load(file)
+    else:
+        progress_dict = {}
+    progress_dict[key] = instance
+    with open(instance._progress, "wb") as file:
+        pickle.dump(progress_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
+    logger.fdebug(f"Saved progress to {instance._progress.name!r}.")
 
 
 def remove_files(path, searchstr):

@@ -5,12 +5,14 @@ import logging
 import sys
 
 from ClayCode import ArgsFactory, BuildArgs, ClayCodeLogger, SiminpArgs, parser
+from ClayCode.analysis.dataclasses import Data, Data2D
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.parsing import DataArgs
+from ClayCode.core.parsing import AnalysisArgs, DataArgs, PlotArgs
 from ClayCode.data.ucgen import UCWriter
 
 __all__ = ["run"]
 
+from ClayCode.plot.plots import HistPlot, HistPlot2D, LinePlot
 
 logging.setLoggerClass(ClayCodeLogger)
 
@@ -49,6 +51,7 @@ def run_builder(args: BuildArgs):
                 ion_add_func=clay_builder.add_bulk_ions,
                 solvent_remove_func=clay_builder.remove_SOL,
                 backup=clay_builder.args.backup,
+                solvent_rename_func=lambda: None,  # .rename_il_solv,
             )
         completed = clay_builder.run_em(
             backup=clay_builder.args.backup,
@@ -90,6 +93,145 @@ def run_builder(args: BuildArgs):
     return 0
 
 
+def add_new_uc_type(args):
+    uc_writer = UCWriter(
+        args.ingro,
+        args.uc_type,
+        args.outpath,
+        default_solv=args.default_solv,
+        substitutions=args.substitutions,
+    )
+    uc_writer.write_new_uc(args.uc_name)
+    uc_writer.add_single_substitutions()
+    uc_writer.add_double_substitutions()
+    uc_writer.add_triple_substitutions()
+
+
+def plot_data(args):
+    if args.odir is False:
+        plsave = False
+        odir = None
+    else:
+        plsave = True
+        odir = args.odir
+    if args.data2d is True:
+        data = Data2D(
+            indir=args.idir,
+            zdir=args.zdir,
+            namestem=args.namestem,
+            cutoff=args.cutoff,
+            bins=args.bins,
+            ions=args.ions,
+            aas=args.aas,
+            clays=args.clays,
+            load=False,
+            odir=odir,
+            nameparts=1,
+            atoms=args.atoms,
+            zstem="zdist",
+            zname="zdens",
+            analyses=[args.analysis],
+        )
+        atoms = args.atoms
+    else:
+        atoms = args.atoms
+        if args.atypes is not None:
+            data = AtomTypeData2D(
+                indir=args.datadir,
+                cutoff=args.cutoff,
+                bins=args.bins,
+                new_bins=args.new_bins,
+                odir=args.idir,
+                namestem=args.namestem,
+                nameparts=1,
+                ions=args.ions,
+                aas=args.aas,
+                clays=args.clays,
+                atomnames="atype",
+                analysis=args.analysis,
+                atoms=atoms,
+                save=True,  # args.save,
+                overwrite=args.overwrite,
+                group_all=True,
+                load=args.load,  # '/storage/results.p'
+            )
+            if args.new_bins is not None:
+                args.bins = args.new_bins
+            atoms = None
+        data = Data(
+            indir=args.idir,
+            analysis=args.analysis,
+            namestem=args.namestem,
+            cutoff=args.cutoff,
+            bins=args.bins,
+            use_rel_data=args.use_rel,
+            ions=args.ions,
+            aas=args.aas,
+            clays=args.clays,
+            group_all=args.grouped,
+            atoms=atoms,
+            atomname=args.atomname,
+            load=False,
+        )
+
+        data.ignore_density_sum = args.ignore_sum
+    logger.info(f"Start")
+    plot_method = {"i": lambda x: x.plot_ions, "o": lambda x: x.plot_other}
+
+    if args.data2d is False:
+        if args.gbars is True:
+            plot = GaussHistPlot(data, add_missing_bulk=args.add_bulk)
+            for s in args.sel:
+                plot_method[s](plot)(
+                    x=args.x,
+                    y=args.y,
+                    bars=args.plsel,
+                    dpi=200,
+                    columnlabel=rf"{args.xlabel}",  # r"distance from surface (\AA)",
+                    rowlabel=rf"{args.ylabel}",  # 'closest atom type',# r"$\rho_z$ ()",
+                    plsave=plsave,
+                    odir=args.odir,
+                    ylim=args.ymax,
+                    plot_table=args.table,
+                )
+        elif args.lines:
+            plot = LinePlot(data)
+            for s in args.sel:
+                plot_method[s](plot)(
+                    x=args.x,
+                    y=args.y,
+                    lines=args.plsel,
+                    ylim=args.ymax,
+                    dpi=200,
+                    columnlabel=rf"{args.xlabel}",  # r"distance from surface (\AA)",
+                    rowlabel=rf"{args.ylabel}",  # 'closest atom type',# r"$\rho_z$ ()",
+                    plsave=plsave,
+                    xlim=args.xmax,
+                    odir=args.odir,  # "/storage/plots/aadist_u/",
+                    edges=args.edges,
+                    figsize=args.figsize,
+                    colours=args.colours,
+                )
+        elif args.bars:
+            plot = HistPlot(data)  # , add_missing_bulk=args.add_missing_bulk)
+            for s in args.sel:
+                plot_method[s](plot)(
+                    x=args.x,
+                    y=args.y,
+                    bars=args.plsel,
+                    dpi=200,
+                    columnlabel=rf"{args.xlabel}",  # r"distance from surface (\AA)",
+                    rowlabel=rf"{args.ylabel}",  # 'closest atom type',# r"$\rho_z$ ()",
+                    plsave=plsave,
+                    odir=args.odir,
+                    ylim=args.ymax,
+                    plot_table=args.table,
+                )
+    else:
+        plot = HistPlot2D(data, col_sel=["rdens"], select="ions")
+        plot.plot_ions(x="aas", y="clays", bars="atoms", col_sel=["rdens"])
+
+
 def run():
     """Run ClayCode."""
     args = parser.parse_args(sys.argv[1:])
@@ -97,20 +239,17 @@ def run():
     args = args_factory.init_subclass(args)
     if isinstance(args, SiminpArgs):
         args.write_runs()
-    if isinstance(args, DataArgs):
-        uc_writer = UCWriter(
-            args.ingro,
-            args.uc_type,
-            args.outpath,
-            default_solv=args.default_solv,
-            substitutions=args.substitutions,
-        )
-        uc_writer.write_new_uc(args.uc_name)
-        uc_writer.add_single_substitutions()
-        uc_writer.add_double_substitutions()
-        uc_writer.add_triple_substitutions()
+    elif isinstance(args, DataArgs):
+        add_new_uc_type(args)
     elif isinstance(args, BuildArgs):
         run_builder(args)
+    elif isinstance(args, PlotArgs):
+        plot_data(args)
+    elif isinstance(args, AnalysisArgs):
+        pass
+    else:
+        logger.ferror(f"Unknown args type: {args}")
+        return 1
     return 0
 
 

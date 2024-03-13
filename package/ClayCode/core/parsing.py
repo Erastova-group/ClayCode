@@ -8,9 +8,10 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import sys
 from abc import ABC, abstractmethod
-from argparse import ArgumentParser
+from argparse import ArgumentParser, FileType
 from collections import UserDict
 from functools import cached_property
 from typing import Any, Dict, List, Tuple, Type, Union
@@ -20,10 +21,18 @@ import numpy as np
 import pandas as pd
 import yaml
 from caseless_dictionary import CaselessDict
+from ClayCode import PathType
 from ClayCode.addmols.consts import ADDMOLS_DEFAULTS as _addmols_defaults
 from ClayCode.addmols.consts import ADDTYPES
 from ClayCode.builder.consts import BUILDER_DATA
-from ClayCode.core.classes import BasicPath, Dir, File, ForceField, init_path
+from ClayCode.core.classes import (
+    BasicPath,
+    Dir,
+    File,
+    ForceField,
+    PathFactory,
+    init_path,
+)
 from ClayCode.core.consts import ANGSTROM
 from ClayCode.core.lib import select_clay
 from ClayCode.core.utils import (
@@ -122,6 +131,22 @@ buildparser.add_argument(
     help="Set maximum number of unit cells used in model.",
     dest="MAX_UCS",
     default=None,
+    required=False,
+)
+buildparser.add_argument(
+    "--save-progress",
+    help="Save progress",
+    dest="SAVE_PROGRESS",
+    action="store_true",
+    default=False,
+    required=False,
+)
+buildparser.add_argument(
+    "--load-progress",
+    help="Load progress",
+    dest="LOAD_PROGRESS",
+    action="store_true",
+    default=False,
     required=False,
 )
 
@@ -269,129 +294,138 @@ ion_add_group.add_argument(
 
 # Clay simulation analysis parser
 analysisparser = subparsers.add_parser(
-    "analyse", help="Analyse clay simulations."
+    "analysis", help="Analyse clay simulations."
 )
 
 analysisparser.add_argument(
-    "-name", type=str, help="System name", dest="sysname", required=True
-)
-analysisparser.add_argument(
-    "-inp",
-    type=str,
-    help="Input file names",
-    nargs=2,
-    metavar=("coordinates", "trajectory"),
-    dest="infiles",
-    required=False,
-)
-analysisparser.add_argument(
-    "-inpname",
-    type=str,
-    help="Input file names",
-    metavar="name_stem",
-    dest="inpname",
-    required=False,
-)
-analysisparser.add_argument(
-    "-uc",
-    type=str,
-    help="Clay unit cell type",
-    dest="clay_type",
+    "-f",
+    type=File,
+    help="YAML file with analysis parameters",
+    metavar="yaml_file",
+    dest="yaml_file",
     required=True,
-)
-analysisparser.add_argument(
-    "-sel",
-    type=str,
-    nargs="+",
-    help="Atom type selection",
-    dest="sel",
-    required=True,
-)
-analysisparser.add_argument(
-    "-n_bins",
-    default=None,
-    type=int,
-    help="Number of bins in histogram",
-    dest="n_bins",
-)
-analysisparser.add_argument(
-    "-bin_step",
-    type=float,
-    default=None,
-    help="bin size in histogram",
-    dest="bin_step",
-)
-analysisparser.add_argument(
-    "-xyrad",
-    type=float,
-    default=3,
-    help="xy-radius for calculating z-position clay surface",
-    dest="xyrad",
-)
-analysisparser.add_argument(
-    "-cutoff",
-    type=float,
-    default=20,
-    help="cutoff in z-direction",
-    dest="cutoff",
 )
 
-analysisparser.add_argument(
-    "-start",
-    type=int,
-    default=None,
-    help="First frame for analysis.",
-    dest="start",
-)
-analysisparser.add_argument(
-    "-step",
-    type=int,
-    default=None,
-    help="Frame steps for analysis.",
-    dest="step",
-)
-analysisparser.add_argument(
-    "-stop",
-    type=int,
-    default=None,
-    help="Last frame for analysis.",
-    dest="stop",
-)
-analysisparser.add_argument(
-    "-out",
-    type=str,
-    help="Filename for results pickle.",
-    dest="save",
-    default=True,
-)
-analysisparser.add_argument(
-    "-check_traj",
-    type=int,
-    default=False,
-    help="Expected trajectory length.",
-    dest="check_traj_len",
-)
-analysisparser.add_argument(
-    "--write_z",
-    type=str,
-    default=True,
-    help="Binary array output of selection z-distances.",
-    dest="write",
-)
-analysisparser.add_argument(
-    "--overwrite",
-    action="store_true",
-    default=False,
-    help="Overwrite existing z-distance array data.",
-    dest="overwrite",
-)
-analysisparser.add_argument(
-    "--update",
-    action="store_true",
-    default=False,
-    help="Overwrite existing trajectory and coordinate array data.",
-    dest="new",
-)
+# analysisparser.add_argument(
+#     "-name", type=str, help="System name", dest="sysname", required=True
+# )
+# analysisparser.add_argument(
+#     "-inp",
+#     type=str,
+#     help="Input file names",
+#     nargs=2,
+#     metavar=("coordinates", "trajectory"),
+#     dest="infiles",
+#     required=False,
+# )
+# analysisparser.add_argument(
+#     "-inpname",
+#     type=str,
+#     help="Input file names",
+#     metavar="name_stem",
+#     dest="inpname",
+#     required=False,
+# )
+# analysisparser.add_argument(
+#     "-uc",
+#     type=str,
+#     help="Clay unit cell type",
+#     dest="clay_type",
+#     required=True,
+# )
+# analysisparser.add_argument(
+#     "-sel",
+#     type=str,
+#     nargs="+",
+#     help="Atom type selection",
+#     dest="sel",
+#     required=True,
+# )
+# analysisparser.add_argument(
+#     "-n_bins",
+#     default=None,
+#     type=int,
+#     help="Number of bins in histogram",
+#     dest="n_bins",
+# )
+# analysisparser.add_argument(
+#     "-bin_step",
+#     type=float,
+#     default=None,
+#     help="bin size in histogram",
+#     dest="bin_step",
+# )
+# analysisparser.add_argument(
+#     "-xyrad",
+#     type=float,
+#     default=3,
+#     help="xy-radius for calculating z-position clay surface",
+#     dest="xyrad",
+# )
+# analysisparser.add_argument(
+#     "-cutoff",
+#     type=float,
+#     default=20,
+#     help="cutoff in z-direction",
+#     dest="cutoff",
+# )
+#
+# analysisparser.add_argument(
+#     "-start",
+#     type=int,
+#     default=None,
+#     help="First frame for analysis.",
+#     dest="start",
+# )
+# analysisparser.add_argument(
+#     "-step",
+#     type=int,
+#     default=None,
+#     help="Frame steps for analysis.",
+#     dest="step",
+# )
+# analysisparser.add_argument(
+#     "-stop",
+#     type=int,
+#     default=None,
+#     help="Last frame for analysis.",
+#     dest="stop",
+# )
+# analysisparser.add_argument(
+#     "-out",
+#     type=str,
+#     help="Filename for results pickle.",
+#     dest="save",
+#     default=True,
+# )
+# analysisparser.add_argument(
+#     "-check_traj",
+#     type=int,
+#     default=False,
+#     help="Expected trajectory length.",
+#     dest="check_traj_len",
+# )
+# analysisparser.add_argument(
+#     "--write_z",
+#     type=str,
+#     default=True,
+#     help="Binary array output of selection z-distances.",
+#     dest="write",
+# )
+# analysisparser.add_argument(
+#     "--overwrite",
+#     action="store_true",
+#     default=False,
+#     help="Overwrite existing z-distance array data.",
+#     dest="overwrite",
+# )
+# analysisparser.add_argument(
+#     "--update",
+#     action="store_true",
+#     default=False,
+#     help="Overwrite existing trajectory and coordinate array data.",
+#     dest="new",
+# )
 
 # plot analysis results
 plotparser = subparsers.add_parser(
@@ -403,6 +437,7 @@ plotparser.add_argument(
     type=File,
     help="File with plotting specifications",
     metavar="yaml_file",
+    dest="yaml_file",
 )
 plotgroup = plotparser.add_mutually_exclusive_group()
 plotgroup.add_argument("-lines", action="store_true", default=False)
@@ -560,31 +595,64 @@ def read_yaml_path_decorator(*path_args):
                     if k in path_args:
                         path = BasicPath(v).resolve()
                         if path.suffix != "":
-                            try:
-                                path = File(path, check=True)
-                            except FileNotFoundError:
+                            path_list = [path]
+                            for key in ["yaml_file", "INPATH"]:
                                 try:
-                                    path = File(
-                                        self.data["yaml_file"].parent / v,
-                                        check=True,
+                                    self.data[key] = BasicPath(
+                                        self.data[key], check=False
                                     )
-                                except FileNotFoundError:
-                                    try:
-                                        path = File(
-                                            self.data["INPATH"]
+                                except KeyError:
+                                    pass
+                                else:
+                                    if self.data[key].suffix != "":
+                                        self.data[key] = self.data[key].parent
+                                    path_list.extend(
+                                        [
+                                            self.data[key]
                                             / path.relative_to(path.cwd()),
-                                            check=True,
-                                        )
-                                        found = True
-                                    except KeyError:
-                                        found = False
-                                    except FileNotFoundError:
-                                        found = False
-                                    finally:
-                                        if not found:
-                                            raise FileNotFoundError(
-                                                f"File {v!r} not found!"
-                                            )
+                                            self.data[key] / v,
+                                        ]
+                                    )
+                            for path_option in path_list:
+                                try:
+                                    path_option = File(path_option, check=True)
+                                except FileNotFoundError:
+                                    found = False
+                                    pass
+                                else:
+                                    path = path_option
+                                    found = True
+                                    break
+                            if not found:
+                                raise FileNotFoundError(
+                                    f"File {v!r} not found!"
+                                )
+                            #
+                            # try:
+                            #     path = File(path, check=True)
+                            # except FileNotFoundError:
+                            #     try:
+                            #         path = File(
+                            #             self.data["yaml_file"].parent / v,
+                            #             check=True,
+                            #         )
+                            #     except FileNotFoundError:
+                            #         try:
+                            #             path = File(
+                            #                 self.data["INPATH"]
+                            #                 / path.relative_to(path.cwd()),
+                            #                 check=True,
+                            #             )
+                            #             found = True
+                            #         except KeyError:
+                            #             found = False
+                            #         except FileNotFoundError:
+                            #             found = False
+                            #         finally:
+                            #             if not found:
+                            #                 raise FileNotFoundError(
+                            #                     f"File {v!r} not found!"
+                            #                 )
                         else:
                             path = Dir(path)
                         v = str(path)
@@ -604,6 +672,7 @@ class _Args(ABC, UserDict):
     option = None
     _arg_defaults = {}
     _arg_names = []
+    data = {}
 
     def __init__(self, data: dict):
         self.data = data
@@ -743,6 +812,8 @@ class BuildArgs(_Args):
         "MAX_UCS",
         "MATCH_TOLERANCE",
         "EM_FREEZE_CLAY",
+        "SAVE_PROGRESS",
+        "LOAD_PROGRESS",
     ]
     _arg_defaults = _build_defaults
 
@@ -760,7 +831,7 @@ class BuildArgs(_Args):
         self._uc_name = None
         self.uc_stem = None
         self.name = None
-        self.outpath = None
+        self._outpath = None
         self.zero_threshold = None
         self._raw_comp = None
         self._corr_comp = None
@@ -911,6 +982,8 @@ class BuildArgs(_Args):
             raise ValueError(f"Interlayer padding must be > 0 {ANGSTROM}")
         # setattr(self, "mdp_parameters", MDP_DEFAULTS)
         setattr(self, "max_ucs", self.data["MAX_UCS"])
+        setattr(self, "save_progress", self.data["SAVE_PROGRESS"])
+        setattr(self, "load_progress", self.data["LOAD_PROGRESS"])
         try:
             mdp_prm_file = self.data["MDP_PRMS"]
             with open(mdp_prm_file, "r") as mdp_file:
@@ -936,12 +1009,12 @@ class BuildArgs(_Args):
         self.manual_setup = self.data["manual_setup"]
         self.backup = self.data["backup"]
         self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
-        self.outpath = self.outpath / self.name
+        # self.outpath = self.outpath / self.name
         os.makedirs(self.outpath, exist_ok=True)
         logger.set_file_name(
             new_filepath=self.outpath, new_filename=self.filestem
         )
-        init_path(self.outpath)
+        # init_path(self.outpath)
         logger.finfo(
             kwd_str="Setting output directory: ", message=f"{self.outpath}"
         )
@@ -952,6 +1025,39 @@ class BuildArgs(_Args):
         self.get_il_ions()
         self.get_il_solvation_data()
         self.get_bulk_ions()
+
+    @property
+    def outpath(self):
+        return self._outpath
+
+    @outpath.setter
+    def outpath(self, path: Union[str, PathType]):
+        try:
+            outpath = BasicPath(path, check=False)
+        except TypeError:
+            logger.error(f"Invalid type {type(path)} for output path!")
+        else:
+            if (
+                self._outpath is None
+                or outpath.resolve() != self._outpath.resolve()
+            ):
+                outpath = PathFactory(outpath)
+                if type(outpath) == FileType or outpath.name == self.name:
+                    outpath = Dir(outpath.parent / self.name, check=False)
+                elif outpath.name != self.name:
+                    outpath = outpath / self.name
+                init_path(outpath)
+                if self._outpath is not None:
+                    for file in self._outpath.iterdir():
+                        if file == outpath:
+                            continue
+                        elif file.is_dir() and file.name not in ["EM", "RUNS"]:
+                            continue
+                        shutil.move(file, outpath / file.name)
+                self._outpath = outpath
+                logger.set_file_name(
+                    new_filepath=self._outpath, new_filename=self.filestem
+                )
 
     def get_uc_data(self, reset=False):
         from ClayCode.builder.claycomp import UCData
@@ -1145,7 +1251,7 @@ class BuildArgs(_Args):
         """Get bulk ion concentrations."""
         from ClayCode.builder.claycomp import BulkIons, InterlayerIons
 
-        self._bulk_ions = BulkIons(
+        self.bulk_ions = BulkIons(
             self.bulk_ions, self._build_defaults["BULK_IONS"]
         )
 
@@ -1153,19 +1259,19 @@ class BuildArgs(_Args):
     def bulk_ion_conc(self) -> float:
         """Total bulk ion concentration.
         :rtype: float"""
-        return self._bulk_ions.tot_conc
+        return self.bulk_ions.tot_conc
 
     @property
     def bulk_ion_df(self) -> pd.DataFrame:
         """DataFrame with bulk ion concentrations.
         :rtype: pd.DataFrame"""
-        return self._bulk_ions.conc
+        return self.bulk_ions.conc
 
     @cached_property
     def default_bulk_pion(self) -> Tuple[str, float]:
         """Default bulk cation species to neutralise excess charge.
         :rtype: Tuple[str, float]"""
-        neutralise_ions = self._bulk_ions.neutralise_ions
+        neutralise_ions = self.bulk_ions.neutralise_ions
         return tuple(
             *neutralise_ions[neutralise_ions["charge"] > 0]["conc"]
             .reset_index()
@@ -1176,7 +1282,7 @@ class BuildArgs(_Args):
     def default_bulk_nion(self):
         """Default bulk anion species to neutralise excess charge.
         :rtype: Tuple[str, float]"""
-        neutralise_ions = self._bulk_ions.neutralise_ions
+        neutralise_ions = self.bulk_ions.neutralise_ions
         return tuple(
             *neutralise_ions[neutralise_ions["charge"] < 0]["conc"]
             .reset_index()
@@ -1205,9 +1311,41 @@ class AnalysisArgs(_Args):
     """Parameters for analysing simulation run data with :mod:`ClayCode.analysis`"""
 
     option = "analysis"
+    _arg_names = [
+        "TYPE",
+        "INPATH",
+        "INFILES" "OUTPATH",
+        "CLAY_TYPE",
+        "SEL",
+        "BIN_STEP",
+        "CUTOFF",
+        "START",
+        "STEP",
+        "STOP",
+        "OUTNAME",
+        "CHECK_TRAJ_LEN",
+        "WRITE",
+        "OVERWRITE",
+        "XYRAD" "WRITE_Z",
+        "UPDATE",
+        "N_BINS" "NAME",
+    ]
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: Dict[str, Any], debug_run: bool = False):
         super().__init__(data)
+        self.debug_run = debug_run
+        self.process()
+
+    def check(self):
+        pass
+
+    @read_yaml_path_decorator("OUTPATH", "INPATH")
+    def read_yaml(self):
+        pass
+
+    def process(self):
+        self.read_yaml()
+        self.check()
 
 
 class CheckArgs(_Args):
@@ -1219,6 +1357,9 @@ class CheckArgs(_Args):
 
     def __init__(self, data: Dict[str, Any]):
         super().__init__(data)
+
+    def check(self):
+        pass
 
 
 class EditArgs(_Args):
@@ -1306,9 +1447,11 @@ class PlotArgs(_Args):
         self.check()
 
     @read_yaml_path_decorator("OUTPATH", "INPATH", "INGRO", "INTOP")
-    def read_yaml(self, enumerate_duplicates=True) -> None:
-        """Read clay model builder specifications
-        and mdp_parameter defaults from yaml file."""
+    def read_yaml(self) -> None:
+        """Read plot specifications from yaml file."""
+        pass
+
+    def check(self):
         pass
 
 
@@ -1590,6 +1733,7 @@ class ArgsFactory:
         "siminp": SiminpArgs,
         "data": DataArgs,
         "addmols": AddMolsArgs,
+        "plot": PlotArgs,
     }
 
     @classmethod

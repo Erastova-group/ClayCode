@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import logging
 import pickle as pkl
 import sys
+import tempfile
 import warnings
 from argparse import ArgumentParser
 from pathlib import Path
@@ -9,23 +12,23 @@ from typing import Any, List, Literal, NoReturn, Optional, Union
 
 import MDAnalysis as mda
 import numpy as np
-from ClayCode.analysis.analysisbase import ClayAnalysisBase
+import zarr
+from ClayCode.analysis.analysisbase import AnalysisData, ClayAnalysisBase
 from ClayCode.analysis.consts import PE_DATA
+from ClayCode.analysis.dataclasses import get_edge_fname, read_edge_file
 from ClayCode.analysis.lib import (
     check_traj,
     exclude_xyz_cutoff,
     exclude_z_cutoff,
     get_dist,
-    get_edge_fname,
-    get_paths,
     get_selections,
     process_box,
-    read_edge_file,
     run_analysis,
 )
+from ClayCode.analysis.utils import get_paths
 from ClayCode.analysis.zdist import ZDens
 from ClayCode.builder.utils import get_checked_input, select_input_option
-from ClayCode.core.utils import get_subheader
+from ClayCode.core.utils import get_ls_files, get_subheader
 from MDAnalysis import Universe
 from MDAnalysis.core.groups import AtomGroup
 from MDAnalysis.lib.distances import (
@@ -42,8 +45,9 @@ logger = logging.getLogger(Path(__file__).stem)
 
 
 class CrdDist(ClayAnalysisBase):
-    _attrs = ["rdf", "groups"]
+    _attrs = ["rdf", "z_groups", "crd_numbers"]
     _abs = [True, True]
+    _name = "coordination number and distance analysis"
 
     def __init__(
         self,
@@ -51,10 +55,14 @@ class CrdDist(ClayAnalysisBase):
         sel: AtomGroup,
         clay: AtomGroup,
         other: Optional[AtomGroup] = None,
-        n_bins: Optional[int] = None,
-        bin_step: Optional[Union[int, float]] = None,
-        cutoff: Optional[Union[float, int]] = None,
-        edges: Optional[Union[str, Path]] = None,
+        z_n_bins: Optional[int] = None,
+        r_n_bins: Optional[int] = None,
+        z_bin_step: Optional[Union[int, float]] = None,
+        r_bin_step: Optional[Union[int, float]] = None,
+        z_cutoff: Optional[Union[float, int]] = None,
+        r_cutoff: Optional[Union[float, int]] = None,
+        z_edges: Optional[Union[str, Path]] = None,
+        r_edges: Optional[Union[str, Path]] = None,
         zdist: Optional[Union[str, Path]] = None,
         save: Union[bool, str] = True,
         check_traj_len: Union[Literal[False], int] = False,
@@ -70,8 +78,8 @@ class CrdDist(ClayAnalysisBase):
         self.clay = clay
         if other is None:
             other = sel
-        # assert isinstance(sel, AtomGroup)
-        # assert isinstance(other, AtomGroup)
+        assert isinstance(sel, AtomGroup)
+        assert isinstance(other, AtomGroup)
         if other == sel:
             self.other = self.sel
             self.self = True
@@ -79,89 +87,249 @@ class CrdDist(ClayAnalysisBase):
             self.other = other
             self.self = False
         self.other_n_atoms = other.n_atoms
-        if edges is None:
-            edge_file = get_edge_fname(
-                atom_type=self.sel.resnames[0],
-                cutoff=cutoff,
-                bins=bin_step,
-                name="pe",
-            )
-        if type(edges) == str:
-            edge_file = Path(edges)
-        elif type(edges) == Path:
-            edge_file = edges
-        if not edge_file.is_file():
-            edge_file = PE_DATA / edge_file.with_suffix(".p").name
+        logger.finfo(get_subheader("Getting edge-data"))
+        for edge_type in ["z", "r"]:
+            if edge_type == "z":
+                logger.finfo("Setting up z-direction edge data.")
+                cutoff = z_cutoff
+                n_bins = z_n_bins
+                bin_step = z_bin_step
+                edges = z_edges
+                other = None
+            else:
+                logger.finfo(
+                    "Setting up rdf edge data.",
+                    initial_linebreak=True,
+                )
+                cutoff = r_cutoff
+                n_bins = r_n_bins
+                bin_step = r_bin_step
+                edges = r_edges
+                other = self.other.atoms.names[0]
+            if edges is None:
+                edge_file = get_edge_fname(
+                    atom_type=self.sel.resnames[0],
+                    cutoff=cutoff,
+                    bins=bin_step,
+                    name="edges",
+                    other=other,
+                )
+            if type(edges) == str:
+                edge_file = Path(edges)
+            elif type(edges) == Path:
+                edge_file = edges
             if edge_file.is_file():
-                logger.info(
-                    f"Using edge file {str(edge_file.name)!r} from database"
+                logger.finfo(
+                    f"Using edge file {str(edge_file.name)!r}", indent="\t"
                 )
-        if not edge_file.is_file():
-            logger.info(f"Edge file {str(edge_file.name)!r} does not exist.\n")
-            edge_selection = select_input_option(
-                instance_or_manual_setup=True,
-                query="Use one of the edge files in database? [y]es/[n]o (default yes)\n",
-                options=["y", "n", ""],
-                result_map={"y": True, "n": False, "": True},
-            )
-            if edge_selection:
-                options = sorted(
-                    [f for f in PE_DATA.glob(f"{self.sel.resnames[0]}_*.p")]
-                )
-                logger.info("Available edge files:")
-                for i, f in enumerate(options):
-                    logger.finfo(f"{f.name}", kwd_str=f"{i}: ", indent="\t")
-                edge_file = get_checked_input(
-                    result_type=int,
-                    result=edge_file,
-                    exit_val="e",
-                    check_value="|".join(list(map(str, range(len(options))))),
-                    query="Select edge file: (exit with e)\n",
-                )
-                if edge_file == "e":
-                    logger.info("Exiting.")
-                    sys.exit(0)
+            else:
+                edge_file = PE_DATA / edge_file.with_suffix(".p").name
+                if edge_file.is_file():
+                    logger.finfo(
+                        f"Using edge file {str(edge_file.name)!r} from database",
+                        indent="\t",
+                    )
                 else:
-                    edge_file = options[edge_file]
-
-        assert edge_file.is_file(), f"edge file {edge_file} does not exist"
-        self._edges_file = edge_file
-        self._edges = read_edge_file(self._edges_file, cutoff, skip=False)
-        self._edges = self._edges[self._edges > 0]
-        while self._edges[-1] > cutoff:
-            self._edges = self._edges[:-1]
-        if self._edges[-1] < cutoff:
-            self._edges = np.append(self._edges, cutoff)
+                    logger.finfo(
+                        f"Edge file {str(edge_file.name)!r} does not exist.",
+                        indent="\t",
+                    )
+                    edge_file_regex = get_edge_fname(
+                        atom_type=self.sel.resnames[0],
+                        cutoff=cutoff,
+                        bins=bin_step,
+                        name="edges",
+                        ls_regex=True,
+                        other=other,
+                    )
+                    edge_files = get_ls_files(PE_DATA, edge_file_regex)
+                    if len(edge_files) == 1:
+                        edge_file = edge_files[0]
+                        logger.finfo(
+                            f"Using edge file {str(edge_file.name)!r} from database",
+                            indent="\t",
+                        )
+                    elif len(edge_files) > 1:
+                        logger.finfo(
+                            "Multiple edge files found in database.",
+                            indent="\t",
+                        )
+                        for i, f in enumerate(edge_files):
+                            logger.finfo(
+                                f"{f.name}", kwd_str=f"{i}: ", indent="\t"
+                            )
+                        edge_file = get_checked_input(
+                            result_type=int,
+                            result=edge_file,
+                            exit_val="e",
+                            check_value="|".join(
+                                list(map(str, range(len(edge_files)))),
+                            ),
+                            query="\tSelect edge file\t",
+                            default_val="0",
+                        )
+                        if edge_file == "e":
+                            logger.finfo("Exiting.", indent="\t")
+                            sys.exit(0)
+                        else:
+                            edge_file = edge_files[edge_file]
+            if not edge_file.is_file():
+                logger.finfo(
+                    f"Edge file {str(edge_file.name)!r} does not exist.\n"
+                )
+                edge_selection = select_input_option(
+                    instance_or_manual_setup=True,
+                    query="Use one of the edge files in database? [y]es/[n]o (default yes)\n",
+                    options=["y", "n", ""],
+                    result_map={"y": True, "n": False, "": True},
+                )
+                if edge_selection:
+                    if other is None:
+                        other = ""
+                    else:
+                        other = f"_{other}"
+                    options = sorted(
+                        [
+                            f
+                            for f in PE_DATA.glob(
+                                f"{self.sel.resnames[0]}{other}_*.p"
+                            )
+                        ]
+                    )
+                    logger.finfo("Available edge files:")
+                    for i, f in enumerate(options):
+                        logger.finfo(
+                            f"{f.name}", kwd_str=f"{i}: ", indent="\t"
+                        )
+                    edge_file = get_checked_input(
+                        result_type=int,
+                        result=edge_file,
+                        exit_val="e",
+                        check_value="|".join(
+                            list(map(str, range(len(options)))),
+                        ),
+                        query="Select edge file",
+                        default_val="0",
+                    )
+                    if edge_file == "e":
+                        logger.finfo("Exiting.")
+                        sys.exit(0)
+                    else:
+                        edge_file = options[edge_file]
+            assert edge_file.is_file(), f"edge file {edge_file} does not exist"
+            setattr(self, f"_{edge_type}_edges_file", edge_file)
+            edges = read_edge_file(
+                edge_file,
+                cutoff,
+                skip=False,
+                edge_type=edge_type,
+            )
+            if cutoff is None:
+                if edge_type == "z":
+                    cutoff = z_cutoff = np.rint(edges[-1])
+                else:
+                    cutoff = r_cutoff = edges[-2]
+            edges = edges[edges > 0]
+            while edges[-1] > cutoff:
+                edges = edges[:-1]
+            if edges[-1] < cutoff:
+                edges = np.append(edges, cutoff)
+            setattr(self, f"_{edge_type}_edges", edges)
+            # self._attrs.extend([f"{edge_type}_group_{edge}" for edge in range(len(edges))])
+            setattr(self, f"_{edge_type}_n_bins", n_bins)
+            setattr(self, f"_{edge_type}_bin_step", bin_step)
+            setattr(self, f"_{edge_type}_cutoff", cutoff)
+        self._attrs.extend(["crd_numbers", "rdf"])
+        # if z_edges is None:
+        #     z_edge_file = get_edge_fname(atom_type=self.sel.resnames[0], cutoff=z_cutoff, bins=z_bin_step, name="edges")
+        # if type(z_edges) == str:
+        #     z_edge_file = Path(z_edges)
+        # elif type(z_edges) == Path:
+        #     z_edge_file = z_edges
+        # if z_edge_file.is_file():
+        #     logger.info(f"Using edge file {str(z_edge_file.name)!r}")
+        # else:
+        #     z_edge_file = PE_DATA / z_edge_file.with_suffix(".p").name
+        #     if z_edge_file.is_file():
+        #         logger.info(f"Using edge file {str(z_edge_file.name)!r} from database")
+        #     else:
+        #         logger.info(f"Edge file {str(z_edge_file.name)!r} does not exist.\n")
+        #         z_edge_file_regex = get_edge_fname(atom_type=self.sel.resnames[0], cutoff=z_cutoff, bins=z_bin_step,
+        #                                            name="edges", ls_regex=True)
+        #         z_edge_files = get_ls_files(PE_DATA, z_edge_file_regex)
+        #         if len(z_edge_files) == 1:
+        #             z_edge_file = z_edge_files[0]
+        #             logger.info(f"Using edge file {str(z_edge_file.name)!r} from database")
+        #         elif len(z_edge_files) > 1:
+        #             logger.info("Multiple edge files found in database.")
+        #             for i, f in enumerate(z_edge_files):
+        #                 logger.finfo(f"{f.name}", kwd_str=f"{i}: ", indent="\t")
+        #             z_edge_file = get_checked_input(result_type=int, result=z_edge_file, exit_val="e",
+        #                                             check_value="|".join(list(map(str, range(len(z_edge_files)))), ),
+        #                                             query="Select edge file: (exit with e)\n")
+        #             if z_edge_file == "e":
+        #                 logger.info("Exiting.")
+        #                 sys.exit(0)
+        #             else:
+        #                 z_edge_file = z_edge_files[z_edge_file]
+        # if not z_edge_file.is_file():
+        #     logger.info(f"Edge file {str(z_edge_file.name)!r} does not exist.\n")
+        #     edge_selection = select_input_option(instance_or_manual_setup=True,
+        #                                          query="Use one of the edge files in database? [y]es/[n]o (default yes)\n",
+        #                                          options=["y", "n", ""], result_map={"y": True, "n": False, "": True}, )
+        #     if edge_selection:
+        #         options = sorted([f for f in PE_DATA.glob(f"{self.sel.resnames[0]}_*.p")])
+        #         logger.info("Available edge files:")
+        #         for i, f in enumerate(options):
+        #             logger.finfo(f"{f.name}", kwd_str=f"{i}: ", indent="\t")
+        #         z_edge_file = get_checked_input(result_type=int, result=z_edge_file, exit_val="e",
+        #                                         check_value="|".join(list(map(str, range(len(options))))),
+        #                                         query="Select edge file: (exit with e)\n", )
+        #         if z_edge_file == "e":
+        #             logger.info("Exiting.")
+        #             sys.exit(0)
+        #         else:
+        #             z_edge_file = options[z_edge_file]
+        # assert z_edge_file.is_file(), f"edge file {z_edge_file} does not exist"
+        # self._z_edges_file = z_edge_file
+        # self._z_edges = read_edge_file(self._z_edges_file, cutoff, skip=False)
+        # self._z_edges = self._z_edges[self._z_edges > 0]
+        # while self._z_edges[-1] > cutoff:
+        #     self._z_edges = self._z_edges[:-1]
+        # if self._z_edges[-1] < cutoff:
+        #     self._z_edges = np.append(self._z_edges, cutoff)
         self._attrs.extend(
-            [f"group_{edge}" for edge in range(len(self._edges))]
+            [f"z_group_{edge}" for edge in range(len(self._z_edges))]
         )
         self.zdist = zdist
         bin_step = dict(
             map(
-                lambda x: (x, bin_step) if x != "groups" else (x, 1),
+                lambda x: (x, r_bin_step)
+                if x not in ["z_groups", "crd_numbers"]
+                else (x, 1),
                 self._attrs,
             )
         )
         cutoff = dict(
             map(
-                lambda x: (x, cutoff)
-                if x != "groups"
-                else (x, len(self._edges)),
+                lambda x: (x, r_cutoff)
+                if x not in ["z_groups", "crd_numbers"]
+                else (x, len(self._z_edges))
+                if x == "z_groups"
+                else (x, len(self._r_edges)),
                 self._attrs,
             )
         )
         verbose = dict(
             map(
-                lambda x: (x, True) if x in ["groups", "rdf"] else (x, False),
+                lambda x: (x, True)
+                if x in ["z_groups", "rdf", "crd_numbers"]
+                else (x, False),
                 self._attrs,
             )
         )
         self._init_data(
-            n_bins=n_bins,
-            bin_step=bin_step,
-            cutoff=cutoff,
-            min=0,
-            verbose=verbose,
+            n_bins=n_bins, bin_step=bin_step, cutoff=cutoff, verbose=verbose
         )
         self.save = save
         if self.save is False:
@@ -173,38 +341,12 @@ class CrdDist(ClayAnalysisBase):
                     f"{self.sysname}_{self.sel.resnames[0]}_{self.other.resnames[0]}"
                 )
         check_traj(self, check_traj_len)
-        self._guess_steps = guess_steps
-        # print(datargs.files, data['edge_file'].shape)
-        # cutoff = np.ravel(self.edge_file),
-        # cutoff = np.rint(np.max(np.ravel(self.edge_file)))
+        self._guess_steps = guess_steps  # print(datargs.files, data['edge_file'].shape)  # cutoff = np.ravel(self.edge_file),  # cutoff = np.rint(np.max(np.ravel(self.edge_file)))  # if r_cutoff is None:  #     self.r_cutoff = np.array([*np.max(self.sel.universe.dimensions[:2]), 5.0])  # elif type(r_cutoff) in [int, float]:  #     self.r_cutoff = np.array([float(r_cutoff) for c in range(3)])  # elif type(r_cutoff) == list and len(r_cutoff) == 3:  #     self.r_cutoff = np.array(r_cutoff)  # else:  #     raise ValueError('Wrong type or length for cutoff!')  # self.r_cutoff = self.r_cutoff.astype(np.float64)  # print('r cutoff', self.r_cutoff)  # self.save = save  # if self.save is False:  #     pass  # else:  #     if type(self.save) == bool:  #         self.save = (  #             f"{self.__class__.__name__.lower()}_"  #             f"{self.sysname}_{self.sel.resnames[0]}"  #         )  # self._other_dist_f = distance_array  # self._provide_args = lambda: self.sel.positions, self.other.positions
 
-        # if r_cutoff is None:
-        #     self.r_cutoff = np.array([*np.max(self.sel.universe.dimensions[:2]), 5.0])
-        # elif type(r_cutoff) in [int, float]:
-        #     self.r_cutoff = np.array([float(r_cutoff) for c in range(3)])
-        # elif type(r_cutoff) == list and len(r_cutoff) == 3:
-        #     self.r_cutoff = np.array(r_cutoff)
-        # else:
-        #     raise ValueError('Wrong type or length for cutoff!')
-        # self.r_cutoff = self.r_cutoff.astype(np.float64)
-        # print('r cutoff', self.r_cutoff)
-        # self.save = save
-        # if self.save is False:
-        #     pass
-        # else:
-        #     if type(self.save) == bool:
-        #         self.save = (
-        #             f"{self.__class__.__name__.lower()}_"
-        #             f"{self.sysname}_{self.sel.resnames[0]}"
-        #         )
-        # self._other_dist_f = distance_array
-        # self._provide_args = lambda: self.sel.positions, self.other.positions
-
-        # check_traj(self, check_traj_len)
-        # self._guess_steps = guess_steps
+        # check_traj(self, check_traj_len)  # self._guess_steps = guess_steps
 
     def _prepare(self) -> NoReturn:
-        logger.info(
+        logger.finfo(
             f"Starting run:\n"
             f"Frames start: {self.start}, "
             f"stop: {self.stop}, "
@@ -221,9 +363,9 @@ class CrdDist(ClayAnalysisBase):
                     sysname=sysname,
                     sel=sel,
                     clay=clay,
-                    n_bins=self.data["rdf"].n_bins,
-                    bin_step=self.data["rdf"].bin_step,
-                    cutoff=self.data["rdf"].cutoff,
+                    n_bins=self._z_n_bins,
+                    bin_step=self._z_bin_step,
+                    cutoff=self._z_cutoff,
                     save=False,
                     write=self.zdist,
                     overwrite=overwrite,
@@ -234,16 +376,17 @@ class CrdDist(ClayAnalysisBase):
                 zdist = Path(zdist.write)
             zdata = np.load(zdist)
             self.mask = zdata["mask"]
+            self.mask = np.where(self.mask > self._z_cutoff, True, self.mask)
             self.zdata = np.ma.masked_array(zdata["zdist"], mask=self.mask)
             start, stop, step = zdata["run_prms"]
             if len(
                 np.arange(start=self.start, stop=self.stop, step=self.step)
             ) != len(self.zdata):
-                logger.info(
+                logger.finfo(
                     "Selected Trajectory slicing does not match zdens data!"
                 )
                 if self._guess_steps == True:
-                    logger.info(
+                    logger.finfo(
                         "Using slicing from zdens:\n"
                         f"start: {start: d}, "
                         f"stop: {stop:d}, "
@@ -267,8 +410,10 @@ class CrdDist(ClayAnalysisBase):
             if self.sel_n_atoms != zdata["sel_n_atoms"]:
                 raise ValueError(
                     f"Atom number mismatch between z-data ({zdata['sel_n_atoms']}) and selection atoms ({self.sel.n_atoms})!"
-                )
-            self._z_cutoff = np.rint(zdata["cutoff"])
+                )  # self._z_cutoff = np.rint(zdata["cutoff"])
+        self.data["z_groups"].timeseries = self.get_ads_groups(
+            self.zdata, self._z_edges
+        )
         process_box(self)
 
         self._dist = np.empty(
@@ -321,10 +466,45 @@ class CrdDist(ClayAnalysisBase):
             )
             self.diag_mask = np.bitwise_or.accumulate(diag_mask, axis=2).copy()
 
+    @staticmethod
+    def get_ads_groups(
+        distance_timeseries: Union[zarr.core.Array, np.ndarray],
+        edges: Union[list, np.ndarray],
+        dest: Optional[Union[zarr.core.Array, np.ndarray]] = None,
+    ) -> Union[zarr.core.Array, np.ndarray]:
+        #     # """ Determine adsorption groups in a distance timeseries based on given edges.
+        #     # Values outside the edges are set to NaN.
+        #     # :param distance_timeseries: Distance timeseries
+        #     # :type distance_timeseries: numpy array
+        #     # :param edges: Edges for grouping
+        #     # :type edges: list or numpy array
+        #     # :return: numpy array with group indices
+        #     # :rtype: numpy array
+        #     # """
+        if dest is None:
+            if type(distance_timeseries) == zarr.core.Array:
+                store = zarr.storage.TempStore(
+                    dir=distance_timeseries.store.path, prefix="ads_groups"
+                )
+                dest = zarr.empty(
+                    distance_timeseries.shape,
+                    store=store,
+                    chunks=distance_timeseries.chunks,
+                    dtype=np.int32,
+                )
+            else:
+                dest = np.empty_like(distance_timeseries, dtype=np.int32)
+        if type(dest) == zarr.core.Array:
+            dest = dask.array.from_zarr(dest)
+            dest = dask.array.digitize(distance_timeseries, edges)
+            dest = dest.compute()
+        else:
+            dest[:] = np.digitize(distance_timeseries[:], edges)
+            dest[:] = np.where(dest[:] != len(edges), dest, np.NaN)
+        return dest
+
     def _single_frame(self) -> NoReturn:
-        self._edge_numbers = np.digitize(
-            self.zdata[self._frame_index], self._edges
-        )
+        # self._edge_numbers = np.digitize(self.zdata[self._frame_index], self._z_edges)
         self._rad.fill(0)
         self._rad_m.mask = False
         self._dist.fill(0)
@@ -369,53 +549,166 @@ class CrdDist(ClayAnalysisBase):
             np.greater(np.abs(self._dist_m), self.data["rdf"].cutoff), axis=2
         )
         self._dist_m.mask += new_mask[:, :, np.newaxis]
-        self._rad[:] = np.linalg.norm(self._dist_m, axis=2)
         self._rad[:] = np.where(
-            self._rad <= self.data["rdf"].cutoff, self._rad, 0
+            self._dist_m.mask[:, :, 0],
+            np.NaN,
+            np.linalg.norm(self._dist_m, axis=2),
         )
-        self._rad[:] = np.where(self._rad == 0, np.NaN, self._rad)
-        # if self.self is True:
+        self._rad[:] = np.where(
+            self._rad <= self.data["rdf"].cutoff, self._rad, np.NaN
+        )
+        if self.self is True:
+            self._rad[:] = np.where(self._rad == 0, np.NaN, self._rad)
         #     self._rad.mask += self._rad == 0.0
-        self.data["groups"].timeseries.append(self._edge_numbers)
-        self.data["rdf"].timeseries.append(self._rad)
-        # # categorise by edge
-        # # self._rad_m.mask = np.broadcast_to(
-        # self._dist_m.mask += (
-        #     np.abs(self._dist) >= self.data["zmtd"].cutoff
-        # )
-        # self._dist_m.mask = np.broadcast_to(
-        #     self._dist.mask[..., 2, np.newaxis], self._dist.shape
-        # )
-        #
-        # exclude_z_cutoff(self._dist, self.data["zmtdist"].cutoff)
-        #
-        # self.data["zmtdist"].timeseries.append(self._dist[:, :, 2])
-        # self._rad[:] = np.linalg.norm(self._dist, axis=2)
-        # self._rad.mask = self._rad > self.data["rdf"].cutoff
-        # self.data["rdf"].timeseries.append(self._rad)
-        # # print(self._rad.shape, self._dist.shape)
-        # rdist = np.min(self._rad, axis=1)
-        # self.data["rmtdist"].timeseries.append(rdist)
-        # print(np.min(self._rad, axis=1).shape)
+        # self.data["z_groups"].timeseries.append(self._edge_numbers)
+        self.data["rdf"].timeseries.append(
+            self._rad
+        )  # # categorise by edge  # # self._rad_m.mask = np.broadcast_to(  # self._dist_m.mask += (  #     np.abs(self._dist) >= self.data["zmtd"].cutoff  # )  # self._dist_m.mask = np.broadcast_to(  #     self._dist.mask[..., 2, np.newaxis], self._dist.shape  # )  #  # exclude_z_cutoff(self._dist, self.data["zmtdist"].cutoff)  #  # self.data["zmtdist"].timeseries.append(self._dist[:, :, 2])  # self._rad[:] = np.linalg.norm(self._dist, axis=2)  # self._rad.mask = self._rad > self.data["rdf"].cutoff  # self.data["rdf"].timeseries.append(self._rad)  # # print(self._rad.shape, self._dist.shape)  # rdist = np.min(self._rad, axis=1)  # self.data["rmtdist"].timeseries.append(rdist)  # print(np.min(self._rad, axis=1).shape)
 
     def _post_process(self) -> NoReturn:
         logger.finfo(
             f"Grouping RDF data by adsorption shell on clay surface.",
             initial_linebreak=True,
         )
+        if type(self.save) in [bool, None]:
+            savename = f"{self.sysname}_{self.sel.resnames[0]}_{self.other.atoms.names[0]}"
+        else:
+            savename = self.save
+        self._temp_store_path = tempfile.TemporaryDirectory(
+            prefix=Path(f".{savename}_temp").name,
+            dir=Path(savename).parent,
+        )
+        self._temp_file = tempfile.NamedTemporaryFile(
+            dir=self._temp_store_path.name, prefix="temp_file", delete=False
+        )
+        rdf_save = zarr.storage.TempStore(
+            dir=self._temp_store_path.name, prefix="rdf"
+        )
+        timeseries = zarr.empty(
+            (self.n_frames, self.sel_n_atoms, self.other_n_atoms),
+            store=rdf_save,
+            dtype=np.float32,
+            chunks=(True, -1, -1),
+        )
+        timeseries[:] = self.data["rdf"].timeseries
+        self.data["rdf"].timeseries = timeseries
+        save = zarr.storage.TempStore(
+            dir=self._temp_store_path.name, prefix="crd_numbers"
+        )
+        timeseries = zarr.empty(
+            (self.n_frames, self.sel_n_atoms, self.other_n_atoms),
+            store=save,
+            dtype=np.float32,
+            chunks=(True, -1, -1),
+        )
+        timeseries = self.get_ads_groups(
+            self.data["rdf"].timeseries, self._r_edges, timeseries
+        )
+        self._manual_conclude("crd_numbers", timeseries, use_abs=True)
         prev = 0
-        for i, edge in enumerate(self._edges):
-            self.data[f"group_{i}"].timeseries = np.where(
-                np.array(self.data["groups"].timeseries)[:, :, np.newaxis]
-                != i,
+        for i, edge in enumerate([*self._z_edges]):
+            save = zarr.storage.TempStore(
+                dir=self._temp_store_path.name, prefix=f"z_group_{i}"
+            )
+            timeseries = zarr.full_like(
+                np.array(self.data["rdf"].timeseries),
+                store=save,
+                fill_value=np.NaN,
+                chunks=(True, -1, -1),
+                dtype=np.float32,
+            )
+            timeseries[:] = np.where(
+                np.array(self.data["z_groups"].timeseries)[:, :, np.newaxis]
+                == i,
                 np.array(self.data["rdf"].timeseries),
                 np.NaN,
             )
+            self.data[f"z_group_{i}"].timeseries = timeseries
             logger.finfo(
-                f'"group_{i}"',
+                f'"z_group_{i}"',
                 kwd_str=f"{prev:.1f} <= z < {edge:.2f}: ",
                 indent="\t",
             )
+            # self.data[f"z_group_{i}"].sel_counts = self.get_counts(timeseries[:])
+            # self.data[f"z_group_{i}"].crd_counts = self.get_crd_numbers(timeseries[:])
+            # r_groups = {}
+            prev_r = 0
+            # z_group_r_groups = self.get_ads_groups(timeseries[:], self._r_edges)
+            r_save = zarr.storage.TempStore(
+                dir=self._temp_store_path.name,
+                prefix=f"z_group_{i}_crd_numbers",
+            )
+            r_timeseries = zarr.full_like(
+                np.array(self.data["rdf"].timeseries),
+                store=r_save,
+                fill_value=np.NaN,
+                chunks=(True, -1, -1),
+                dtype=np.float32,
+            )
+            r_timeseries[:] = np.where(
+                timeseries[:] >= 0,
+                self.data["crd_numbers"].timeseries[:],
+                np.NaN,
+            )
+            r_group = AnalysisData(
+                name=f"z_group_{i}_crd_numbers",
+                min=0,
+                cutoff=len(self._r_edges),
+                bin_step=1,
+                verbose=False,
+            )
+            self.data[r_group.name] = r_group
+            self._manual_conclude(r_group.name, r_timeseries, use_abs=True)
+            # for j, r_edge in enumerate([*self._r_edges[:-1]]):
+            #     r_save = zarr.storage.TempStore(dir=self._temp_store_path.name, prefix=f"r_group_{i}")
+            #     r_timeseries = zarr.full_like(np.array(self.data["rdf"].timeseries), store=r_save, fill_value=np.NaN, chunks=(True, -1, -1), dtype=np.float32,)
+            #     r_timeseries[:] = np.where(self.data["r_groups"].timeseries[:] == j,
+            #         timeseries[:], np.NaN, )
+            #     r_group = AnalysisData(name=f"z_group_{i}_r_groups",  min=prev_r, cutoff=r_edge, bin_step=self._r_bin_step, )
+            #     self.data[r_group.name] = r_group
+            #     # r_group.timeseries = r_timeseries
+            #     self._manual_conclude(r_group.name, r_timeseries, use_abs=True)
+            #     # r_group.get_hist_data(use_abs=True)
+            #     # r_group.get_norm(np.mean(self.get_counts(r_timeseries[:])))
+            #     # r_group.get_df()
+            #     # r_groups[j] = r_group
+            #     prev_r = r_edge
+            # self.data[f"z_group_{i}"].r_groups = r_groups
+            prev = edge
+        # self.data['rdf'].sel_counts = self.get_counts(self.data['rdf'].timeseries[:])
+        # self.data['rdf'].crd_counts = self.get_crd_numbers(self.data['rdf'].timeseries)
+
+    def _manual_conclude(self, data_name, timeseries, use_abs=True):
+        self.data[data_name].timeseries = timeseries
+        self.data[data_name].get_hist_data(use_abs=use_abs)
+        self.data[data_name].get_norm(
+            self.get_self_n_atoms(
+                self.data[data_name].timeseries, self.data[data_name]
+            )
+        )
+        self.data[data_name].get_df()
+
+    # @staticmethod
+    def get_crd_numbers(self, timeseries: np.ndarray) -> np.ndarray:
+        edge_groups = np.apply_along_axis(
+            lambda x: np.digitize(x, self._r_edges), axis=1, arr=timeseries
+        )
+        for i, edge in enumerate(self._r_edges):
+            ts = np.where(edge_groups == i, timeseries, np.NaN)
+            ts = np.where(np.isnan(ts), 0, 1)
+            counts = np.any(ts > 0, axis=1)
+            print(f"r_group_{i}", np.nanmean(ts, axis=0))
+        counts = np.count_nonzero(ts, axis=2)
+        return counts  # nan_fill = np.where(np.isnan(timeseries), 0, timeseries)  # counts = np.count_nonzero(nan_fill, axis=2)  # coordination_numbers = np.apply_along_axis(lambda x: np.extract(x > 0, x).size, axis=0, arr=timeseries  # coordination_numbers = np.nansum(timeseries > 0, axis=0)  # has_coordination = np.any(timeseries > 0, axis=0)  # coordination_numbers = np.apply_along_axis(lambda x: np.extract(x > 0, x).size, axis=0, arr=has_coordination)  # return coordination_numbers
+
+    # @staticmethod
+    # def get_counts(timeseries: np.ndarray) -> np.ndarray:
+    #     # has_coordination = np.any(timeseries >= 0, axis=2)
+    #     # coordination_counts = np.apply_along_axis(lambda x: np.extract(x >= 0, x).size, axis=1, arr=has_coordination)
+    #     coordination_counts = np.where(timeseries >= 0, 1, 0)
+    #     coordination_counts = np.sum(coordination_counts, axis=2)
+    #     coordinated_n_atoms = np.count_nonzero(coordination_counts, axis=1)
+    #     return coordinated_n_atoms
 
     def _save(self):
         if self.save is False:
@@ -435,7 +728,7 @@ class CrdDist(ClayAnalysisBase):
 
 if __name__ == "__main__":
     parser = ArgumentParser(
-        prog="coordiantion",
+        prog="coordination",
         description="Compute radial distributions between 2 atom types.",
         add_help=True,
         allow_abbrev=False,
@@ -493,28 +786,49 @@ if __name__ == "__main__":
         default=None,
     )
     parser.add_argument(
-        "-edges",
+        "-z_edges",
         type=str,
         help="Adsorption shell upper limits",
         required=False,
-        dest="edges",
+        dest="z_edges",
         default=None,
     )
     parser.add_argument(
-        "-n_bins",
+        "-r_edges",
+        type=str,
+        help="Radial shell upper limits",
+        required=False,
+        dest="r_edges",
+        default=None,
+    )
+    parser.add_argument(
+        "-z_n_bins",
         default=None,
         type=int,
         help="Number of bins in histogram",
-        dest="n_bins",
+        dest="z_n_bins",
     )
     parser.add_argument(
-        "-bin_step",
+        "-r_n_bins",
+        default=None,
+        type=int,
+        help="Number of bins in histogram",
+        dest="r_n_bins",
+    )
+    parser.add_argument(
+        "-z_bin_step",
         type=float,
         default=None,
         help="bin size in histogram",
-        dest="bin_step",
+        dest="z_bin_step",
     )
-
+    parser.add_argument(
+        "-r_bin_step",
+        type=float,
+        default=None,
+        help="bin size in histogram",
+        dest="r_bin_step",
+    )
     parser.add_argument(
         "-check_traj",
         type=int,
@@ -524,19 +838,19 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-cutoff",
+        "-z_cutoff",
         type=float,
         default=None,
-        help="cutoff in x,x2,z-direction",
-        dest="cutoff",
+        help="z-cutoff for adsorption shells",
+        dest="z_cutoff",
     )
-
-    # parser.add_argument('-cutoff',
-    #                     type=float,
-    #                     default=None,
-    #                     help='radial cutoff',
-    #                     dest='cutoff')
-
+    parser.add_argument(
+        "-r_cutoff",
+        type=float,
+        default=None,
+        help="cutoff in radial direction",
+        dest="r_cutoff",
+    )
     parser.add_argument(
         "-start",
         type=int,
@@ -578,7 +892,6 @@ if __name__ == "__main__":
         help="Read trajectory in memory.",
         dest="in_mem",
     )
-
 
 if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
@@ -636,7 +949,7 @@ if __name__ == "__main__":
                     initial_linebreak=True,
                 )
     except:
-        logger.info("Could not construct universe!", initial_linebreak=True)
+        logger.finfo("Could not construct universe!", initial_linebreak=True)
         new = True
     logger.info(get_subheader("Getting atom groups"))
     sel, clay, other = get_selections(
@@ -661,12 +974,15 @@ if __name__ == "__main__":
         sel=sel,
         clay=clay,
         other=other,
-        n_bins=args.n_bins,
-        bin_step=args.bin_step,
-        cutoff=args.cutoff,
-        edges=args.edges,
+        z_n_bins=args.z_n_bins,
+        z_bin_step=args.z_bin_step,
+        z_cutoff=args.z_cutoff,
+        z_edges=args.z_edges,
         zdist=args.zdist,
         save=args.save,
+        r_n_bins=args.r_n_bins,
+        r_bin_step=args.r_bin_step,
+        r_cutoff=args.r_cutoff,
         check_traj_len=args.check_traj_len,
     )
     run_analysis(dist, start=args.start, stop=args.stop, step=args.step)

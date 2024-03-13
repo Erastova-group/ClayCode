@@ -20,11 +20,9 @@ from typing import (
     Dict,
     List,
     Literal,
-    NoReturn,
     Optional,
     Sequence,
     Tuple,
-    TypeVar,
     Union,
     cast,
     overload,
@@ -34,17 +32,13 @@ import MDAnalysis as mda
 import MDAnalysis.coordinates
 import numpy as np
 import pandas as pd
-from ClayCode.analysis.analysisbase import analysis_class
-from ClayCode.core.cctypes import PathType
+from ClayCode.core.cctypes import AtomGroup, PathType
 from ClayCode.core.classes import Dir, ForceField, GROFile, YAMLFile
 from ClayCode.core.consts import SOL, SOL_DENSITY
 from ClayCode.core.gmx import gmx_command_wrapper
 from ClayCode.core.utils import backup_files
 from ClayCode.data.consts import AA, CLAYFF_AT_TYPES, DATA, FF, UCS, USER_UCS
 from MDAnalysis import Universe
-from MDAnalysis.lib.distances import minimize_vectors
-from MDAnalysis.lib.mdamath import triclinic_vectors
-from numpy.typing import NDArray
 
 logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
     level=logging.WARNING
@@ -52,25 +46,11 @@ logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
 
 logger = logging.getLogger(__name__)
 
-MaskedArray = TypeVar("MaskedArray")
-AtomGroup = TypeVar("AtomGroup")
-
 __name__ = "lib"
 __all__ = [
-    "process_orthogonal",
-    "process_triclinic",
-    "select_cyzone",
-    "get_dist",
     "select_solvent",
-    "process_box",
-    "exclude_xyz_cutoff",
-    "check_traj",
-    "run_analysis",
-    "get_selections",
     "get_mol_prms",
     "get_system_charges",
-    "process_orthogonal_axes",
-    "process_triclinic_axes",
     "temp_file_wrapper",
 ]
 
@@ -79,7 +59,7 @@ def init_temp_inout(
     inf: Union[str, Path],
     outf: Union[str, Path],
     new_tmp_dict: Dict[Literal["crd", "top"], bool],
-    which=Literal["crd", "top"],
+    which: Literal["crd", "top"],
 ) -> Tuple[
     Union[str, Path], Union[str, Path], Dict[Literal["crd", "top"], bool]
 ]:
@@ -151,23 +131,6 @@ def temp_file_wrapper(f: Callable):
         return r
 
     return wrapper
-
-
-def run_analysis(instance: analysis_class, start: int, stop: int, step: int):
-    """Run MDAnalysis analysis.
-    :param start: First frame, defaults to None
-    :type start: int, optional
-    :param stop: Last frame, defaults to None
-    :type stop: int, optional
-    :param step: Iteration step, defaults to None
-    :type step: int, optional
-    """
-    kwarg_dict = {}
-    for k, v in {"start": start, "step": step, "stop": stop}.items():
-        if v is not None:
-            kwarg_dict[k] = v
-    instance.run(**kwarg_dict)
-    return instance
 
 
 @overload
@@ -444,241 +407,241 @@ def save_selection(
         outsel.write(str(otraj), frames="all")
 
 
-def check_traj(
-    instance: analysis_class, check_len: Union[int, Literal[False]]
-) -> None:
-    """Check length of trajectory in analysis class instance.
-    :param instance: analysis class instance
-    :type instance: analysis_class
-    :param check_len: expected number of trajectory frames, defaults to False
-    :type check_len: Union[int, Literal[False]]
-    :raises SystemExit: Error if trajectory length != check_len
-    """
-    logger.debug(f"Checking trajectory length: {check_len}")
-    if type(check_len) == int:
-        if instance._universe.trajectory.n_frames != check_len:
-            raise SystemExit(
-                "Wrong number of frames: "
-                f"{instance._universe.trajectory.n_frames}"
-            )
+# def check_traj(
+#     instance: analysis_class, check_len: Union[int, Literal[False]]
+# ) -> None:
+#     """Check length of trajectory in analysis class instance.
+#     :param instance: analysis class instance
+#     :type instance: analysis_class
+#     :param check_len: expected number of trajectory frames, defaults to False
+#     :type check_len: Union[int, Literal[False]]
+#     :raises SystemExit: Error if trajectory length != check_len
+#     """
+#     logger.debug(f"Checking trajectory length: {check_len}")
+#     if type(check_len) == int:
+#         if instance._universe.trajectory.n_frames != check_len:
+#             raise SystemExit(
+#                 "Wrong number of frames: "
+#                 f"{instance._universe.trajectory.n_frames}"
+#             )
 
 
-def process_box(instance: analysis_class) -> None:
-    """Assign distance minimisation function in orthogonal or triclinic box.
+# def process_box(instance: analysis_class) -> None:
+#     """Assign distance minimisation function in orthogonal or triclinic box.
+#
+#     Correct x, x2, z interatomic distances for periodic boundary conditions
+#     in orthogonal box inplace
+#                                          O*
+#        +--------------+       +---------/----+
+#        |       S      |       |       S      |
+#        |        \     |  -->  |              |
+#        |         \    |       |              |
+#        |          O   |       |              |
+#        +--------------+       +--------------+
+#
+#     :param instance: analysis class instance
+#     :type instance: analysis_class
+#     """
+#     box = instance._universe.dimensions
+#     if np.all(box[3:] == 90.0):
+#         instance._process_distances = process_orthogonal
+#         instance._process_axes = process_orthogonal_axes
+#     else:
+#         instance._process_distances = process_triclinic
+#         instance._process_axes = process_triclinic_axes
+#
 
-    Correct x, x2, z interatomic distances for periodic boundary conditions
-    in orthogonal box inplace
-                                         O*
-       +--------------+       +---------/----+
-       |       S      |       |       S      |
-       |        \     |  -->  |              |
-       |         \    |       |              |
-       |          O   |       |              |
-       +--------------+       +--------------+
-
-    :param instance: analysis class instance
-    :type instance: analysis_class
-    """
-    box = instance._universe.dimensions
-    if np.all(box[3:] == 90.0):
-        instance._process_distances = process_orthogonal
-        instance._process_axes = process_orthogonal_axes
-    else:
-        instance._process_distances = process_triclinic
-        instance._process_axes = process_triclinic_axes
-
-
-def process_orthogonal_axes(
-    distances: NDArray[np.float64],
-    dimensions: NDArray[np.float64],
-    axes: List[int],
-) -> None:
-    """
-    Correct x, x2, z interatomic distances for periodic boundary conditions
-    in orthogonal box inplace
-
-    :param axes:
-    :type axes:
-    :param distances: interatomic distance array of shape (n, m, 3)
-    :type distances: NDArray[np.float64]
-    :param dimensions: simulation box dimension array of shape (6,)
-    :type dimensions: NDArray[np.float64]
-    :return: no return
-    :rtype: NoReturn
-    """
-    assert (
-        distances.shape[-1] == len(axes) or distances.ndim == 2
-    ), f"Shape of distance array ({distances.shape[-1]}) does not match selected axes {axes}"
-    for idx, dist in np.ma.ndenumerate(distances):
-        distances[idx] -= dimensions[:3][axes] * np.rint(
-            dist / dimensions[:3][axes]
-        )
-
-
-def process_orthogonal(
-    distances: NDArray[np.float64], dimensions: NDArray[np.float64]
-) -> None:
-    """
-    Correct x, x2, z interatomic distances for periodic boundary conditions
-    in orthogonal box inplace
-
-    :param distances: interatomic distance array of shape (n, m, 3)
-    :type distances: NDArray[np.float64]
-    :param dimensions: simulation box dimension array of shape (6,)
-    :type dimensions: NDArray[np.float64]
-    :return: no return
-    :rtype: NoReturn
-    """
-    distances -= dimensions[:3] * np.rint(distances / dimensions[:3])
+# def process_orthogonal_axes(
+#     distances: NDArray[np.float64],
+#     dimensions: NDArray[np.float64],
+#     axes: List[int],
+# ) -> None:
+#     """
+#     Correct x, x2, z interatomic distances for periodic boundary conditions
+#     in orthogonal box inplace
+#
+#     :param axes:
+#     :type axes:
+#     :param distances: interatomic distance array of shape (n, m, 3)
+#     :type distances: NDArray[np.float64]
+#     :param dimensions: simulation box dimension array of shape (6,)
+#     :type dimensions: NDArray[np.float64]
+#     :return: no return
+#     :rtype: NoReturn
+#     """
+#     assert (
+#         distances.shape[-1] == len(axes) or distances.ndim == 2
+#     ), f"Shape of distance array ({distances.shape[-1]}) does not match selected axes {axes}"
+#     for idx, dist in np.ma.ndenumerate(distances):
+#         distances[idx] -= dimensions[:3][axes] * np.rint(
+#             dist / dimensions[:3][axes]
+#         )
 
 
-def process_triclinic_axes(
-    distances: NDArray[np.float64],
-    dimensions: NDArray[np.float64],
-    axes: List[int],
-) -> None:
-    """
-    Correct x, x2, z interatomic distances for periodic boundary conditions
-    in triclinic box inplace
-
-    :param axes:
-    :type axes:
-    :param distances: interatomic distance array of shape (n, m, 3)
-    :type distances: NDArray[np.float64]
-    :param dimensions: simulation box dimension array of shape (6,)
-    :type dimensions: NDArray[np.float64]
-    :return: no return
-    :rtype: NoReturn
-    """
-    box = triclinic_vectors(dimensions)
-    assert distances.shape[-1] >= len(
-        axes
-    ), f"Shape of distance array ({distances.shape[-1]}) does not match selected axes {axes}"
-    logger.debug(
-        distances / np.diagonal(box)[..., axes],
-        np.rint(distances / np.diagonal(box)[..., axes]),
-    )
-    distances -= np.diagonal(box)[..., axes] * np.rint(
-        distances / np.diagonal(box)[..., axes]
-    )
+# def process_orthogonal(
+#     distances: NDArray[np.float64], dimensions: NDArray[np.float64]
+# ) -> None:
+#     """
+#     Correct x, x2, z interatomic distances for periodic boundary conditions
+#     in orthogonal box inplace
+#
+#     :param distances: interatomic distance array of shape (n, m, 3)
+#     :type distances: NDArray[np.float64]
+#     :param dimensions: simulation box dimension array of shape (6,)
+#     :type dimensions: NDArray[np.float64]
+#     :return: no return
+#     :rtype: NoReturn
+#     """
+#     distances -= dimensions[:3] * np.rint(distances / dimensions[:3])
 
 
-def process_triclinic(
-    distances: NDArray[np.float64], dimensions: NDArray[np.float64]
-) -> None:
-    """
-    Correct x, x2, z interatomic distances for periodic boundary conditions
-    in triclinic box inplace
-
-    :param distances: interatomic distance array of shape (n, m, 3)
-    :type distances: NDArray[np.float64]
-    :param dimensions: simulation box dimension array of shape (6,)
-    :type dimensions: NDArray[np.float64]
-    :return: no return
-    :rtype: NoReturn
-    """
-    box = triclinic_vectors(dimensions)
-    distances -= np.diagonal(box) * np.rint(distances / np.diagonal(box))
-
-
-def select_cyzone(
-    distances: MaskedArray,
-    z_dist: float,
-    xy_rad: float,
-    mask_array: MaskedArray,
-) -> None:
-    """
-    Select all distances corresponding to atoms within a cylindrical volume
-    of dimensions +- z_dist and radius xy_rad
-    :param distances: masked interatomic distance array of shape (n, m, 3)
-    :type distances: MaskedArray[np.float64]
-    :param z_dist: absolute value for cutoff in z direction
-    :type z_dist: float
-    :param xy_rad: absolute value for radius in xy plane
-    :type xy_rad: float
-    :param mask_array: array for temporary mask storage of shape (n, m)
-    :type mask_array: MaskedArray[np.float64]
-    :return: no return
-    :rtype: NoReturn
-    """
-    z_col = distances[:, :, 2]
-    z_col.mask = np.abs(z_col) > z_dist
-    distances.mask = np.broadcast_to(
-        z_col.mask[:, :, np.newaxis], distances.shape
-    )
-    np.ma.sum(distances[:, :, [0, 1]].__pow__(2), axis=2, out=mask_array)
-    mask_array.harden_mask()
-    mask_array.mask = mask_array > xy_rad.__pow__(2)
-    np.copyto(distances.mask, mask_array.mask[:, :, np.newaxis])
+# def process_triclinic_axes(
+#     distances: NDArray[np.float64],
+#     dimensions: NDArray[np.float64],
+#     axes: List[int],
+# ) -> None:
+#     """
+#     Correct x, x2, z interatomic distances for periodic boundary conditions
+#     in triclinic box inplace
+#
+#     :param axes:
+#     :type axes:
+#     :param distances: interatomic distance array of shape (n, m, 3)
+#     :type distances: NDArray[np.float64]
+#     :param dimensions: simulation box dimension array of shape (6,)
+#     :type dimensions: NDArray[np.float64]
+#     :return: no return
+#     :rtype: NoReturn
+#     """
+#     box = triclinic_vectors(dimensions)
+#     assert distances.shape[-1] >= len(
+#         axes
+#     ), f"Shape of distance array ({distances.shape[-1]}) does not match selected axes {axes}"
+#     logger.debug(
+#         distances / np.diagonal(box)[..., axes],
+#         np.rint(distances / np.diagonal(box)[..., axes]),
+#     )
+#     distances -= np.diagonal(box)[..., axes] * np.rint(
+#         distances / np.diagonal(box)[..., axes]
+#     )
 
 
-def exclude_xyz_cutoff(distances: NDArray[np.int64], cutoff: float) -> None:
-    """
-    Select all distances corresponding to atoms within a box
-    with length 2* cutoff
-    :param distances: masked interatomic distance array of shape (n, m, 3)
-    :type distances: NDArray[np.float64]
-    :param cutoff: absolute value for maximum distance
-    :type cutoff: float
-    :return: no return
-    :rtype: NoReturn
-    """
-    mask = np.any(np.abs(distances) >= cutoff, axis=2)
-    np.copyto(distances.mask, mask[:, :, np.newaxis])
+# def process_triclinic(
+#     distances: NDArray[np.float64], dimensions: NDArray[np.float64]
+# ) -> None:
+#     """
+#     Correct x, x2, z interatomic distances for periodic boundary conditions
+#     in triclinic box inplace
+#
+#     :param distances: interatomic distance array of shape (n, m, 3)
+#     :type distances: NDArray[np.float64]
+#     :param dimensions: simulation box dimension array of shape (6,)
+#     :type dimensions: NDArray[np.float64]
+#     :return: no return
+#     :rtype: NoReturn
+#     """
+#     box = triclinic_vectors(dimensions)
+#     distances -= np.diagonal(box) * np.rint(distances / np.diagonal(box))
 
 
-def exclude_z_cutoff(distances: NDArray[np.int64], cutoff: float) -> None:
-    """
-    Select all distances corresponding to atoms within a box
-    with length 2* cutoff
-    :param distances: masked interatomic distance array of shape (n, m, 3)
-    :type distances: NDArray[np.float64]
-    :param cutoff: absolute value for maximum distance
-    :type cutoff: float
-    :return: no return
-    :rtype: NoReturn
-    """
-    mask = np.abs(distances[..., 2]) > cutoff
-    distances.mask += np.broadcast_to(mask[..., np.newaxis], distances.shape)
+# def select_cyzone(
+#     distances: MaskedArray,
+#     z_dist: float,
+#     xy_rad: float,
+#     mask_array: MaskedArray,
+# ) -> None:
+#     """
+#     Select all distances corresponding to atoms within a cylindrical volume
+#     of dimensions +- z_dist and radius xy_rad
+#     :param distances: masked interatomic distance array of shape (n, m, 3)
+#     :type distances: MaskedArray[np.float64]
+#     :param z_dist: absolute value for cutoff in z direction
+#     :type z_dist: float
+#     :param xy_rad: absolute value for radius in xy plane
+#     :type xy_rad: float
+#     :param mask_array: array for temporary mask storage of shape (n, m)
+#     :type mask_array: MaskedArray[np.float64]
+#     :return: no return
+#     :rtype: NoReturn
+#     """
+#     z_col = distances[:, :, 2]
+#     z_col.mask = np.abs(z_col) > z_dist
+#     distances.mask = np.broadcast_to(
+#         z_col.mask[:, :, np.newaxis], distances.shape
+#     )
+#     np.ma.sum(distances[:, :, [0, 1]].__pow__(2), axis=2, out=mask_array)
+#     mask_array.harden_mask()
+#     mask_array.mask = mask_array > xy_rad.__pow__(2)
+#     np.copyto(distances.mask, mask_array.mask[:, :, np.newaxis])
 
 
-def get_dist(
-    ag_pos: NDArray[np.float64],
-    ref_pos: NDArray[np.float64],
-    distances: NDArray[np.float64],
-    box: NDArray[np.float64],
-) -> NoReturn:
-    """Calculate minimum elementwise x, x2, z distances
-    of selection atom positions to reference atom positions in box.
-    Output array shape(len(ag_pos), len(ref_pos), 3)
-    :param ag_pos: atom group positions of shape (n_atoms, 3)
-    :type ag_pos: NDArray[np.float64]
-    :param ref_pos: atom group positions of shape (n_atoms, 3)
-    :type ref_pos: NDArray[np.float64]
-    distances: result array of shape (len(ag_pos), len(ref_pos), 3)
-    :type distances: NDArray[np.float64]
-    :param box: Timestep dimensions array of shape (6, )
-    :type box: NDArray[np.float64]
-    """
-    for atom_id, atom_pos in enumerate(ag_pos):
-        distances[atom_id, :, :] = minimize_vectors(atom_pos - ref_pos, box)
+# def exclude_xyz_cutoff(distances: NDArray[np.int64], cutoff: float) -> None:
+#     """
+#     Select all distances corresponding to atoms within a box
+#     with length 2* cutoff
+#     :param distances: masked interatomic distance array of shape (n, m, 3)
+#     :type distances: NDArray[np.float64]
+#     :param cutoff: absolute value for maximum distance
+#     :type cutoff: float
+#     :return: no return
+#     :rtype: NoReturn
+#     """
+#     mask = np.any(np.abs(distances) >= cutoff, axis=2)
+#     np.copyto(distances.mask, mask[:, :, np.newaxis])
 
 
-def get_self_dist(
-    ag_pos: NDArray[np.float64], distances: NDArray[np.float64]
-) -> NoReturn:
-    """Calculate minimum elementwise x, x2, z distances
-    of selection atom positions to reference atom positions in box.
-    Output array shape(len(ag_pos), len(ref_pos), 3)
-    :param ag_pos: atom group positions of shape (n_atoms, 3)
-    :type ag_pos: NDArray[np.float64]
-    distances: result array of shape (len(ag_pos), len(ref_pos), 3)
-    :type distances: NDArray[np.float64]
-    """
-    for atom_id, atom_pos in enumerate(ag_pos):
-        distances[atom_id, ...] = np.where(
-            np.ix_(ag_pos[..., 0]) != atom_id, atom_pos - ag_pos, 0
-        )
+# def exclude_z_cutoff(distances: NDArray[np.int64], cutoff: float) -> None:
+#     """
+#     Select all distances corresponding to atoms within a box
+#     with length 2* cutoff
+#     :param distances: masked interatomic distance array of shape (n, m, 3)
+#     :type distances: NDArray[np.float64]
+#     :param cutoff: absolute value for maximum distance
+#     :type cutoff: float
+#     :return: no return
+#     :rtype: NoReturn
+#     """
+#     mask = np.abs(distances[..., 2]) > cutoff
+#     distances.mask += np.broadcast_to(mask[..., np.newaxis], distances.shape)
+
+
+# def get_dist(
+#     ag_pos: NDArray[np.float64],
+#     ref_pos: NDArray[np.float64],
+#     distances: NDArray[np.float64],
+#     box: NDArray[np.float64],
+# ) -> NoReturn:
+#     """Calculate minimum elementwise x, x2, z distances
+#     of selection atom positions to reference atom positions in box.
+#     Output array shape(len(ag_pos), len(ref_pos), 3)
+#     :param ag_pos: atom group positions of shape (n_atoms, 3)
+#     :type ag_pos: NDArray[np.float64]
+#     :param ref_pos: atom group positions of shape (n_atoms, 3)
+#     :type ref_pos: NDArray[np.float64]
+#     distances: result array of shape (len(ag_pos), len(ref_pos), 3)
+#     :type distances: NDArray[np.float64]
+#     :param box: Timestep dimensions array of shape (6, )
+#     :type box: NDArray[np.float64]
+#     """
+#     for atom_id, atom_pos in enumerate(ag_pos):
+#         distances[atom_id, :, :] = minimize_vectors(atom_pos - ref_pos, box)
+
+
+# def get_self_dist(
+#     ag_pos: NDArray[np.float64], distances: NDArray[np.float64]
+# ) -> NoReturn:
+#     """Calculate minimum elementwise x, x2, z distances
+#     of selection atom positions to reference atom positions in box.
+#     Output array shape(len(ag_pos), len(ref_pos), 3)
+#     :param ag_pos: atom group positions of shape (n_atoms, 3)
+#     :type ag_pos: NDArray[np.float64]
+#     distances: result array of shape (len(ag_pos), len(ref_pos), 3)
+#     :type distances: NDArray[np.float64]
+#     """
+#     for atom_id, atom_pos in enumerate(ag_pos):
+#         distances[atom_id, ...] = np.where(
+#             np.ix_(ag_pos[..., 0]) != atom_id, atom_pos - ag_pos, 0
+#         )
 
 
 def select_solvent(
@@ -821,12 +784,8 @@ def add_ions_n_mols(
     :type odir: Path
     :param crdin: input coordinates filename
     :type crdin: GROFile
-    :param crdout: output corrdiantes filename
-    :type crdout: GROFile
     :param topin: input topology filename
     :type topin: TOPFile
-    :param topout: output topology filename
-    :type topout: TOPFile
     :param ion: ion atom type
     :type ion: str
     :param n_atoms: number of ions to insert
@@ -1783,9 +1742,11 @@ def check_insert_numbers(
 
 
 # @gmx_command_wrapper
+@temp_file_wrapper
 def run_em(  # mdp: str,
     crdin: Union[str, Path],
     topin: Union[str, Path],
+    topout: Union[str, Path],
     odir: Path,
     gmx_commands,
     outname: str = "em",
@@ -1825,18 +1786,21 @@ def run_em(  # mdp: str,
     """
     logger.debug("# MINIMISING ENERGY")
     outname = (Path(odir) / outname).resolve()
-    topout = outname.with_suffix(".top")
+    if topout is None:
+        topout = outname.with_suffix(".top")
+    elif type(topout) == str:
+        topout = (Path(odir) / topout).with_suffix(".top")
     if topin.resolve() == topout.resolve():
         tmp_top = tempfile.NamedTemporaryFile(
             prefix=topin.stem, suffix=".top", dir=odir
         )
-        topout = odir / tmp_top.name
+        topout = tmp_top.name
         logger.debug(f"Creating temporary output file {tmp_top}")
         otop_copy = True
     else:
         otop_copy = False
     tpr = outname.with_suffix(".tpr")
-    grompp = gmx_commands.run_gmx_grompp(
+    gmx_commands.run_gmx_grompp(
         c=crdin,
         p=topin,
         o=tpr,

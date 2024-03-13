@@ -1,20 +1,28 @@
+from __future__ import annotations
+
+import logging
 import os
 import pickle as pkl
+import re
+import sys
 from functools import cached_property
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
+from ClayCode.analysis.analysisbase import AnalysisData
 from ClayCode.analysis.consts import PE_DATA
-from ClayCode.analysis.lib import Bins, Cutoff, get_edge_fname, read_edge_file
-from ClayCode.analysis.plots import HistData, Timeseries, logger
-from ClayCode.analysis.utils import make_1d, redirect_tqdm
+from ClayCode.analysis.utils import get_atom_type_group, make_1d, redirect_tqdm
+from ClayCode.core.classes import Dir, File, PathType
+from ClayCode.plots.dataclasses import Bins, Cutoff
 from matplotlib import colormaps
 from matplotlib import colors as mpc
 from matplotlib import pyplot as plt
 from scipy.signal import find_peaks
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 class Data:
@@ -635,7 +643,7 @@ class Data:
         :type wlen: int
         :return: list of peak ads_edges
         :rtype: List[float]"""
-        from ClayAnalysis.peaks import Peaks
+        from ClayCode.analysis.peaks import Peaks
         from sklearn.neighbors import KernelDensity
 
         p = Peaks(self)
@@ -4053,3 +4061,992 @@ class ArrayData2D:
         )
         new_df = new_df.applymap(transformation)
         return new_df
+
+
+class Timeseries:
+    def __init__(
+        self, filename: Union[str, Path], axis=None, abs: bool = True
+    ):
+        self.__filename = None
+        self.filename = filename
+        self.axis = axis
+        self.abs = abs
+        self.__zfile = None
+        self.has_zdata = False
+
+    def __check_attr_set(self, attr):
+        if getattr(self, attr) is None:
+            logger.info(f'{attr.strip("_")} not set.')
+            return None
+        else:
+            return True
+
+    def get_bin_hist(self, hist, h_edges, edges):
+        hist = hist.T
+        z_edges, v_edges = (
+            HistData(edges=h_edges[0]),
+            HistData(edges=h_edges[1]),
+        )
+        new_hist = np.ma.array(hist, fill_value=np.NaN, mask=np.isnan(hist))
+        mask = new_hist.mask.copy()
+        combined_hist = []
+        for a_idx, a_min in enumerate(edges[:-1]):
+            a_max = edges[a_idx + 1]
+            i_mask = np.logical_and(
+                z_edges.bins > a_min, z_edges.bins <= a_max
+            )
+            i_mask = np.broadcast_to(i_mask[np.newaxis, :], new_hist.shape)
+            new_hist.mask = i_mask | mask
+            mean = np.apply_along_axis(
+                lambda a: np.ma.multiply(a, v_edges.bins), arr=new_hist, axis=0
+            )
+            mean = np.ma.sum(mean)
+            mean = np.ma.divide(mean, np.sum(new_hist), where=mean != np.nan)
+            combined_hist.append(mean)
+        return np.array(combined_hist), z_edges.bins
+
+    @property
+    def timeseries(self):
+        with open(self.filename, "rb") as file:
+            data = pkl.load(file)
+        timeseries = np.ravel(data.timeseries).astype(np.float64)
+        if self.abs is True:
+            timeseries = np.abs(timeseries)
+        return timeseries
+
+    @property
+    def filename(self):
+        if self.__filename is not None:
+            return self.__filename
+
+    @filename.setter
+    def filename(self, filename: Union[str, Path]):
+        filename = Path(filename)
+        if filename.is_file():
+            self.__filename = filename.absolute()
+
+    def __repr__(self):
+        return self.__class__.__name__
+
+    def __str__(self):
+        return self.__class__.__name__
+
+    @property
+    def zdata(self):
+        if self.__zfile is not None:
+            with open(self.__zfile, "rb") as file:
+                data = pkl.load(file)
+            zdata = np.ravel(data.timeseries).astype(np.float64)
+            return zdata
+        else:
+            self.has_zdata = False
+            logger.info(f"No z-density file specified.")
+
+    @zdata.setter
+    def zdata(self, zfile: Union[str, Path]):
+        zfile = Path(zfile)
+        if zfile.is_file():
+            self.__zfile = zfile.absolute()
+        self.has_zdata = True
+
+    @property
+    def z_bins(self):
+        with open(self.__zfile, "rb") as file:
+            data = pkl.load(file)
+        return data.bins
+
+    @property
+    def bins(self):
+        with open(self.filename, "rb") as file:
+            data = pkl.load(file)
+        return data.bins
+
+    @property
+    def hist2d(self):
+        if self.__histogram is not None and self.__h_edges is not None:
+            return self.__histogram, self.__h_edges
+        else:
+            raise AttributeError(
+                "No histogram data found! " "Use make_hist2d to make histogram"
+            )
+
+    def make_hist2d(self, other=None, bins=None, z_bins=None):
+        if self.__zfile is not None and self.__filename is not None:
+            if other is not None:
+                timeseries = np.divide(
+                    self.timeseries,
+                    other.timeseries,
+                    where=other.timeseries != 0,
+                )
+                assert bins is not None
+            else:
+                timeseries = self.timeseries
+            if bins is None:
+                bins = self.bins
+            if z_bins is None:
+                z_bins = self.z_bins
+            histogram, edges = np.histogramdd(
+                [self.zdata, timeseries], [z_bins, bins], density=False
+            )
+            return histogram, edges
+
+
+class HistData:
+    __slots__ = ["min", "max", "nbins", "edges", "bins", "stepsize"]
+
+    def __init__(
+        self,
+        min=None,
+        max=None,
+        nbins=None,
+        edges=None,
+        bins=None,
+        stepsize=None,
+    ):
+        if bins is not None:
+            self.bins = bins.copy()
+            for attr in self.__class__.__slots__:
+                if attr != "bins":
+                    logger.info(f"{attr}")
+                    assert eval(f"{attr} is None")
+            logger.info(f"{self.bins}")
+            self.stepsize = np.round(self.bins[1] - self.bins[0], 5)
+            self.nbins = len(bins)
+            self.edges = np.linspace(
+                self.bins[0] - 1 / 2 * self.stepsize,
+                self.bins[-1] + 1 / 2 * self.stepsize,
+                self.nbins + 1,
+            )
+            self.min, self.max = np.min(self.edges), np.max(self.edges)
+        elif edges is not None:
+            for attr in self.__class__.__slots__:
+                self.edges = edges.copy()
+                if attr != "edges":
+                    assert eval(f"{attr} is None")
+            self.min, self.max = np.min(self.edges), np.max(self.edges)
+            self.nbins = len(self.edges) - 1
+            self.stepsize = self.edges[1] - self.edges[0]
+            self.get_bins_from_edges()
+        elif min is not None and max is not None and nbins is not None:
+            assert stepsize is None
+            self.min, self.max, self.nbins = float(min), float(max), int(nbins)
+            self.edges = np.linspace(self.min, self.max, self.nbins + 1)
+            self.stepsize = self.edges[1] - self.edges[0]
+            self.get_bins_from_edges()
+
+        elif min is not None and max is not None and stepsize is not None:
+            self.min, self.max, self.stepsize = (
+                float(min),
+                float(max),
+                float(stepsize),
+            )
+            self.edges = np.arange(
+                self.min, self.max + self.stepsize, self.stepsize
+            )
+            self.get_bins_from_edges()
+            self.nbins = len(self.bins)
+
+        else:
+            raise ValueError(
+                f"No initialisation with selected arguments is implemented."
+            )
+        self.stepsize = Bins(self.stepsize)
+        self.min, self.max = Cutoff(self.min), Cutoff(self.max)
+
+    def get_bins_from_edges(self):
+        try:
+            self.bins = np.linspace(
+                self.min + 0.5 * self.stepsize,
+                self.max - 0.5 * self.stepsize,
+                self.nbins,
+            )
+        except AttributeError:
+            self.bins = np.arange(
+                self.min + 0.5 * self.stepsize, self.max, self.stepsize
+            )
+
+    def __str__(self):
+        return f"HistData([{self.min}:{self.max}:{self.stepsize}])"
+
+
+class AtomTypeData(Data):
+    """Class for analysing atom type data."""
+
+    @redirect_tqdm
+    def __init__(
+        self,
+        indir: Union[str, Path],
+        cutoff: Union[int, float],
+        bins: float,
+        ions: List[Literal["Na", "K", "Ca", "Mg"]] = None,
+        atoms: List[Literal["ions", "OT", "N", "CA", "OW"]] = None,
+        other: List[Literal["ions", "OT", "N", "CA", "OW"]] = None,
+        clays: List[Literal["NAu-1", "NAu-2"]] = None,
+        aas: List[
+            Literal[
+                "ala",
+                "arg",
+                "asn",
+                "asp",
+                "ctl",
+                "cys",
+                "gln",
+                "glu",
+                "gly",
+                "his",
+                "ile",
+                "leu",
+                "lys",
+                "met",
+                "phe",
+                "pro",
+                "ser",
+                "thr",
+                "trp",
+                "tyr",
+                "val",
+            ]
+        ] = None,
+        load: Union[str, Literal[False], Path] = False,
+        odir: Optional[str] = None,
+        nameparts: int = 1,
+        namestem: str = "",
+        analysis: Optional[str] = None,
+        atomname=True,
+    ):
+        """Constructor method"""
+        logger.info(f"Initialising {self.__class__.__name__}")
+        self.filelist: list = []
+        self.bins: Bins = Bins(bins)
+        self.cutoff: float = Cutoff(cutoff)
+        self.analysis: Union[str, None] = analysis
+
+        if type(indir) != Path:
+            indir = Path(indir)
+
+        self._indir = indir
+
+        if self.analysis is None:
+            logger.info(
+                rf"Getting {namestem}*_"
+                rf"{self.cutoff}_"
+                rf"{self.bins}.dat from {str(indir.resolve())!r}"
+            )
+            self.filelist: List[Path] = sorted(
+                list(
+                    indir.glob(
+                        rf"{namestem}*_" rf"{self.cutoff}_" rf"{self.bins}.dat"
+                    )
+                )
+            )
+        else:
+            logger.info(
+                rf"Getting {namestem}*_"
+                rf"{self.cutoff}_"
+                rf"{self.bins}_"
+                rf"{analysis}.dat from {str(indir.resolve())!r}"
+            )
+            self.filelist: List[Path] = sorted(
+                list(
+                    indir.glob(
+                        rf"{namestem}*_"
+                        rf"{self.cutoff}_"
+                        rf"{self.bins}_"
+                        rf"{self.analysis}.dat"
+                    )
+                )
+            )
+        logger.info(f"Found {len(self.filelist)} files.")
+
+        if load != False:
+            load = Path(load.resolve())
+            self.df: pd.DataFrame = pkl.load(load)
+            logger.info(f"Using data from {load!r}")
+        else:
+            if ions is None:
+                ions = self.__class__.ions
+                logger.info(
+                    f"ions not specified, using default {self.__class__.ions}"
+                )
+            else:
+                logger.info(f"Using custom {ions} for ions")
+            if atoms is None:
+                atoms = self.__class__.atoms
+                logger.info(
+                    f"atoms not specified, using default {self.__class__.atoms}"
+                )
+            else:
+                logger.info(f"Using custom {atoms} for atoms")
+            if atomname is False:
+                assert len(atoms) == 1, "Expected one atom category"
+                self.atomnames = atoms[0]
+            else:
+                self.atomnames = None
+            if aas is None:
+                aas = self.__class__.aas
+                logger.info(
+                    f"aas not specified, using default {self.__class__.aas}"
+                )
+            else:
+                logger.info(f"Using custom {aas} for aas")
+            if clays is None:
+                clays = self.__class__.clays
+                logger.info(
+                    f"clays not specified, using default {self.__class__.clays}"
+                )
+            else:
+                logger.info(f"Using custom {clays} for clays")
+
+            # f = self.filelist[0]
+            # print(f)
+
+            # cols = pd.Index(["NAu-1", "NAu-2"], name="clays")
+
+            if other is not None:
+                if other is True:
+                    other = atoms
+                    other.append("OW")
+                # idx = pd.MultiIndex.from_product(
+                #     [ions, aas, atoms, other],
+                #     names=["ions", "aas", "atoms", "other"],
+                # )
+                self.other: List[str] = other
+                logger.info(f"Setting second atom selection to {self.other}")
+            else:
+                # idx = pd.MultiIndex.from_product(
+                #     [ions, aas, atoms, x], names=["ions", "aas", "atoms"]
+                # )
+                self.other: None = None
+            # self.df: pd.DataFrame = pd.DataFrame(index=idx, columns=cols)
+
+            self._get_data(nameparts)
+
+        self.df.dropna(inplace=True, how="all", axis=0)
+        self.df.dropna(inplace=True, how="all", axis=1)
+
+        # self.df.reset_index(level=["ions", "atoms"], inplace=True)
+        # self.df["_atoms"] = self.df["atoms"].where(
+        #     self.df["atoms"] != "ions", self.df["ions"], axis=0
+        # )
+        # self.df.set_index(["ions", "atoms", "_atoms"], inplace=True, append=True)
+        # self.df.index = self.df.index.reorder_levels([*idx.names, "_atoms"])
+        # self._atoms = self.df.index.get_level_values("_atoms").tolist()
+        # self.df["x_bins"] = np.NaN
+        # self.df.set_index(["x_bins"], inplace=True, append=True)
+
+        for iid, i in enumerate(self.df.index.names):
+            value: List[Union[str, float]] = (
+                self.df.index._get_level_values(level=iid).unique().tolist()
+            )
+            logger.info(f"Setting {i} to {value}")
+            setattr(self, i, value)
+
+        if odir is not None:
+            self.odir: Path = Path(odir)
+        else:
+            self.odir: Path = Path(".").cwd()
+
+        logger.info(f"Output directory set to {str(self.odir.resolve())!r}\n")
+        self._bin_df = pd.DataFrame(columns=self.df.columns)
+
+        self._edges = {}
+        self._peaks = {}
+
+    @staticmethod
+    def get_labels(f: Union[Path, str]) -> np.ndarray:
+        """Get labels from file"""
+        with open(f, "r") as file:
+            labels = file.read()
+        labels = re.search(
+            r"^.*atypes_flat.*?\[([A-Za-z0-9\"'#\n\s]+)\]\n",
+            labels,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        labels = labels.group(1)
+        labels = re.sub(r"['\"\s]*\n#[\s'\"]*", " ", labels)
+        labels = labels.split(" ")
+        labels = list(map(lambda x: x.strip("'").strip('"'), labels))
+        return np.array(labels)
+
+    @redirect_tqdm
+    def _get_data(self, nameparts: int) -> None:
+        """Get data from files
+        :param nameparts: number of `_`-separated partes in `namestem`
+        :type nameparts: int
+        """
+        idsl = pd.IndexSlice
+        cols = pd.Index(["NAu-1", "NAu-2"], name="clays")
+        for f_id, f in enumerate(self.filelist):
+            namesplit = f.stem.split("_")
+            if self.analysis is not None:
+                namesplit.pop(-1)
+            else:
+                self.analysis = "zdist"
+            name = namesplit[:nameparts]
+            namesplit = namesplit[nameparts:]
+            if self.other is not None:
+                # other = namesplit[5]
+                other = namesplit.pop(5)
+                if other in self.ions:
+                    other = "ions"
+            try:
+                if self.atomnames is None:
+                    clay, ion, aa, pH, atom, cutoff, bins = namesplit
+                else:
+                    clay, ion, aa, pH, cutoff, bins = namesplit
+                    atom = self.atomnames
+                assert cutoff == self.cutoff
+                assert bins == self.bins
+                array = pd.read_csv(
+                    f, delimiter="\s+", header=None, comment="#"
+                ).to_numpy()
+                labels = self.get_labels(f)
+
+                if self.other is not None:
+                    if other is True:
+                        other = atom
+                        other.append("OW")
+                        idx = pd.MultiIndex.from_product(
+                            [[clay], [ion], [aa], [atom], [other], labels],
+                            names=[
+                                "clays",
+                                "ions",
+                                "aas",
+                                "atoms",
+                                "other",
+                                "x",
+                            ],
+                        )
+                        logger.info(
+                            f"Setting second atom selection to {self.other}"
+                        )
+                else:
+                    idx = pd.MultiIndex.from_product(
+                        [[clay], [ion], [aa], [atom], labels],
+                        names=["clays", "ions", "aas", "atoms", "x"],
+                    )
+                df: pd.DataFrame = pd.DataFrame(index=idx, columns=["values"])
+                try:
+                    df.loc[idsl[clay, ion, aa, atom, :], "values"] = array[
+                        :, 2
+                    ]
+                except ValueError:
+                    df.loc[
+                        idsl[clay, ion, aa, atom, other, :], "values"
+                    ] = array[:, 2]
+                except IndexError:
+                    try:
+                        df.loc[idsl[clay, ion, aa, atom, :]] = array[:, 1]
+                    except ValueError:
+                        df.loc[idsl[clay, ion, aa, atom, other, :]] = array[
+                            :, 1
+                        ]
+                except KeyError:
+                    pass
+                if f_id != 0:
+                    self.df = pd.concat([self.df, df.copy()])
+                    del df
+                else:
+                    self.df = df.copy()
+                    del df
+            except IndexError:
+                logger.info(f"Encountered IndexError while getting data")
+            except ValueError:
+                logger.info(f"Encountered ValueError while getting data")
+
+        self.name = "_".join(name)
+
+
+class AtomTypeData2D(Data2D, Data):
+    @redirect_tqdm
+    def __init__(
+        self,
+        indir: Union[str, Path],
+        cutoff: Union[int, float],
+        bins: float,
+        ions: List[Literal["Na", "K", "Ca", "Mg"]] = None,
+        atoms: List[Literal["ions", "OT", "N", "CA", "OW"]] = None,
+        other: List[Literal["ions", "OT", "N", "CA", "OW"]] = None,
+        clays: List[Literal["NAu-1", "NAu-2"]] = None,
+        aas: List[
+            Literal[
+                "ala",
+                "arg",
+                "asn",
+                "asp",
+                "ctl",
+                "cys",
+                "gln",
+                "glu",
+                "gly",
+                "his",
+                "ile",
+                "leu",
+                "lys",
+                "met",
+                "phe",
+                "pro",
+                "ser",
+                "thr",
+                "trp",
+                "tyr",
+                "val",
+            ]
+        ] = None,
+        load: Union[str, Literal[False], Path] = False,
+        odir: Optional[str] = None,
+        nameparts: int = 1,
+        namestem: str = "",
+        analysis: str = None,
+        atomnames: str = None,
+        save=None,
+        overwrite=False,
+        new_bins=None,
+        new_cutoff=None,
+        group_all=False,
+        split=True,
+    ):
+        """Constructor method"""
+        logger.info(f"Initialising {self.__class__.__name__}")
+        super().__init__(
+            indir=indir,
+            zdir=indir,
+            cutoff=50,
+            bins=0.02,
+            atoms=atoms,
+            clays=clays,
+            ions=ions,
+            aas=aas,
+            namestem=namestem,
+            nameparts=nameparts,
+            other=other,
+            analyses=[atomnames, analysis],
+            zstem=namestem,
+            zname=atomnames,
+            atomname=False,
+        )
+        self.atomnames = atomnames
+        self.analysis = analysis
+        self.df.index = self.df.index.droplevel(["atoms", "_atoms"])
+        loadfname = Path(__file__).parent / f"../run_data/{self.analysis}_df.p"
+        self.odir = Dir(odir, check=False)
+        if not self.odir.is_dir():
+            os.makedirs(self.odir)
+            logger.info(f"Initialising output directory: {self.odir!r}")
+        if split is True:
+            if save is False:
+                pass
+                # if load is True:
+                #     loadfile = loadfname
+                # else:
+                #     loadfile = Path(load)
+                # assert loadfile.is_file(), f'No file named {loadfile.name!r} exists.'
+                # with open(loadfile, 'rb') as file:
+                #     df = pkl.load(file)
+                #     assert type(df) == pd.DataFrame, f'Loaded object is {type(df)}, expected pandas.DataFrame'
+                #     self.df = df
+            else:
+                self.split_dfs(
+                    overwrite=overwrite, cutoff=new_cutoff, bins=new_bins
+                )
+        # if save is True:
+        #     with open(loadfname, 'wb') as file:
+        #         pkl.dump(self.df, file)
+        # self.df.index = self.df.index.droplevel('atom_ids')
+        # self._process_atom_type_idx(self.df.index)
+        # self._init_xbin_idx()
+        # self.df
+        # self.atoms = self.df.index.get_level_values('atoms')
+        # self._edges = {}
+        # self._peaks = {}
+
+    @staticmethod
+    def __get_dat_info(
+        datfile,
+        info: Union[Tuple[str], List[str]],
+        types: Union[Tuple[str], List[str]],
+    ):
+        with open(datfile, "r") as file:
+            filestr = file.read()
+        match_list = []
+        for item, itype in zip(info, types):
+            match = re.search(
+                rf".*{item}.*?({itype}*)\n",
+                filestr,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            match_list.append(match.group(1))
+        if len(match_list) != 1:
+            match_list = tuple(match_list)
+        else:
+            match_list = match_list[0]
+        return match_list
+        # n_frames = int(n_frames.group(1))
+        # n_atoms = re.search(r"^.*sel_n_atoms.*?(\d+)\n", filestr, flags=re.MULTILINE | re.DOTALL)
+        # n_atoms = int(n_atoms.group(1))
+
+    def yield_first_analysis_group_filename(self, group_key):
+        for group, df in self.df.groupby(group_key, group_keys=True):
+            analysis = df[self.analysis].head(1).values[0]
+            datfile = analysis.filename.with_suffix(".dat")
+            yield group, datfile
+
+    def get_atom_id_groups(self, labels, ids):
+        at_group_dict = {}
+        vec_group = np.vectorize(
+            get_atom_type_group, excluded=["group_all_atoms"]
+        )  # , signature='(m)->(m)', otypes=[str])
+        labels = np.array(labels)
+        groups = vec_group(labels, group_all_atoms=True)
+        at_types, groups = np.unique(groups, return_inverse=True)
+        for group in np.unique(groups):
+            at_group_dict[at_types[group]] = ids[groups == group]
+        return at_group_dict
+
+    @redirect_tqdm
+    def split_dfs(self, bins=None, cutoff=None, overwrite=False):
+        if cutoff is None:
+            cutoff = self.cutoff
+        else:
+            cutoff = Cutoff(cutoff)
+        if bins is None:
+            bins = self.bins
+        else:
+            bins = Bins(bins)
+        idsl = pd.IndexSlice
+        df_list = []
+        binfile = self.df[self.analysis].iloc[0].filename.with_suffix(".dat")
+        n_frames = int(
+            self.__get_dat_info(binfile, ["n_frames"], types=["\d"])
+        )
+        # self.hist_bins = pd.read_csv(binfile, delimiter="\s+", comment="#", header=None).to_numpy()[:, 0]
+        mol_n_atoms = {}
+        for clay, clay_group_file in self.yield_first_analysis_group_filename(
+            "clays"
+        ):
+            mol_n_atoms[clay] = int(
+                self.__get_dat_info(clay_group_file, ["sel_n_atoms"], ["\d"])
+            )
+        mol_atom_labels = {}
+        atom_group_labels = {}
+        for group, aa_group_file in self.yield_first_analysis_group_filename(
+            "aas"
+        ):
+            labels = AtomTypeData.get_labels(aa_group_file)
+            ids = np.arange(start=0, stop=len(labels), step=1)
+            mol_atom_labels[group] = (labels, ids)
+            atom_group_labels[group] = self.get_atom_id_groups(
+                labels=labels, ids=ids
+            )
+
+        # idx_arr = self.df.index.to_frame.to_numpy()
+        # idx_arr = np.array([tuple(zip(*idx_arr))], dtype=dtypes)
+        # dtypes = list(zip([*self.df.index.names, 'atom_ids', 'atoms', 'x'], ['S10', 'S10', 'S10', 'u4', 'S10', 'f8']))
+        self.df.sort_index(level="aas", sort_remaining=True, inplace=True)
+        # prev_aa, prev_clay = 'X', 'Y'
+        for idx, val in tqdm(
+            self.df.iterrows(),
+            total=self.df.shape[0],
+            leave=False,
+            position=0,
+            desc="rows",
+        ):
+            clay, ion, aa = idx
+            atoms = val[self.atomnames]
+            analysis = val[self.analysis]
+            # if aa != prev_aa:
+            labels, label_ids = mol_atom_labels[aa]
+            group_labels = atom_group_labels[aa]
+            # new_idx = np.broadcast_to(np.array(idx)[:, np.newaxis], (len(idx), len(label_ids)))
+            # new_idx = np.vstack([new_idx, np.atleast_2d(label_ids), np.atleast_2d(labels)])
+            # new_idx_repeated = np.apply_along_axis(self.__repeat_idx, arr=new_idx, axis=1)
+            # bins_repeated = np.tile(A=self.hist_bins.T, reps=len(new_idx.T))
+            # new_idx = np.column_stack([new_idx_repeated.T, bins_repeated])
+            # # new_idx = list(tuple(zip(*new_idx.T)))
+            # # new_idx = np.array(arr, dtype=dtypes)
+            # new_idx = pd.MultiIndex.from_arrays(new_idx.T, names=[*self.df.index.names, 'atom_ids', 'atoms', 'x'],
+            #                                 )
+            # new_df = pd.DataFrame(index=new_idx, columns=[self.analysis])
+            n_atoms = mol_n_atoms[clay]
+            for (
+                atom_type,
+                group_ids,
+            ) in (
+                group_labels.items()
+            ):  # , leave=False, position=1, desc='atypes'):
+                savename = (
+                    self.odir
+                    / f"{self.name}_{clay}_{ion}_{aa}_{self.pH}_{atom_type}_{cutoff}_{bins}"
+                )
+                outname = Path(f"{savename}_{self.analysis}.dat")
+                if overwrite is True or not outname.is_file():
+                    logger.info(f"Getting {outname.stem} histogram")
+                    new_ts = analysis.timeseries[
+                        np.isin(atoms.timeseries, group_ids)
+                    ]
+                    data = AnalysisData(
+                        name=self.analysis,
+                        cutoff=cutoff.num,
+                        bin_step=bins.num,
+                    )
+                    data.timeseries = new_ts
+                    data.get_hist_data(n_frames=n_frames)
+                    data.get_norm(n_atoms=n_atoms)
+                    data.get_df()
+                    data.save(
+                        savename,
+                        n_frames=n_frames,
+                        sel_n_atoms=n_atoms,
+                        atypes_flat=labels,
+                        acodes_flat=label_ids,
+                        label=atom_type,
+                        group_atypes=labels[np.isin(label_ids, group_ids)],
+                        group_ids=group_ids,
+                    )
+            # prev_aa = aa
+            # prev_clay = clay
+            # hist, edges = np.histogram(new_ts, bins=[*self.hist_bins, self.cutoff.num])
+            # hist = np.divide(hist, n_frames * n_atoms)
+            # new_df.loc[idsl[clay, ion, aa, str(atom_id), atom_type, :], self.analysis] = hist
+            # new_df = new_df.groupby(new_df.index.names).sum()
+            # df_list.append(new_df.copy())
+            # del new_df
+            # if combined_df is None:
+            #     combined_df = new_df.copy()
+            #     del new_df
+            # else:
+            #     combined_df = pd.concat([combined_df.copy(), new_df.copy()])
+            #     del new_df
+        # combined_df = pd.concat(df_list)
+        # self.df = combined_df.copy()
+        self.ignore_density_sum = True
+
+    # @redirect_tqdm
+    # def split_dfs(self):
+    #     idsl = pd.IndexSlice
+    #     df_list = []
+    #     datfile = self.df[self.analysis].iloc[0].filename.with_suffix('.dat')
+    #     with open(datfile, 'r') as file:
+    #         filestr = file.read()
+    #         n_frames = int(re.search(r"^.*n_frames.*?(\d+)\n", filestr, flags=re.MULTILINE | re.DOTALL).group(1))
+    #         n_atoms = int(re.search(r"^.*sel_n_atoms.*?(\d+)\n", filestr, flags=re.MULTILINE | re.DOTALL).group(1))
+    #         hist_bins = pd.read_csv(datfile, delimiter="\s+", comment="#", header=None).to_numpy()[:, 0]
+    #     for idx, val in tqdm(self.df.iterrows(), total=self.df.shape[0], leave=False, position=0, desc='rows'):
+    #         clay, ion, aa = idx
+    #         atoms = val[self.atomnames]
+    #         analysis = val[self.analysis]
+    #         datfile = analysis.filename.with_suffix('.dat')
+    #         labels = AtomTypeData.get_labels(datfile)
+    #         del datfile
+    #         atom_ids = np.arange(len(labels))
+    #         new_idx_vals = np.hstack([np.array(idx), np.arange(len(labels)), labels])
+    #         new_idx_repeated = np.apply_along_axis(self.__repeat_idx, arr=new_idx_vals, axis=1)
+    #         bins_repeated = np.tile(A=hist_bins.T, reps=len(new_idx_vals))
+    #         new_idx = np.column_stack([new_idx_repeated.T, bins_repeated])
+    #         new_idx = pd.MultiIndex.from_arrays(new_idx.T, names=[*self.df.index.names, 'atom_ids', 'atoms', 'x'])
+    #         new_df = pd.DataFrame(index=new_idx, columns=[self.analysis])
+    #         atom_timeseries = atoms.timeseries[:, np.newaxis] == atom_ids[np.newaxis, :]
+    #         atom_hist = np.apply_along_axis(lambda x: np.histogram(analysis.timeseries[x], hist_bins=hist_bins)[0],
+    #                                         arr=atom_timeseries, axis=0)
+    #         atom_hist = atom_hist / (n_frames + n_atoms)
+    #         new_df.loc[idsl[clay, ion, aa, :, :, :], self.analysis] = atom_hist.reshape(-1, len(hist_bins)).tolist()
+    #         new_df = new_df.groupby(new_df.index.names).sum()
+    #         df_list.append(new_df.copy())
+    #         del new_df
+    #     #     if combined_df is None:
+    #     #         combined_df = new_df.copy()
+    #     #     else:
+    #     #         combined_df = pd.concat([combined_df.copy(), new_df.copy()])
+    #     #     del new_df
+    #     combined_df = pd.concat(df_list)
+    #     self.df = combined_df.copy()
+
+    # plt.plot(self.hist_bins, hist)
+    # plt.show()
+    # plt.legend()
+
+    def __repeat_idx(self, arr, *args, **kwargs):
+        return np.repeat(a=arr, repeats=len(self.hist_bins))
+
+        # combined_df = pd.DataFrame({self.atomnames: self.zf,
+        #                              self.analysis: self.df[self.analysis]}, index = self.df.index)
+        # self.filelist: list = []
+        # self.bins: Bins = Bins(bins)
+        # self.cutoff: float = Cutoff(cutoff)
+        # self.analysis: str = analysis
+        # self.atomnames: str = atomnames
+        # assert self.analysis is not None
+        # assert self.atomnames is not None
+        # if type(indir) != Path:
+        #     indir = Path(indir)
+        #
+        # self.filelist_dict = {}
+        #
+        # self._indir = indir
+        # for filetype in [self.analysis, self.atomnames]:
+        #     logger.info(
+        #         rf"Getting {namestem}*_"
+        #         rf"{self.cutoff}_"
+        #         rf"{self.bins}_"
+        #         rf"{analysis}.dat from {str(indir.resolve())!r}"
+        #     )
+        #     self.filelist: List[Path] = sorted(
+        #         list(
+        #             indir.glob(
+        #                 rf"{namestem}*_"
+        #                 rf"{self.cutoff}_"
+        #                 rf"{self.bins}_"
+        #                 rf"{self.analysis}.dat"
+        #             )
+        #         )
+        #     )
+        #     logger.info(f"Found {len(self.filelist)} {filetype} data files.")
+        #
+        # if load is not False:
+        #     load = Path(load.resolve())
+        #     self.df: pd.DataFrame = pkl.load(load)
+        #     logger.info(f"Using data from {load!r}")
+        # else:
+        #     if ions is None:
+        #         ions = self.__class__.ions
+        #         logger.info(f"ions not specified, using default {self.__class__.ions}")
+        #     else:
+        #         logger.info(f"Using custom {ions} for ions")
+        #     if atoms is None:
+        #         atoms = self.__class__.atoms
+        #         logger.info(
+        #             f"atoms not specified, using default {self.__class__.atoms}"
+        #         )
+        #     else:
+        #         logger.info(f"Using custom {atoms} for atoms")
+        #     if atomname is False:
+        #         assert len(atoms) == 1, 'Expected one atom category'
+        #         self.atomnames = atoms[0]
+        #     else:
+        #         self.atomnames = None
+        #     if aas is None:
+        #         aas = self.__class__.aas
+        #         logger.info(f"aas not specified, using default {self.__class__.aas}")
+        #     else:
+        #         logger.info(f"Using custom {aas} for aas")
+        #     if clays is None:
+        #         clays = self.__class__.clays
+        #         logger.info(
+        #             f"clays not specified, using default {self.__class__.clays}"
+        #         )
+        #     else:
+        #         logger.info(f"Using custom {clays} for clays")
+        #
+        #     if other is not None:
+        #         if other is True:
+        #             other = atoms
+        #             other.append("OW")
+        #
+        #             self.other: List[str] = other
+        #             logger.info(f"Setting second atom selection to {self.other}")
+        #         else:
+        #             # idx = pd.MultiIndex.from_product(
+        #             #     [ions, aas, atoms, x], names=["ions", "aas", "atoms"]
+        #             # )
+        #             self.other: None = None
+        #         # self.df: pd.DataFrame = pd.DataFrame(index=idx, columns=cols)
+        #
+        #     self._get_data(nameparts)
+        #
+        # self.df.dropna(inplace=True, how="all", axis=0)
+
+    # @redirect_tqdm
+    # def get_data(self, nameparts):
+    #     idsl = pd.IndexSlice
+    #     for f in self.filelist_dict[self.atomnames]:
+    #         namesplit = f.stem.split("_")
+    #         namesplit.pop(-1)
+    #         name = namesplit[:nameparts]
+    #         namesplit = namesplit[nameparts:]
+    #         if self.other is not None:
+    #             # other = namesplit[5]
+    #             other = namesplit.pop(5)
+    #             if other in self.ions:
+    #                 other = "ions"
+    #         try:
+    #             if self.atomnames is None:
+    #                 clay, ion, aa, pH, atom, cutoff, bins = namesplit
+    #             else:
+    #                 clay, ion, aa, pH, cutoff, bins = namesplit
+    #                 atom = self.atomnames
+    #             assert cutoff == self.cutoff
+    #             assert bins == self.bins
+    #             with open(f, 'rb') as file:
+    #                 arr = pkl.load(f)
+    #                 # arr = np.ravel()
+
+
+def read_edge_file(
+    fname: Union[str, PathType],
+    cutoff: Union[int, str, float, Cutoff] = None,
+    skip=False,
+    edge_type: Optional[str] = "",
+):
+    fname = File(fname, check=False)
+    if edge_type != "":
+        edge_type = f"{edge_type}-"
+    if not fname.exists():
+        logger.info("No edge file found.")
+        # os.makedirs(fname.parent, exist_ok=True)
+        # logger.info(f"{fname.parent}")
+        if skip is True:
+            logger.info(f"Continuing without {edge_type}edges")
+            if cutoff is None:
+                logger.finfo(
+                    f"Cutoff required when skipping {edge_type}edges!\nAborting."
+                )
+                sys.exit(1)
+            p = [0, float(cutoff)]
+        else:
+            raise FileNotFoundError(f"No edge file found {fname.name!r}.")
+    else:
+        with open(fname, "rb") as edges_file:
+            logger.finfo(f"Reading {edge_type}edges {fname.name!r}")
+            p = pkl.load(edges_file)["edges"]
+        logger.finfo(
+            ", ".join(list(map(lambda e: f"{e:.2f}", p))),
+            kwd_str=f"{edge_type}edges: ",
+            indent="\t",
+        )
+    return p
+
+
+def get_edge_fname(
+    atom_type: str,
+    cutoff: Union[int, str, float],
+    bins: Union[int, str, float],
+    other: Optional[str] = None,
+    path: Union[str, PathType] = PE_DATA,
+    name: Union[Literal["pe"], Literal["edge"]] = "pe",
+    ls_regex: bool = False,
+):
+    if other is not None:
+        other = f"{other}_"
+    else:
+        other = ""
+    if cutoff is None:
+        cutoff = "*"
+    else:
+        cutoff = Cutoff(cutoff)
+    bins = Bins(bins)
+    if ls_regex is True:
+        cutoff = "{" + f"{cutoff}" + "..99}"
+        bins = "{01.." + f"{bins}" + "}"
+        regex = " regex"
+    else:
+        regex = ""
+    # fname = Path.cwd() / f"edge_data/edges_{atom_type}_{self.cutoff}_{self.bins}.p"
+    fname = (
+        Dir(path) / f"{atom_type}_{other}{name}_data_{cutoff}_{bins}.p"
+    ).resolve()
+    logger.finfo(
+        f"Peak/edge filename{regex}: {fname.name!r}",
+        initial_linebreak=True,
+        indent="\t",
+    )
+    return Path(fname)

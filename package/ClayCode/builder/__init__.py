@@ -13,5 +13,3 @@ from ClayCode.builder.claycomp import (
     UCData,
     UnitCell,
 )
-
-__all__ = []
