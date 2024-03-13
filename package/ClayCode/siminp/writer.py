@@ -187,8 +187,25 @@ class GMXRun(UserDict, ABC):
             add_resnum(crdin=gro, crdout=gro)
         except FileNotFoundError:
             pass
-        else:
+        finally:
             self._gro = GROFile(gro)
+
+    @property
+    def top(self):
+        if self._top is None and self.gro is not None:
+            return self.gro.top
+        else:
+            return self._top
+
+    @top.setter
+    def top(self, top: TOPFile):
+        try:
+            topfile = TOPFile(top)
+        except TypeError:
+            topfile = None
+        else:
+            if topfile.is_file():
+                self._top = TOPFile(topfile)
 
     @property
     def cpt(self):
@@ -216,13 +233,13 @@ class GMXRun(UserDict, ABC):
         #     run_dir = run_dir.parent
         self._run_dir = run_dir
 
-    @property
-    def top(self):
-        return self._top
-
-    @top.setter
-    def top(self, top: TOPFile):
-        self._top = TOPFile(top)
+    # @property
+    # def top(self):
+    #     return self._top
+    #
+    # @top.setter
+    # def top(self, top: TOPFile):
+    #     self._top = TOPFile(top)
 
     @property
     def odir(self):
@@ -1030,8 +1047,12 @@ class MDPRunGenerator:
                 else:
                     run.gro = prev_gro
                     new_top = run.odir / prev_top.name
-                    shutil.copy2(init_top, new_top)
-                    run.top = new_top
+                    try:
+                        shutil.copy2(init_top, new_top)
+                    except shutil.SameFileError:
+                        pass
+                    else:
+                        run.top = new_top
                     run.cpt = prev_cpt
                 if run.__class__.__name__ == "DSpaceRun":
                     run_name = f"{run.name}_NpT"
@@ -1061,8 +1082,8 @@ class MDPRunGenerator:
                     prev_cpt = None
                 run.mdp.write_prms(run.mdp.string, all=True)
                 scriptfile.write(run.get_run_command(self._gmx_alias))
-                prev_gro = run.gro
-                prev_top = run.top
+                prev_gro = run.outname.with_suffix(".gro")
+                prev_top = run.outname.with_suffix(".top")
         logger.finfo(
             f"Wrote runscript to {str(odir / run_script_name)}",
             initial_linebreak=True,

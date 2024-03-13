@@ -4,6 +4,16 @@ oh   ho    1   0.1     463532.8
 ohs  ho    1   0.1     463532.8
 ohx  ho    1   0.1     463532.8
 
+; converting from ClayFF to Gromacs use 1cal - 4.186 J and multiplied by 4(!)
+; parameters from doi:10.1021/acs.jpcc.1c04600
+; water angle k is multiplied by 2
+; bulk angles
+; [ angletypes ]
+; i    j    k    func        th0       cth
+; ao  oh   ho    1   116.0     251.16
+; feo oh   ho    1   116.0     251.16
+; mgo oh   ho    1   120.0     100.464
+
 ; Bond type code
 ;
 ; converting from ClayFF to Gromacs use 1cal - 4.186 J

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import logging
 import os
 import re
 import shutil
 import subprocess as sp
-import sys
-import warnings
 from functools import singledispatch
 from itertools import chain
 from pathlib import Path
@@ -14,15 +14,13 @@ from typing import List, Literal, Optional, Union
 import MDAnalysis as mda
 import numpy as np
 import pandas as pd
+from ClayCode.core.classes import Dir, File, GROFile, PathType
 from ClayCode.core.consts import exec_date, exec_time
+from ClayCode.core.utils import get_header
 from numpy._typing import NDArray
 from tqdm.contrib.logging import logging_redirect_tqdm
 
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.simplefilter("ignore")
-
-logger = logging.getLogger(Path(__file__).stem)
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "remove_files",
@@ -40,6 +38,7 @@ __all__ = [
     "convert_str_list_to_arr",
     "select_file",
     "select_named_file",
+    "redirect_tqdm",
 ]
 
 
@@ -579,3 +578,53 @@ def make_1d(arr: NDArray, sel=None, return_dims=False):
         return np.array(*dimarr), sel
     else:
         return np.array(*dimarr)
+
+
+def get_atom_type_group(atom_name: str, group_all_atoms):
+    if atom_name in ["O", "OT", "OXT"]:
+        atom_name = "OT"
+    if group_all_atoms is True:
+        if (
+            len(atom_name) == 1
+            or atom_name == "CA"
+            or atom_name == "OT"
+            or atom_name[1].islower()
+        ):
+            pass
+        elif atom_name[1] == "H" and atom_name[0] != "C":
+            atom_name = atom_name[:2]
+        else:
+            atom_name = f"{atom_name[0]}R"
+    return atom_name
+
+
+def get_paths(
+    path: Union[str, PathType] = None,
+    infiles: List[Union[PathType, str]] = None,
+    inpname: str = None,
+):
+    logger.info(get_header(f"Getting run files"))
+    if path is not None:
+        path = Dir(path)
+        if infiles is None:
+            gro = select_file(path=path, suffix="gro", searchstr=inpname)
+            trr = select_file(
+                path=path, suffix="trr", how="largest", searchstr=inpname
+            )
+        else:
+            gro = select_file(
+                path=path, suffix="gro", searchstr=infiles[0].strip(".gro")
+            )
+            trr = select_file(
+                path=path,
+                suffix="trr",
+                how="largest",
+                searchstr=infiles[1].strip(".gro"),
+            )
+    else:
+        gro, trr = infiles
+        gro, trr = GROFile(gro), File(trr)
+        path = Dir(gro.parent)
+    logger.finfo(f"{str(gro.resolve())!r}", kwd_str="Found coordinates: ")
+    logger.finfo(f"{str(trr.resolve())!r}", kwd_str="Found trajectory: ")
+    return gro, trr, path

@@ -6,7 +6,7 @@ import pathlib as pl
 import pickle as pkl
 import re
 import shutil
-import tempfile
+import sys
 from functools import partial, update_wrapper
 from pathlib import Path, PosixPath
 from typing import (
@@ -19,7 +19,6 @@ from typing import (
     Sequence,
     Tuple,
     Type,
-    TypeVar,
     Union,
     cast,
     overload,
@@ -27,12 +26,11 @@ from typing import (
 
 import numpy as np
 import pandas as pd
-from ClayCode import Dir, File, GROFile, PathType
-from ClayCode.analysis.consts import PE_DATA
-from ClayCode.analysis.utils import select_file
+from ClayCode.analysis.analysisbase import ClayAnalysisBase, analysis_class
 from ClayCode.core import gmx
+from ClayCode.core.cctypes import MaskedArray
 from ClayCode.core.consts import IONS, SOL, SOL_DENSITY
-from ClayCode.core.utils import get_header
+from ClayCode.core.lib import temp_file_wrapper
 from ClayCode.data.consts import AA, DATA, FF, MDP, UCS
 from MDAnalysis import AtomGroup, Universe
 from MDAnalysis.lib.distances import minimize_vectors
@@ -41,11 +39,6 @@ from MDAnalysis.transformations.translate import center_in_box
 from MDAnalysis.transformations.wrap import wrap
 from numpy.typing import NDArray
 
-tpr_logger = logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
-    level=logging.WARNING
-)
-
-__name__ = "lib"
 __all__ = [
     "process_orthogonal",
     "process_triclinic",
@@ -66,133 +59,79 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-# def init_log(
-#     logname,
-#     level: Union[
-#         Literal[20],
-#         Literal[10],
-#         Dict[
-#             Union[Literal["file"], Literal["stream"]],
-#             Union[Literal[20], Literal[10]],
-#         ],
-#     ] = None,
-#     handlers: Union[
-#         Literal["file"],
-#         Literal["stream"],
-#         List[Union[Literal["file"], Literal["stream"]]],
-#     ] = ["file", "stream"],
-#     runname=None,
-#     fpath=None,
-# ):
-#     logger = logging.getLogger(logname)
-#     format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
-#     if isinstance(handlers, str):
-#         handlers = [handlers]
-#     if isinstance(level, str):
-#         level = [level * len(handlers)]
-#         level = dict(zip(handlers, level))
-#     elif level is None:
-#         level = {"file": 20, "stream": 10}
-#     assert isinstance(level, dict), f"Unexpected type for level: {type(level)}"
-#     for key in level.keys():
-#         assert key in handlers
-#     logger.setLevel(np.min(list(level.values())))
-#     if "stream" in handlers:
-#         logger.debug("stream", level["stream"])
-#         shandler = logging.StreamHandler()
-#         shandler.setLevel(level["stream"])
-#         shandler.setFormatter(format)
-#         logger.addHandler(shandler)
-#
-#     if "file" in handlers:
-#         logger.debug("file")
-#         if runname is None:
-#             pass
-#         elif runname == "__main__":
-#             runname = None
-#         fhandler = logging.FileHandler(
-#             get_logfname(logname, runname, time=exec_date, logpath=fpath), mode="w"
+# def init_temp_inout(
+#     inf: Union[str, Path],
+#     outf: Union[str, Path],
+#     new_tmp_dict: Dict[Union[Literal["crd"], Literal["top"]], bool],
+#     which=Union[Literal["crd"], Literal["top"]],
+# ) -> Tuple[
+#     Union[str, Path],
+#     Union[str, Path],
+#     Dict[Union[Literal["crd"], Literal["top"]], bool],
+# ]:
+#     inp = Path(inf)
+#     outp = Path(outf)
+#     if inp == outp:
+#         temp_outp = tempfile.NamedTemporaryFile(
+#             suffix=outp.suffix, prefix=outp.stem, dir=outp.parent
 #         )
-#         fhandler.setLevel(level["file"])
-#         fhandler.setFormatter(format)
-#         logger.addHandler(fhandler)
+#         # outp = inp.with_stem(inp.stem + "_tmp")
+#         outp = Path(temp_outp.name)
+#         new_tmp_dict[which] = True
+#         logger.info(f"Creating temporary output file {outp.name!r}")
+#     else:
+#         temp_outp = None
+#     if type(inf) == str:
+#         inp = str(inp.resolve())
+#     if type(outf) == str:
+#         temp_outp = str(outp.resolve())
+#     return inp, outp, new_tmp_dict, temp_outp
+
+
+# def fix_gro_residues(crdin: Union[Path, str], crdout: Union[Path, str]):
+#     u = Universe(crdin)
+#     if np.unique(u.residues.resnums).tolist() == [1]:
+#         u = add_resnum(crdin=crdin, crdout=crdout)
+#     if "iSL" not in u.residues.resnames:
+#         u = rename_il_solvent(crdin=crdout, crdout=crdout)
+#     return u
+
+
+# def temp_file_wrapper(f: Callable):
+#     def wrapper(**kwargs):
+#         kwargs_dict = locals()["kwargs"]
+#         fargs_dict = {}
+#         new_tmp = {}
+#         for ftype in ["crd", "top"]:
+#             if f"{ftype}in" in kwargs_dict.keys():
+#                 fargs_dict[f"{ftype}in"] = kwargs_dict[f"{ftype}in"]
+#             if f"{ftype}out" in kwargs_dict.keys():
+#                 (
+#                     fargs_dict[f"{ftype}in"],
+#                     fargs_dict[f"{ftype}out"],
+#                     new_tmp,
+#                     temp_outp,
+#                 ) = init_temp_inout(
+#                     kwargs_dict[f"{ftype}in"],
+#                     kwargs_dict[f"{ftype}out"],
+#                     new_tmp_dict=new_tmp,
+#                     which=ftype,
+#                 )
+#             elif f"{ftype}out" in kwargs_dict.keys():
+#                 fargs_dict[f"{ftype}out"] = kwargs_dict[f"{ftype}out"]
+#         for k, v in fargs_dict.items():
+#             locals()["kwargs"][k] = v
+#         r = f(**kwargs_dict)
+#         for ftype, new in new_tmp.items():
+#             if new is True:
+#                 infile = Path(fargs_dict[f"{ftype}in"])
+#                 outfile = Path(fargs_dict[f"{ftype}out"])
+#                 assert outfile.exists(), f"No file generated!"
+#                 shutil.copy(outfile, infile)
+#                 logger.info(f"Renaming {outfile.name!r} to {infile.name!r}")
+#         return r
 #
-#     return logger
-
-
-def init_temp_inout(
-    inf: Union[str, Path],
-    outf: Union[str, Path],
-    new_tmp_dict: Dict[Union[Literal["crd"], Literal["top"]], bool],
-    which=Union[Literal["crd"], Literal["top"]],
-) -> Tuple[
-    Union[str, Path],
-    Union[str, Path],
-    Dict[Union[Literal["crd"], Literal["top"]], bool],
-]:
-    inp = Path(inf)
-    outp = Path(outf)
-    if inp == outp:
-        temp_outp = tempfile.NamedTemporaryFile(
-            suffix=outp.suffix, prefix=outp.stem, dir=outp.parent
-        )
-        # outp = inp.with_stem(inp.stem + "_tmp")
-        outp = Path(temp_outp.name)
-        new_tmp_dict[which] = True
-        logger.info(f"Creating temporary output file {outp.name!r}")
-    else:
-        temp_outp = None
-    if type(inf) == str:
-        inp = str(inp.resolve())
-    if type(outf) == str:
-        temp_outp = str(outp.resolve())
-    return inp, outp, new_tmp_dict, temp_outp
-
-
-def fix_gro_residues(crdin: Union[Path, str], crdout: Union[Path, str]):
-    u = Universe(crdin)
-    if np.unique(u.residues.resnums).tolist() == [1]:
-        u = add_resnum(crdin=crdin, crdout=crdout)
-    if "iSL" not in u.residues.resnames:
-        u = rename_il_solvent(crdin=crdout, crdout=crdout)
-    return u
-
-
-def temp_file_wrapper(f: Callable):
-    def wrapper(**kwargs):
-        kwargs_dict = locals()["kwargs"]
-        fargs_dict = {}
-        new_tmp = {}
-        for ftype in ["crd", "top"]:
-            if f"{ftype}in" in kwargs_dict.keys():
-                fargs_dict[f"{ftype}in"] = kwargs_dict[f"{ftype}in"]
-            if f"{ftype}out" in kwargs_dict.keys():
-                (
-                    fargs_dict[f"{ftype}in"],
-                    fargs_dict[f"{ftype}out"],
-                    new_tmp,
-                    temp_outp,
-                ) = init_temp_inout(
-                    kwargs_dict[f"{ftype}in"],
-                    kwargs_dict[f"{ftype}out"],
-                    new_tmp_dict=new_tmp,
-                    which=ftype,
-                )
-            elif f"{ftype}out" in kwargs_dict.keys():
-                fargs_dict[f"{ftype}out"] = kwargs_dict[f"{ftype}out"]
-        for k, v in fargs_dict.items():
-            locals()["kwargs"][k] = v
-        r = f(**kwargs_dict)
-        for ftype, new in new_tmp.items():
-            if new is True:
-                infile = Path(fargs_dict[f"{ftype}in"])
-                outfile = Path(fargs_dict[f"{ftype}out"])
-                assert outfile.exists(), f"No file generated!"
-                shutil.copy(outfile, infile)
-                logger.info(f"Renaming {outfile.name!r} to {infile.name!r}")
-        return r
-
-    return wrapper
+#     return wrapper
 
 
 def run_analysis(
@@ -235,9 +174,74 @@ def get_selections(
     ...
 
 
-def get_selections(
-    infiles, sel, clay_type, other=None, in_memory=False
-):  # , save_new=True):
+# def get_selections(
+#     infiles, sel, clay_type, other=None, in_memory=False
+# ):  # , save_new=True):
+#     """Get MDAnalysis atom groups for clay, first and optional second selection.
+#     :param in_memory: store trajectory to memory
+#     :type in_memory: bool
+#     :param clay_type: Unit cell type
+#     :type clay_type: str
+#     :param infiles: Coordinate and trajectory files
+#     :type infiles: Sequence[Union[str, Path, PosixPath]]
+#     :param sel: selection keywords as [resname] or [resname, atom type] or 'not SOL'
+#     :type sel: Sequence[str]
+#     :param other: selection keywords as [resname] or [resname, atom type], defaults to None
+#     :type other: Sequence[str], optional
+#     # :raises ValueError: lengths of sel or other != in [1, 2]
+#     # :return sel: atom group for sel
+#     # :rtype sel: AtomGroup
+#     # :return clay: atom group for clay
+#     # :rtype clay: AtomGroup
+#     # :return other: atom group for other, optional
+#     # :rtype other: AtomGroup
+#     """
+#     infiles = [str(Path(infile).absolute()) for infile in infiles]
+#     for file in infiles:
+#         logger.info(f"Reading: {file!r}")
+#     u = Universe(*infiles, in_memory=in_memory)
+#     # only resname specified
+#     if len(sel) == 1:
+#         sel = u.select_atoms(f"resname {sel[0]}")
+#     # rename and atom type specified
+#     elif len(sel) == 2:
+#         # expand search string for terminal O atom types
+#         if sel[1] == "OT*":
+#             sel[1] = "OT* O OXT"
+#         sel = u.select_atoms(f"resname {sel[0]}* and name {sel[1]}")
+#     else:
+#         raise ValueError('Expected 1 or 2 arguments for "sel"')
+#     if other is None:
+#         pass
+#     elif len(other) == 1:
+#         logger.debug(f"other: {other}")
+#         other = u.select_atoms(f"resname {other[0]}")
+#     elif len(other) == 2:
+#         logger.debug(f"other: {other}")
+#         if other[1] == "OT*":
+#             other[1] = "OT* O OXT"
+#         other = u.select_atoms(f"resname {other[0]}* and name {other[1]}")
+#     else:
+#         raise ValueError('Expected 1 or 2 arguments for "other"')
+#     clay = u.select_atoms(f"resname {clay_type}* and name OB* o*")
+#     logger.info(
+#         f"'clay': Selected {clay.n_atoms} atoms of "
+#         f"{clay.n_residues} {clay_type!r} unit cells"
+#     )
+#
+#     sel = select_outside_clay_stack(sel, clay)
+#
+#     # Clay + two other atom groups selected
+#     if other is not None:
+#         other = select_outside_clay_stack(other, clay)
+#         return sel, clay, other
+#
+#     # Only clay + one other atom group selected
+#     else:
+#         return sel, clay
+
+
+def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
     """Get MDAnalysis atom groups for clay, first and optional second selection.
     :param in_memory: store trajectory to memory
     :type in_memory: bool
@@ -251,55 +255,104 @@ def get_selections(
     :type other: Sequence[str], optional
     # :raises ValueError: lengths of sel or other != in [1, 2]
     # :return sel: atom group for sel
-    # :rtype sel: AtomGroup
+    # :rtype sel: MDAnalysis.core.groups.AtomGroup
     # :return clay: atom group for clay
-    # :rtype clay: AtomGroup
+    # :rtype clay: MDAnalysis.core.groups.AtomGroup
     # :return other: atom group for other, optional
-    # :rtype other: AtomGroup
+    # :rtype other: MDAnalysis.core.groups.AtomGroup
     """
     infiles = [str(Path(infile).absolute()) for infile in infiles]
     for file in infiles:
-        logger.info(f"Reading: {file!r}")
+        logger.debug(f"Reading: {file!r}")
     u = Universe(*infiles, in_memory=in_memory)
     # only resname specified
     if len(sel) == 1:
+        sel_str = sel[0]
         sel = u.select_atoms(f"resname {sel[0]}")
+
     # rename and atom type specified
     elif len(sel) == 2:
         # expand search string for terminal O atom types
         if sel[1] == "OT*":
             sel[1] = "OT* O OXT"
+        sel_str = "{}: {}".format(*sel)
         sel = u.select_atoms(f"resname {sel[0]}* and name {sel[1]}")
+
     else:
         raise ValueError('Expected 1 or 2 arguments for "sel"')
+
     if other is None:
         pass
     elif len(other) == 1:
         logger.debug(f"other: {other}")
+        other_str = other[0]
         other = u.select_atoms(f"resname {other[0]}")
+
     elif len(other) == 2:
         logger.debug(f"other: {other}")
         if other[1] == "OT*":
             other[1] = "OT* O OXT"
+        other_str = "{}: {}".format(*other)
         other = u.select_atoms(f"resname {other[0]}* and name {other[1]}")
     else:
         raise ValueError('Expected 1 or 2 arguments for "other"')
     clay = u.select_atoms(f"resname {clay_type}* and name OB* o*")
-    logger.info(
-        f"'clay': Selected {clay.n_atoms} atoms of "
-        f"{clay.n_residues} {clay_type!r} unit cells"
+    # logger.finfo(
+    #     f"'clay': Selected {clay.n_atoms} atoms of "
+    #     f"{clay.n_residues}  unit cells"
+    # )
+    log_atomgroup_info(
+        ag=clay, ag_name=clay_type, kwd_str="Clay unit cell type"
     )
 
     sel = select_outside_clay_stack(sel, clay)
-
     # Clay + two other atom groups selected
+    log_atomgroup_info(ag=sel, ag_name=sel_str, kwd_str="Atom selection")
+
     if other is not None:
         other = select_outside_clay_stack(other, clay)
+        log_atomgroup_info(
+            ag=other, ag_name=other_str, kwd_str="Second atom selection"
+        )
         return sel, clay, other
 
     # Only clay + one other atom group selected
     else:
         return sel, clay
+
+
+def get_ag_numbers_info(ag: AtomGroup) -> Tuple[int, int]:
+    return "Selected {} atoms in {} residues.".format(
+        ag.n_atoms, ag.n_residues
+    )
+
+
+# def run_analysis(instance: analysis_class, start: int, stop: int, step: int):
+#     """Run MDAnalysis analysis.
+#     :param start: First frame, defaults to None
+#     :type start: int, optional
+#     :param stop: Last frame, defaults to None
+#     :type stop: int, optional
+#     :param step: Iteration step, defaults to None
+#     :type step: int, optional
+#     """
+#     kwarg_dict = {}
+#     for k, v in {"start": start, "step": step, "stop": stop}.items():
+#         if v is not None:
+#             kwarg_dict[k] = v
+#     instance.run(**kwarg_dict)
+#     return instance
+
+
+def log_atomgroup_info(ag: AtomGroup, kwd_str: str, ag_name: str):
+    if ag.n_atoms > 0:
+        logger.finfo(f"{ag_name!r}", kwd_str=f"{kwd_str}: ")
+        logger.finfo(get_ag_numbers_info(ag))
+    else:
+        logger.ferror(
+            f"{ag_name} contains 0 atoms. Check atom selection parameters."
+        )
+        sys.exit(4)
 
 
 def select_outside_clay_stack(atom_group: AtomGroup, clay: AtomGroup):
@@ -335,6 +388,7 @@ def save_selection(
     ocoords = Path(outname).with_suffix("._gro").resolve()
     opdb = Path(outname).with_suffix(".pdbqt").resolve()
     logger.info(f"Writing coordinates and trajectory ({traj!r})")
+    outsel = atom_groups[0]
     if ndx is True:
         ondx = Path(outname).with_suffix(".ndx").resolve()
         if ondx.is_file():
@@ -342,8 +396,8 @@ def save_selection(
                 ndx_str = ndx_file.read()
         else:
             ndx_str = ""
-    outsel = atom_groups[0]
-    if ndx is True:
+
+        # if ndx is True:
         group_name = "clay"
         atom_name = np.unique(atom_groups[0].atoms.names)[0][:2]
         group_name += f"_{atom_name}"
@@ -359,9 +413,9 @@ def save_selection(
             if not search_ndx_group(ndx_str=ndx_str, sel_name=group_name):
                 ag.write(ondx, name=group_name, mode="a")
         outsel += ag
-        logger.info(
-            f"New trajectory from {len(atom_groups)} groups with {outsel.n_atoms} total atoms"
-        )
+    logger.info(
+        f"New trajectory from {len(atom_groups)} groups with {outsel.n_atoms} total atoms"
+    )
     logger.info(f"1. {ocoords!r}")
     outsel.write(str(ocoords))
     if pdbqt is True:
@@ -1726,120 +1780,3 @@ def remove_ag(
     u.atoms -= sel[first:]
     logger.debug(f"After: {u.atoms.n_atoms}")
     u.atoms.write(crdout)
-
-
-def read_edge_file(
-    fname: Union[str, PathType],
-    cutoff: Union[int, str, float, Cutoff],
-    skip=False,
-):
-    fname = File(fname, check=False)
-    if not fname.exists():
-        logger.info("No edge file found.")
-        # os.makedirs(fname.parent, exist_ok=True)
-        # logger.info(f"{fname.parent}")
-        if skip is True:
-            logger.info(f"Continuing without ads_edges")
-            p = [0, float(cutoff)]
-        else:
-            raise FileNotFoundError(f"No edge file found {fname}.")
-    else:
-        with open(fname, "rb") as edges_file:
-            logger.info(f"Reading ads_edges {edges_file.name}")
-            p = pkl.load(edges_file)["edges"]
-        logger.finfo(
-            ", ".join(list(map(lambda e: f"{e:.2f}", p))),
-            kwd_str="ads_edges: ",
-            indent="\t",
-        )
-    return p
-
-
-def get_edge_fname(
-    atom_type: str,
-    cutoff: Union[int, str, float],
-    bins: Union[int, str, float],
-    other: Optional[str] = None,
-    path: Union[str, PathType] = PE_DATA,
-    name: Union[Literal["pe"], Literal["edge"]] = "pe",
-):
-    if other is not None:
-        other = f"{other}_"
-    else:
-        other = ""
-    cutoff = Cutoff(cutoff)
-    bins = Bins(bins)
-    # fname = Path.cwd() / f"edge_data/edges_{atom_type}_{self.cutoff}_{self.bins}.p"
-    fname = (
-        Dir(path) / f"{atom_type}_{other}{name}_data_{cutoff}_{bins}.p"
-    ).resolve()
-    logger.info(f"Peak/edge Filename: {fname.name!r}")
-    return fname
-
-
-def get_paths(
-    path: Union[str, PathType] = None,
-    infiles: List[Union[PathType, str]] = None,
-    inpname: str = None,
-):
-    logger.info(get_header(f"Getting run files"))
-    if path is not None:
-        path = Dir(path)
-        if infiles is None:
-            gro = select_file(path=path, suffix="gro", searchstr=inpname)
-            trr = select_file(
-                path=path, suffix="trr", how="largest", searchstr=inpname
-            )
-        else:
-            gro = select_file(
-                path=path, suffix="gro", searchstr=infiles[0].strip(".gro")
-            )
-            trr = select_file(
-                path=path,
-                suffix="trr",
-                how="largest",
-                searchstr=infiles[1].strip(".gro"),
-            )
-    else:
-        gro, trr = infiles
-        gro, trr = GROFile(gro), File(trr)
-        path = Dir(gro.parent)
-    logger.finfo(f"{str(gro.resolve())!r}", kwd_str="Found coordinates: ")
-    logger.finfo(f"{str(trr.resolve())!r}", kwd_str="Found trajectory: ")
-    return gro, trr, path
-
-
-class Cutoff(str):
-    def __new__(cls, length):
-        string = f"{int(length):02}"
-        return super().__new__(cls, string)
-
-    def __init__(self, length):
-        self.num = float(length)
-
-    def __float__(self):
-        return float(self.num)
-
-    def __int__(self):
-        return int(self.num)
-
-    def __str__(self):
-        return self
-
-
-class Bins(str):
-    def __new__(cls, length):
-        string = f"{float(length):.02f}"[2:]
-        return super().__new__(cls, string)
-
-    def __init__(self, length):
-        self.num = float(length)
-
-    def __float__(self):
-        return float(self.num)
-
-    def __int__(self):
-        return int(self.num)
-
-    def __str__(self):
-        return self

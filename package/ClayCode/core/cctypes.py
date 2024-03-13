@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from os import PathLike
 from typing import Any, Dict, List, Literal, NewType, Type, TypeVar, Union
 
@@ -49,3 +51,5 @@ PathOrStr = TypeVar("PathOrStr", PathType, str)
 AnyDict = TypeVar("AnyDict", Dict, CaselessDict)
 
 Definition = NewType("Definition", Type["Definition"])
+MaskedArray = TypeVar("MaskedArray")
+AtomGroup = TypeVar("AtomGroup")

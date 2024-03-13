@@ -9,19 +9,27 @@ from typing import Any, Literal, NoReturn, Optional, Union
 import MDAnalysis as mda
 import numpy as np
 from ClayCode.analysis.analysisbase import ClayAnalysisBase
-from ClayCode.analysis.lib import check_traj, get_paths
-from ClayCode.core.classes import Dir
-from ClayCode.core.lib import (
+from ClayCode.analysis.lib import (
+    check_traj,
     get_dist,
     get_selections,
     process_box,
     run_analysis,
     select_cyzone,
 )
+from ClayCode.analysis.utils import get_paths
+from ClayCode.core.classes import Dir
 from ClayCode.core.utils import get_subheader
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import apply_PBC
 
+# from ClayCode.core.lib import (
+#     get_dist,
+#     get_selections,
+#     process_box,
+#     run_analysis,
+#     select_cyzone,
+# )
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 __all__ = ["ZDens"]
@@ -35,6 +43,7 @@ class ZDens(ClayAnalysisBase):
     # name: [name, bins, timeseries, hist, hist2d, edges, n_bins, cutoff, bin_step]
     _attrs = ["zdens"]
     _abs = [True]
+    _name = "linear z-distance"
     """Calculate absolute densities of atom z-positions relative to clay surface O-atoms.
     """
 

@@ -129,12 +129,13 @@ import pickle as pkl
 import re
 from collections import UserDict
 from pathlib import Path
-from typing import Literal, Optional, Sequence, TypeVar, Union
+from typing import List, Literal, Optional, Sequence, TypeVar, Union
 
+import dask
 import numpy as np
 import pandas as pd
 import zarr
-from ClayCode.analysis.lib import Bins, Cutoff
+from ClayCode.core.consts import ANGSTROM
 from ClayCode.core.utils import (
     SubprocessProgressBar,
     get_header,
@@ -143,7 +144,6 @@ from ClayCode.core.utils import (
 from MDAnalysis import coordinates
 from MDAnalysis.core.groups import AtomGroup
 from MDAnalysis.lib.log import ProgressBar
-from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -325,9 +325,11 @@ class AnalysisData(UserDict):
             self.n_bins = np.rint(self.cutoff / self.bin_step)
         if verbose:
             logger.info(get_subheader(f" Initialising {name!r} analysis"))
-            logger.finfo(f"{self.cutoff}", kwd_str=f"cutoff: ")
+            logger.finfo(f"{self.cutoff:3.1f} {ANGSTROM}", kwd_str=f"cutoff: ")
             logger.finfo(f"{self.n_bins}", kwd_str=f"n_bins: ")
-            logger.finfo(f"{self.bin_step}", kwd_str=f"bin_step: ")
+            logger.finfo(
+                f"{self.bin_step:1.2f} {ANGSTROM}", kwd_str=f"bin_step: "
+            )
         hist, edges = np.histogram(
             [-1], bins=self.n_bins, range=(self._min, self.cutoff)
         )
@@ -364,9 +366,9 @@ class AnalysisData(UserDict):
     def cutoff(self, cutoff: Union[float, int, str]) -> None:
         """Maximum value for included perpendicular distance from a surface"""
         if cutoff is not None:
-            self._cutoff = float(cutoff)
-        # else:
-        #     self._cutoff = self._default_cutoff
+            self._cutoff = float(
+                cutoff
+            )  # else:  #     self._cutoff = self._default_cutoff
 
     @property
     def bin_step(self) -> float:
@@ -386,22 +388,31 @@ class AnalysisData(UserDict):
         :param use_abs: use absolute values of timeseries
         :type use_abs: bool
         """
+        if type(self.timeseries) == zarr.core.Array:
+            chunks = self.timeseries.chunks
+        else:
+            chunks = (True,)
         data = zarr.array(
             np.ravel(self.timeseries),
-            chunks=(1000000,),
-            write_empty_chunks=True,
+            chunks=True,
+            write_empty_chunks=False,
         )
+        data = dask.array.from_zarr(data)
         if use_abs == True:
-            data[:] = np.abs(data)
+            dask.array.abs(data, out=data)
         # if guess_min == True:
         #     ll = np.min(data)
         # else:
         #     ll = self._min
-        hist, _ = np.histogram(
-            data, self.edges, range=(self._min, self.cutoff)
+        hist, _ = dask.array.histogram(
+            data, bins=self.edges, range=(self._min, self.cutoff)
         )
-        hist = hist / len(self.timeseries)
-        self.hist[:] = hist
+        # hist, _ = np.histogram(
+        #     data[:], self.edges, range=(self._min, self.cutoff)
+        # )
+        dask.array.divide(hist, len(self.timeseries), out=hist)
+        # hist = hist / len(self.timeseries)
+        self.hist[:] = hist.compute()
 
     def get_rel_data(
         self, other: analysis_data, use_abs=True, **kwargs
@@ -448,7 +459,19 @@ class AnalysisData(UserDict):
         new_data.timeseries = data
         return new_data
 
-    def get_norm(self, n_atoms: Union[dict[int], int]):
+    def get_norm(
+        self,
+        n_atoms: Union[
+            dict[int],
+            Union[
+                int,
+                float,
+                np.float_,
+                List[Union[int, float, np.float_]],
+                np.ndarray,
+            ],
+        ],
+    ) -> None:
         # if type(n_atoms) == dict:
         #     if len(n_atoms.keys()) == 1:
         #         n_atoms = n_atoms.values()[0]
@@ -456,9 +479,15 @@ class AnalysisData(UserDict):
         #         self.norm_hist = self.norm_hist.copy()
         #         for key in self.n_atoms:
         #             self.norm_hist[key] = self.norm_hist[key] / n_atoms[key]
-        if type(n_atoms) == int:
-            self.norm_hist = self.hist.copy()
+        self.norm_hist = self.hist.copy()
+        if type(n_atoms) in [int, float, np.float_]:
             self.norm_hist = self.norm_hist / n_atoms
+        elif type(n_atoms) in [list, np.ndarray]:
+            self.norm_hist = self.norm_hist / np.mean(n_atoms)
+        else:
+            logger.finfo(
+                f"n_atoms must be int or float, not {type(n_atoms)}: {n_atoms}"
+            )
 
     @property
     def has_hist(self):
@@ -656,6 +685,7 @@ class ClayAnalysisBase(object):
     # name: [name, bins, timeseries, hist, hist2d, ads_edges, n_bins, cutoff, bin_step]
 
     _attrs = []
+    _name = "analysis"
 
     def __init__(self, trajectory, verbose=False, **kwargs):
         self._trajectory = trajectory
@@ -767,15 +797,53 @@ class ClayAnalysisBase(object):
             self._abs = [self._abs for a in range(len(self.data))]
             logger.finfo(
                 f"Using absolute " + ", ".join(self.data.keys()) + " values.\n"
-            )
-            # print(self._abs, len(self.data))
+            )  # print(self._abs, len(self.data))
         for vi, v in enumerate(self.data.values()):
             logger.finfo(
                 f"Getting {v.name!r} histogram", initial_linebreak=True
             )
             v.get_hist_data(use_abs=self._abs[vi])
-            v.get_norm(self.sel_n_atoms)
+            v.get_norm(self.get_self_n_atoms(v.timeseries, v))
             v.get_df()
+
+    def get_self_n_atoms(self, timeseries, data=None):
+        if type(timeseries) == list:
+            timeseries = zarr.array(timeseries, chunks=True)
+        if timeseries.ndim == 2:
+            sel_n_atoms = self.sel_n_atoms
+        elif timeseries.ndim == 3:
+            sel_n_atoms = self.get_counts(timeseries)
+            sel_n_atoms = np.mean(sel_n_atoms[:])
+        if data is not None:
+            data.sel_n_atoms = sel_n_atoms
+        if sel_n_atoms == int(sel_n_atoms):
+            sel_n_atoms = int(sel_n_atoms)
+        return sel_n_atoms
+
+    @staticmethod
+    def get_counts(timeseries: np.ndarray) -> np.ndarray:
+        if type(timeseries) == zarr.core.Array:
+            # coordinated_n_atoms = zarr.empty_like(timeseries)
+            # coordinated_n_atoms = dask.array.from_zarr(coordinated_n_atoms)
+            coordination_counts = dask.array.where(
+                dask.array.from_array(timeseries) >= 0, 1, 0
+            )
+            coordination_counts = dask.array.sum(coordination_counts, axis=2)
+            coordination_counts = dask.array.count_nonzero(
+                coordination_counts, axis=1
+            )
+            coordinated_n_atoms = coordination_counts.compute()
+            # for block_id, block in enumerate(timeseries.blocks):
+            #     block = np.where(block >= 0, 1, 0)
+            #     block = np.sum(
+            #         block, axis=2
+            #     )
+            #     coordinated_n_atoms.blocks[block_id] = np.count_nonzero(block, axis=1)
+        else:
+            coordination_counts = np.where(timeseries >= 0, 1, 0)
+            coordination_counts = np.sum(coordination_counts, axis=2)
+            coordinated_n_atoms = np.count_nonzero(coordination_counts, axis=1)
+        return coordinated_n_atoms
 
     def _get_results(self):
         """Finalize the results you've gathered.
@@ -785,18 +853,17 @@ class ClayAnalysisBase(object):
         self.results = {}
         for key, val in self.__dict__.items():
             if not key.startswith("_") and key != "results":
-                self.results[key] = val
-                # logger.info(f"{val}")
-        logger.info(f"{self.save}")
+                self.results[key] = val  # logger.info(f"{val}")
+        logger.finfo(f"Save: {self.save}")
         if self.save is False:
             pass
         else:
             outdir = Path(self.save).parent
-            logger.info(f"Saving results in {str(outdir.absolute())!r}")
+            logger.finfo(f"Saving results in {str(outdir.absolute())!r}")
             if not outdir.is_dir():
                 os.makedirs(outdir, exist_ok=True)
-                logger.info(f"Created {outdir}")
-            with open(f"{self.save}.p", "wb") as outfile:
+                logger.finfo(f"Created {str(outdir.absolute())!r}")
+            with open(Path(self.save).with_suffix(".p"), "wb") as outfile:
                 pkl.dump(self.results, outfile)
 
     def run(self, start=None, stop=None, step=None, frames=None, verbose=True):
@@ -832,7 +899,7 @@ class ClayAnalysisBase(object):
                 "Not running new analysis. Output file exists and overwrite not selected."
             )
         else:
-            logger.info(get_subheader("Starting analysis run"))
+            logger.info(get_subheader(f"Starting {self._name} run"))
             logger.finfo("Choosing frames to analyze")
             # if verbose unchanged, use class default
             verbose = (
@@ -848,7 +915,7 @@ class ClayAnalysisBase(object):
                 step=step,
                 frames=frames,
             )
-            logger.info("Starting preparation")
+            logger.finfo("Starting preparation")
             self._prepare()
             logger.finfo(
                 f"Starting analysis loop over {self.n_frames} trajectory frames"
@@ -870,7 +937,7 @@ class ClayAnalysisBase(object):
             logger.info(get_header(f"Writing results"))
             self._get_results()
             self._save()
-        logger.info("Done!\n")
+        logger.info(get_header("Done!"))
         return self
 
     def _post_process(self):

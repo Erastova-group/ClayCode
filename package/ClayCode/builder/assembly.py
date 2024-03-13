@@ -9,6 +9,7 @@ import itertools
 import logging
 import math
 import os
+import pickle
 import re
 import shutil
 import sys
@@ -48,7 +49,12 @@ from ClayCode.core.lib import (
     select_outside_clay_stack,
     write_insert_dat,
 )
-from ClayCode.core.utils import backup_files, get_header, get_subheader
+from ClayCode.core.utils import (
+    backup_files,
+    get_header,
+    get_subheader,
+    progress_wrapper,
+)
 from ClayCode.data.consts import FF, GRO_FMT, MDP, MDP_DEFAULTS
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.lib.mdamath import triclinic_box, triclinic_vectors
@@ -114,6 +120,49 @@ class Builder:
             self.em_prms, [self.sheet.dimensions[0], self.sheet.dimensions[1]]
         )
 
+    def _add_progress_file(self, key: str):
+        self._progress = (
+            self.args.outpath / self.get_filename("progress", suffix=".p").name
+        )
+
+    def _save_progress(self, key: str):
+        if self.args.save_progress:
+            logger.fdebug("Saving {key} progress")
+            if not hasattr(self, "_progress"):
+                self._progress = (
+                    self.args.outpath
+                    / self.get_filename("progress", suffix=".p").name
+                )
+            if self._progress.exists():
+                with open(self._progress, "wb") as progress_file:
+                    progress_dict = pickle.load(progress_file)
+            else:
+                progress_dict = {}
+            progress_dict[key] = self
+            with open(self._progress, "wb") as progress_file:
+                pickle.dump(
+                    progress_dict,
+                    progress_file,
+                    protocol=pickle.HIGHEST_PROTOCOL,
+                )
+
+    def _load_progress(self, key: str):
+        if self.args.load_progress:
+            logger.fdebug("Loading progress")
+            if not hasattr(self, "_progress"):
+                self._progress = (
+                    self.args.outpath
+                    / self.get_filename("progress", suffix=".p").name
+                )
+            if self._progress.exists():
+                with open(self._progress, "rb") as progress_file:
+                    progress_dict = pickle.load(progress_file)
+                self = progress_dict[key]
+            else:
+                logger.finfo(
+                    f"No {key} progress file {str(self._progress)!r} found."
+                )
+
     def get_solvated_il(self):
         self.construct_solvent(
             solvate=self.args.il_solv,
@@ -154,6 +203,8 @@ class Builder:
         :type backup: bool
         :return: None"""
         logger.info(get_subheader("2. Generating interlayer solvent."))
+        if self.args.il_ions.clay_charge != 0:
+            extra_waters = abs(self.args.il_ions.clay_charge) // 3
         solvent: Solvent = Solvent(
             x_dim=self.sheet.dimensions[0],
             y_dim=self.sheet.dimensions[1],
@@ -161,6 +212,7 @@ class Builder:
             z_dim=self.args.il_solv_height,
             gmx_commands=self.gmx_commands,
             z_padding=self.args.z_padding,
+            extra_waters=extra_waters,
         )
         spc_file: GROFile = self.get_filename("interlayer", suffix=".gro")
         if backup:
@@ -299,6 +351,7 @@ class Builder:
                 crdin=self.stack,
                 topin=self.stack.top,
                 odir=self.args.outpath,
+                topout=self.args.outpath / f"{outname}.top",
                 outname=outname,
                 gmx_commands=self.gmx_commands,
                 freeze_grps=freeze_grps,
@@ -345,7 +398,7 @@ class Builder:
             ]
             em_files = []
             backups = []
-            for file in outpath.iterdir():
+            for file in sorted(outpath.iterdir()):
                 if file not in crd_top_files and not file.is_dir():
                     file.unlink(missing_ok=True)
                 else:
@@ -359,19 +412,23 @@ class Builder:
                                         new_filename=em_path / file.name
                                     )
                                 )
-                            new_file = em_path / file.name
-                            try:
-                                shutil.copy2(file, new_file)
-                            except shutil.SameFileError:
-                                pass
+                            new_file = em_path / file.name  #
+                            if (
+                                file.suffix == ".gro"
+                                and file.stem == self.stack.stem
+                            ):
+                                self.stack = file
+                                logger.finfo(
+                                    f"Writing final output from energy minimisation to {str(file.parent)!r}:"
+                                )
                             else:
-                                file.unlink(missing_ok=True)
-                                file = new_file
-                        if file.suffix == ".gro":
-                            self.stack = file
-                            logger.finfo(
-                                f"Writing final output from energy minimisation to {str(file.parent)!r}:"
-                            )
+                                try:
+                                    shutil.copy2(file, new_file)
+                                except shutil.SameFileError:
+                                    pass
+                                else:
+                                    file.unlink(missing_ok=True)
+                                    file = new_file
                         em_files.append(file.name)
             if backups:
                 logger.finfo(
@@ -707,6 +764,7 @@ class Builder:
         if il_solv is not False:
             logger.info(get_subheader("3. Assembling box"))
             logger.finfo("Combining clay sheets and interlayer:")
+            target_n_iSL = None
         else:
             logger.finfo("Combining clay sheets")
         for sheet_id in range(self.args.n_sheets):
@@ -732,6 +790,14 @@ class Builder:
                         )
                     )
                 il_u_copy.atoms.translate([0, 0, sheet_u.dimensions[2]])
+                # if target_n_iSL is None:
+                #     target_n_iSL = il_u_copy.select_atoms("resname iSL").n_atoms
+                # else:
+                #     il_n_iSL = il_u_copy.select_atoms("resname iSL").n_atoms
+                #     if il_n_iSL > target_n_iSL:
+                #         il_u_copy.atoms = il_u_copy.atoms[:target_n_iSL]
+                #     else:
+                #         target_n_iSL = il_n_iSL
                 new_dimensions: NDArray = sheet_u.dimensions
                 sheet_u: Universe = Merge(sheet_u.atoms, il_u_copy.atoms)
                 sheet_u.dimensions = new_dimensions
@@ -979,6 +1045,7 @@ class Builder:
             "Adding interlayer ions:", initial_linebreak=False, indent="\t\t"
         )
         infile: GROFile = self.il_solv
+        n_SOL = self.args.n_waters
         add_resnum(crdin=infile, crdout=infile)
         with tempfile.NamedTemporaryFile(
             suffix=self.il_solv.suffix
@@ -990,6 +1057,7 @@ class Builder:
             if isinstance(self.args.n_il_ions, dict):
                 for ion, n_ions in self.args.n_il_ions.items():
                     if n_ions != 0:
+                        n_SOL -= n_ions
                         ion_charge = self.args.il_ions.df.loc[ion, "charges"]
                         ion_charge = self.get_formatted_ion_charges(
                             ion, ion_charge
@@ -1024,18 +1092,32 @@ class Builder:
                                     n_mols=n_ions, save=posfile.name
                                 )
                                 assert Path(posfile.name).is_file()
-                                (
-                                    insert_err,
-                                    insert_out,
-                                ) = self.gmx_commands.run_gmx_insert_mols(
-                                    f=temp_gro,
-                                    ci=ion_gro.name,
-                                    ip=posfile.name,
-                                    nmol=n_ions,
-                                    o=temp_gro,
-                                    replace="SOL",
-                                    dr="{} {} {}".format(*dr),
+                                out_n_SOL = -1
+                                outgro = tempfile.NamedTemporaryFile(
+                                    suffix=".gro", delete=False
                                 )
+                                while n_SOL > out_n_SOL:
+                                    (
+                                        insert_err,
+                                        insert_out,
+                                    ) = self.gmx_commands.run_gmx_insert_mols(
+                                        f=temp_gro,
+                                        ci=ion_gro.name,
+                                        ip=posfile.name,
+                                        nmol=n_ions,
+                                        o=outgro.name,
+                                        replace="SOL",
+                                        dr="{} {} {}".format(*dr),
+                                    )
+                                    out_n_SOL = (
+                                        GROFile(outgro.name)
+                                        .universe.select_atoms(
+                                            "resname iSL SOL"
+                                        )
+                                        .n_residues
+                                    )
+                            shutil.copy2(outgro.name, temp_gro)
+                            outgro.close()
                             center_clay(
                                 crdname=temp_gro, crdout=temp_gro, uc_name=ion
                             )
@@ -1053,10 +1135,26 @@ class Builder:
             #     numstr = f"_{sheet_num}"
             # else:
             #     numstr = ""
+            self.remove_extra_waters(temp_gro, n_SOL)
             il = self.get_filename(f"interlayer_ions", suffix=".gro")
             il.universe: Universe = temp_gro.universe
             il.write(topology=self.top)
             self.il: GROFile = il
+
+    @staticmethod
+    def remove_extra_waters(
+        grofile: GROFile, target_n_SOL: int, top: Optional[Topology] = None
+    ):
+        u = grofile.universe
+        if target_n_SOL != u.select_atoms("resname iSL SOL").n_residues:
+            remove_SOL_sel = u.select_atoms("resname SOL iSL").residues
+            u.atoms = u.residues.difference(
+                remove_SOL_sel[target_n_SOL:]
+            ).atoms
+            grofile.universe = u
+            if top is not None:
+                grofile.write(topology=top)
+        return grofile
 
     def center_clay_in_box(self) -> None:
         """Center clay in box.
@@ -2043,6 +2141,7 @@ class Solvent:
         n_ions: Optional[Union[int]] = None,
         z_padding: float = 0.4,
         min_height: float = 1.5,
+        extra_waters: int = 0,
     ):
         self.x_dim = float(x_dim)
         self.y_dim = float(y_dim)
@@ -2067,6 +2166,7 @@ class Solvent:
             self.n_ions = n_ions
             self.n_mols += self.n_ions
         self.n_mols: int = int(self.n_mols)
+        self.extra_waters = int(extra_waters)
 
     @property
     def z_dim(self) -> float:
@@ -2157,7 +2257,7 @@ class Solvent:
                 self._z_dim = self.min_height
             solv, out = self.gmx_commands.run_gmx_solvate(
                 cs="spc216",
-                maxsol=self.n_mols,
+                maxsol=int(self.n_mols + self.extra_waters),
                 o=spc_gro,
                 p=spc_top,
                 scale=0.57,
@@ -2199,14 +2299,3 @@ class Solvent:
                 f"insert {added_wat} instead of {self.n_mols} water "
                 f"molecules."
             )
-
-
-#
-# if __name__ == "__main__":
-#     gc = GMXCommands(gmx_alias="gmx_mpi")
-#     gc.run_gmx_make_ndx_with_new_sel(
-#         f=Path("/storage/new_clays/Na/NAu-1-fe/NAu-1-fe_7_5_solv_ions.gro"),
-#         o=Path("index.ndx"),
-#         sel_str="r T2* & ! a OH* HO*",
-#         sel_name="new_sel",
-#     )

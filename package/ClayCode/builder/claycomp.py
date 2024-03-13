@@ -325,8 +325,19 @@ class UCData(Dir):
         gro_df.index = gro_df.index.reorder_levels(["uc-id", "atom-id"])
         gro_df.sort_index(level="uc-id", inplace=True, sort_remaining=True)
         for gro in self.uc_gro_filelist:
+            if gro.df.index.unique().size > 1:
+                raise ValueError(
+                    "Multiple unit cells in single GRO file not supported!"
+                )
+            if f"{gro.df.index[0]}" != f"1{gro.stem}":
+                raise ValueError(
+                    f"Residue name must match file name:\nExpected 1{gro.stem}, found {gro.df.index[0]}"
+                )
+            #     raise ValueError(f"Residue name must match file name:\nExpected 1{gro.stem}, found {gro.df.index[0]}")
             n_atoms = self.n_atoms.filter(regex=gro.stem[-3:]).values[0]
             gro_df.update(gro.df.set_index("atom-id", append=True))
+        if gro_df.isna().any().any():
+            raise ValueError("Encountered invalid GRO file!")
         return gro_df
 
     @property

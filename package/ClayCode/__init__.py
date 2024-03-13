@@ -7,6 +7,10 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+from MDAnalysis.coordinates.TRJ import logger as amber_logger
+
+amber_logger.setLevel(logging.ERROR)
+
 from ClayCode.core.cctypes import (
     AnyDict,
     AnyDir,
@@ -114,5 +118,6 @@ __all__ = [
     "NumOrListOf",
     "NumOrListDictOf",
 ]
-logging.setLoggerClass(ClayCodeLogger)
-# from Bio import BiopythonDeprecationWarning
+logging.setLoggerClass(
+    ClayCodeLogger
+)  # from Bio import BiopythonDeprecationWarning
