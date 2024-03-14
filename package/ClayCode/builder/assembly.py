@@ -1602,7 +1602,6 @@ class Sheet:
                             and prev_choices is not None
                         ):
                             idx_choices = prev_choices
-
                         prev_choices = idx_choices
                     # if still not enough idxs found, abort
                     if idx_choices.flatten().size < n_add_ucs:

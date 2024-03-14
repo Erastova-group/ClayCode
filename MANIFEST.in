@@ -11,4 +11,4 @@ recursive-include package/ClayCode/addmols/config *
 recursive-include tests/builder/data *
 recursive-include tests *
 recursive-include Tutorials *
-
+recursive-include package/ClayCode/analysis/data/peaks_edges *

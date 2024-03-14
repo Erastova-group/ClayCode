@@ -33,7 +33,7 @@ Please see ClayCode website [erastova-group.github.io/ClayCode](https://erastova
 
 ## Future Development and Contribution:
 
-**Found a bug? or have a question?** Rise an [issue](https://github.com/Erastova-group/ClayCode/issues).
+**Found a bug? or have a question?** Raise an [issue](https://github.com/Erastova-group/ClayCode/issues).
 
 **Dreaming of a new functionality?** Let us know via [issues, label:enhancement](https://github.com/Erastova-group/ClayCode/labels/enhancement).
 
