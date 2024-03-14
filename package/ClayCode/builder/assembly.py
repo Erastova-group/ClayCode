@@ -214,6 +214,7 @@ class Builder:
             z_padding=self.args.z_padding,
             extra_waters=extra_waters,
         )
+        self.args.n_waters = solvent.n_mols
         spc_file: GROFile = self.get_filename("interlayer", suffix=".gro")
         if backup:
             backup_files(self.args.outpath / spc_file.name)
