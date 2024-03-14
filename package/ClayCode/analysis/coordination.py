@@ -10,6 +10,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import Any, List, Literal, NoReturn, Optional, Union
 
+import dask
 import MDAnalysis as mda
 import numpy as np
 import zarr
@@ -472,15 +473,15 @@ class CrdDist(ClayAnalysisBase):
         edges: Union[list, np.ndarray],
         dest: Optional[Union[zarr.core.Array, np.ndarray]] = None,
     ) -> Union[zarr.core.Array, np.ndarray]:
-        #     # """ Determine adsorption groups in a distance timeseries based on given edges.
-        #     # Values outside the edges are set to NaN.
-        #     # :param distance_timeseries: Distance timeseries
-        #     # :type distance_timeseries: numpy array
-        #     # :param edges: Edges for grouping
-        #     # :type edges: list or numpy array
-        #     # :return: numpy array with group indices
-        #     # :rtype: numpy array
-        #     # """
+        # """ Determine adsorption groups in a distance timeseries based on given edges.
+        # Values outside the edges are set to NaN.
+        # :param distance_timeseries: Distance timeseries
+        # :type distance_timeseries: numpy array
+        # :param edges: Edges for grouping
+        # :type edges: list or numpy array
+        # :return: numpy array with group indices
+        # :rtype: numpy array
+        # """
         if dest is None:
             if type(distance_timeseries) == zarr.core.Array:
                 store = zarr.storage.TempStore(

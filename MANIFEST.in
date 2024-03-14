@@ -8,6 +8,7 @@ recursive-include package/ClayCode/builder/data *
 recursive-include package/ClayCode/siminp/config *
 recursive-include package/ClayCode/siminp/scripts *
 recursive-include package/ClayCode/addmols/config *
-recursive-include package/tests/builder *
-recursive-include package/tests *
+recursive-include tests/builder/data *
+recursive-include tests *
+recursive-include Tutorials *
 

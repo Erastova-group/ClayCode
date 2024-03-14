@@ -628,3 +628,126 @@ def get_paths(
     logger.finfo(f"{str(gro.resolve())!r}", kwd_str="Found coordinates: ")
     logger.finfo(f"{str(trr.resolve())!r}", kwd_str="Found trajectory: ")
     return gro, trr, path
+
+
+# def gauss_peak(x, A, mean, sigma, offset=None):
+#     # print(type(x), type(A), type(mean), type(x), type(offset))
+#     exp_term_1 = np.subtract(x, np.atleast_2d(mean).T)
+#     exp_term_2 = np.multiply(sigma, 2)
+#     exp_term = np.divide(exp_term_1, np.atleast_2d(exp_term_2).T)
+#     exp_term = -np.power(exp_term, 2)
+#     exp_term = np.exp(exp_term)
+#     # exp = np.divide(- np.power(np.subtract(x, mean), 2), np.power(np.multiply(2, sigma), 2))
+#     # B = np.exp(exp_term)
+#     gauss_peak = np.multiply(exp_term, np.atleast_2d(A).T)
+#     try:
+#         gauss_peak = np.sum(gauss_peak, axis=0)
+#     except np.AxisError:
+#         pass
+#     if offset is not None:
+#         gauss_peak = np.add(gauss_peak, offset)
+#     return gauss_peak
+
+
+def gauss_peak(x, A, mean, sigma):
+    # print(type(x), type(A), type(mean), type(x), type(offset))
+    exp_term_1 = np.subtract(x, mean)
+    exp_term_2 = np.multiply(sigma, 2)
+    exp_term = np.divide(exp_term_1, exp_term_2)
+    exp_term = -np.power(exp_term, 2)
+    exp_term = np.exp(exp_term)
+    # exp = np.divide(- np.power(np.subtract(x, mean), 2), np.power(np.multiply(2, sigma), 2))
+    # B = np.exp(exp_term)
+    gauss_peak = np.multiply(exp_term, A)
+    # except np.AxisError:
+    #     pass
+    # if offset is not None:
+    #     gauss_peak = np.add(gauss_peak, offset)
+    return gauss_peak
+
+
+_n_gauss_peaks = np.vectorize(
+    gauss_peak, excluded=["offset"], otypes=[np.float64]
+)
+
+
+def lorentz_peak(x, A, mean, sigma):
+    sigma = np.divide(sigma, 2)
+    sigma_sq = np.power(sigma, 2)
+    div_1 = np.multiply(A, sigma_sq)
+    x_diff = np.subtract(x, mean)
+    x_diff = np.power(x_diff, 2)
+    div_2 = np.add(x_diff, sigma_sq)
+    lorentz_peak = np.divide(div_1, div_2)
+    return lorentz_peak
+
+
+def voigt_peak(x, A, mean_g, sigma_g, mean_l, sigma_l, weight):
+    gauss_args = (A, mean_g, sigma_g)
+    lorentz_args = (A, mean_l, sigma_l)
+    gauss_part = gauss_peak(x, *gauss_args)
+    lorentz_part = lorentz_peak(x, *lorentz_args)
+    gauss_part = np.multiply(gauss_part, weight)
+    lorentz_part - np.multiply(lorentz_part, (1 - weight))
+    return np.add(gauss_part, lorentz_part)
+
+
+def peak_offset_decorator(n_args):
+    def f_decorator(f):
+        def wrapper(x, *args):
+            args = np.array(args)
+            assert (len(args) - 5) % n_args == 0
+            offset = args[-5:]
+            args = args[:-5]
+            n_peaks = len(args) // n_args
+            final_result = []
+            args = args.reshape(n_args, n_peaks).T
+            # for A, mean, sigma in args:
+            for peak_args in args:
+                result = f(x, *peak_args)  # A, mean, sigma)
+                final_result.append(result)
+            try:
+                final_result = np.sum(final_result, axis=0)
+            except np.AxisError:
+                final_result = np.ravel(final_result)
+            if np.any(offset) != 0.0:
+                noise_start, noise_end, noise_c1, noise_c2, h = offset
+                noise = heavyside_func(
+                    x, noise_start, noise_end, noise_c1, noise_c2, h
+                )
+                final_result = np.add(final_result, noise)
+            return final_result
+
+        return wrapper
+
+    return f_decorator
+
+
+def heavyside_func(x, start, stop, c1, c2, h):
+    noise_start = np.subtract(x, start)
+    noise_end = np.subtract(stop, x)
+    noise1 = np.multiply(noise_start, c1)
+    noise2 = np.multiply(noise_end, c2)
+    noise = np.add(scipy.special.expit(noise1), scipy.special.expit(noise2))
+    noise = np.subtract(noise, 1)
+    return np.multiply(h, noise)
+    # noise = np.multiply(x, k)
+    # noise = np.add(noise, d)
+    # noise_start = np.sign(start)
+    # noise = np.multiply(noise, noise_start)
+    # return noise
+
+
+@peak_offset_decorator(n_args=3)
+def n_gauss_peaks(x, *args):
+    return gauss_peak(x, *args)  # (A, mean, sigma)
+
+
+@peak_offset_decorator(n_args=3)
+def n_lorentz_peaks(x, *args):
+    return lorentz_peak(x, *args)
+
+
+@peak_offset_decorator(n_args=6)
+def n_voigt_peaks(x, *args):
+    return voigt_peak(x, *args)

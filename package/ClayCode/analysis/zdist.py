@@ -41,7 +41,7 @@ class ZDens(ClayAnalysisBase):
     # histogram attributes format:
     # --------------------------
     # name: [name, bins, timeseries, hist, hist2d, edges, n_bins, cutoff, bin_step]
-    _attrs = ["zdens"]
+    _attrs = ["zdens", "zdens_abs"]
     _abs = [True]
     _name = "linear z-distance"
     """Calculate absolute densities of atom z-positions relative to clay surface O-atoms.
@@ -89,6 +89,7 @@ class ZDens(ClayAnalysisBase):
         :type basekwargs:
         """
         super(ZDens, self).__init__(sel.universe.trajectory, **basekwargs)
+        min = {"zdens": -int(cutoff), "zdens_abs": 0}
         self._init_data(n_bins=n_bins, bin_step=bin_step, cutoff=cutoff)
         self._process_distances = None
         self.sysname = sysname
@@ -136,8 +137,7 @@ class ZDens(ClayAnalysisBase):
                         f"Done!\n{str(self.write)!r} already exists and overwrite not selected."
                     )
                     self._get_new_data = False
-                    return
-                    # raise FileExistsError(f"{self.write!r} already exists.")
+                    return  # raise FileExistsError(f"{self.write!r} already exists.")
         check_traj(self, check_traj_len)
 
     def _prepare(self) -> NoReturn:
@@ -186,6 +186,11 @@ class ZDens(ClayAnalysisBase):
         self._z_dist = np.min(
             np.abs(self._dist_array[:, :, 2]), axis=1, out=self._z_dist
         )
+        self._zdist = self._dist_array[
+            np.argwhere(np.min(np.abs(self._dist_array[:, :, 2]), axis=1)),
+            :,
+            2,
+        ]
         # if np.isnan(self._z_dist).any():
         # logger.info(f"{self._z_dist}, {self._z_dist.shape}")
         # logger.info(np.argwhere(self._z_dist[np.isnan(self._z_dist)]))
@@ -233,19 +238,9 @@ class ZDens(ClayAnalysisBase):
             ), "Length of timeseries does not conform to selected start, stop and step!"
             # logger.info(f"{self.start}, {self.stop}, {self.step}")
 
-            logger.finfo(f"Wrote z-dist array to {str(self.write)!r}")
-            # outsel = self.sel + self.clay
-            # ocoords = str(change_suffix(self.save, "pdbqt"))
-            # otraj = str(change_suffix(self.save, "traj"))
-            # outsel.write(
-            #     otraj, frames=self._trajectory[self.start : self.stop : self.step]
-            # )
-            # outsel.write(
-            #     ocoords, frames=self._trajectory[self.start : self.stop : self.step][-1]
-            # )
-            # logger.info(
-            #     f"Wrote final coordinates to {ocoords.name} and trajectory to {otraj.name}"
-            # )
+            logger.finfo(
+                f"Wrote z-dist array to {str(self.write)!r}"
+            )  # outsel = self.sel + self.clay  # ocoords = str(change_suffix(self.save, "pdbqt"))  # otraj = str(change_suffix(self.save, "traj"))  # outsel.write(  #     otraj, frames=self._trajectory[self.start : self.stop : self.step]  # )  # outsel.write(  #     ocoords, frames=self._trajectory[self.start : self.stop : self.step][-1]  # )  # logger.info(  #     f"Wrote final coordinates to {ocoords.name} and trajectory to {otraj.name}"  # )
 
 
 parser = ArgumentParser(

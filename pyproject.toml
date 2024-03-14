@@ -7,29 +7,29 @@ license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ['matplotlib>=3.6.2',
-    'mdanalysis==2.5',
+    'mdanalysis>=2.6',
     'numpy>=1.23.5',
     'pandas~=1.5.2',
     'pyyaml>=6',
-    'scipy>=1.9.3',
-    'tqdm>=4.43.0',
+    'scipy>=1.11',
+    'tqdm~=4.66.1',
     'parmed>=4.1',
     'nocasedict',
     'zarr~=2.16',
     'dask~=2023.10',
-    'caseless-dictionary>=1',
+    'caseless-dictionary==1.0.3',
     'importlib_resources>=6.0',
     'numba>=0.57',
-    'pytest',
-    "nglview>=3.0",
-    "unicodeit"
-]
+    'nglview>=3.0',
+    'unicodeit',
+    'seaborn']
 classifiers = ["Programming Language :: Python :: 3",
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent"]
 
 [project.scripts]
 ClayCode = "ClayCode:__main__.run"
+ClayCodeTests = "ClayCodeTests:__main__"
 
 [tool.setuptools.packages.find]
 namespaces = true
@@ -49,6 +49,8 @@ include-package-data = true
 "ClayCode.siminp.scripts" = ["*.sh"]
 "ClayCode.addmols.config" = ["defaults.yaml", "addtypes.yaml"]
 "ClayCode.analysis.data" = ['peaks_edges/*.p']
+"ClayCode.analysis.config" = ['defaults.yaml']
+"Tutorial" = ['*.yaml', '*.csv', '*.gro', '*.top', '*.itp', '*.mdp', '*.sh']
 
 [project.urls]
 "Homepage" = "https://github.com/Erastova-group/ClayCode.git"
@@ -78,10 +80,22 @@ test = ["pytest>=6.0",
     "pytest-xdist>=2.5",
     "pytest-cov>=3.0",
 ]
+[tool.dev-dependencies]
+    black = ">=21.4b2"
+    flake8 = ">=3.9.2"
+    isort = ">=5.9.3"
+    mypy = ">=0.910"
+    pylint = ">=2.11.1"
+    pytest = ">=6.0"
+    pytest-xdist = ">=2.5"
+    pytest-cov = ">=3.0"
 
 [tool.pytest.ini_options]
-addopts = "-s"
+addopts = ["--import-mode=importlib", "-p no:cacheprovider"]
 minversion = "6.0"
+pythonpath= "src"
 testpaths = ["ClayCodeTests",
 ]
 python_files = ["test_*.py", "*_test.py", "test.py"]
+log_cli = "true"
+log_level = "INFO"
