@@ -299,6 +299,7 @@ class AnalysisData(UserDict):
         n_bins=None,
         min=0.0,
         verbose=True,
+        n_frames=None,
     ):
         self.name = name
         assert (
@@ -343,6 +344,7 @@ class AnalysisData(UserDict):
         self.df.index.name = "bins"
         self.hist2d = {}
         self._verbose = verbose
+        self.n_frames = n_frames
 
     @property
     def n_bins(self) -> int:
@@ -359,12 +361,12 @@ class AnalysisData(UserDict):
 
     @property
     def cutoff(self) -> float:
-        """Maximum value for included perpendicular distance from a surface"""
+        """Set maximum value for included raw data e.g. distance from a surface."""
         return self._cutoff
 
     @cutoff.setter
     def cutoff(self, cutoff: Union[float, int, str]) -> None:
-        """Maximum value for included perpendicular distance from a surface"""
+        """Set maximum value for included raw data e.g. distance from a surface."""
         if cutoff is not None:
             self._cutoff = float(
                 cutoff
@@ -382,12 +384,19 @@ class AnalysisData(UserDict):
             self._bin_step = float(bin_step)
 
     def get_hist_data(
-        self, use_abs: bool = True
+        self,
+        use_abs: bool = True,
+        guess_min=True,
+        n_frames: Optional[int] = None,
     ) -> None:  # , guess_min=True):
         r"""Create histogram data from timeseries.
         :param use_abs: use absolute values of timeseries
         :type use_abs: bool
         """
+        if n_frames is None:
+            n_frames = len(self.timeseries)
+        else:
+            n_frames = int(n_frames)
         if type(self.timeseries) == zarr.core.Array:
             chunks = self.timeseries.chunks
         else:
@@ -410,7 +419,7 @@ class AnalysisData(UserDict):
         # hist, _ = np.histogram(
         #     data[:], self.edges, range=(self._min, self.cutoff)
         # )
-        dask.array.divide(hist, len(self.timeseries), out=hist)
+        dask.array.divide(hist, n_frames, out=hist)
         # hist = hist / len(self.timeseries)
         self.hist[:] = hist.compute()
 

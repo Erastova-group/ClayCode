@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import pathlib as pl
+import re
 import sys
 import warnings
 from argparse import ArgumentParser
@@ -41,7 +42,7 @@ class ZDens(ClayAnalysisBase):
     # histogram attributes format:
     # --------------------------
     # name: [name, bins, timeseries, hist, hist2d, edges, n_bins, cutoff, bin_step]
-    _attrs = ["zdens", "zdens_abs"]
+    _attrs = ["zdens"]
     _abs = [True]
     _name = "linear z-distance"
     """Calculate absolute densities of atom z-positions relative to clay surface O-atoms.
@@ -52,6 +53,9 @@ class ZDens(ClayAnalysisBase):
         sysname: str,
         sel: mda.AtomGroup,
         clay: mda.AtomGroup,
+        dist_selection: Literal[
+            "smaller", "larger", "symmetrical"
+        ] = "symmetrical",
         n_bins: Optional[int] = None,
         bin_step: Optional[Union[int, float]] = None,
         xy_rad: Union[float, int] = 3.0,
@@ -92,6 +96,11 @@ class ZDens(ClayAnalysisBase):
         min = {"zdens": -int(cutoff), "zdens_abs": 0}
         self._init_data(n_bins=n_bins, bin_step=bin_step, cutoff=cutoff)
         self._process_distances = None
+        self.dist_selection = dist_selection.strip(" ")
+        if self.dist_selection == "symmetrical":
+            self.symmetrical = True
+        else:
+            self.symmetrical = False
         self.sysname = sysname
         self._ags = [sel]
         self._universe = self._ags[0].universe
@@ -101,6 +110,15 @@ class ZDens(ClayAnalysisBase):
         self.xy_rad = float(xy_rad)
         self.save = save
         self.write = write
+        if self.symmetrical is False:
+            name_ext = (
+                re.search(
+                    "OH|OB", "".join(clay.atoms.names), flags=re.IGNORECASE
+                ).group(0)
+                + "/"
+            )
+        else:
+            name_ext = ""
         if self.save is False:
             pass
         else:
@@ -110,7 +128,8 @@ class ZDens(ClayAnalysisBase):
                 pass
             if type(self.save) in [bool, Dir]:
                 savename = (
-                    f"{self.__class__.__name__.lower()}_" f"{self.sysname}"
+                    f"{name_ext}{self.__class__.__name__.lower()}_"
+                    f"{self.sysname}"
                 )
                 try:
                     self.save = self.save / savename
@@ -119,7 +138,8 @@ class ZDens(ClayAnalysisBase):
         if self.write is not False:
             if self.save is False:
                 savename = (
-                    f"{self.__class__.__name__.lower()}_" f"{self.sysname}"
+                    f"{name_ext}{self.__class__.__name__.lower()}_"
+                    f"{self.sysname}"
                 )
                 try:
                     self.write = self.write / savename
@@ -159,13 +179,57 @@ class ZDens(ClayAnalysisBase):
         self._sel_mask = np.ma.empty_like(
             self._dist_array[:, :, 0], dtype=np.float64
         )
+        self._get_z_dist = getattr(self, f"_get_{self.dist_selection}_dist")
+
+    def _get_symmetrical_dist(self):
+        # self._z_dist[:] = self._dist_array[
+        #               np.argwhere(np.min(np.abs(self._dist_array[:, :, 2]), axis=1)),
+        #               :,
+        #               2,
+        #               ]
+        np.compress(
+            np.min(np.abs(self._dist_array[:, :, 2]), axis=1),
+            self._dist_array[:, :, 2],
+            out=self._z_dist,
+        )
+
+    def _get_larger_dist(self):
+        dist_mask = self._dist_array.mask
+        dist_mask[:, :, 2] = np.where(
+            self._dist_array[:, :, 2] < 0, True, dist_mask[:, :, 2]
+        )
+        self._dist_array.mask = dist_mask
+        # idx_sel = np.argwhere(np.min(np.abs(self._dist_array[:, :, 2]), axis=1))
+        # self._z_dist.fill(np.NaN)
+        # self._z_dist[idx_sel] = self._dist_array[idx_sel, :, 2]
+        # self._z_dist = self._dist_array[
+        #               np.argwhere(np.min(np.abs(self._dist_array[:, :, 2]), axis=1)),
+        #               :,
+        #               2,
+        #               ]
+        np.compress(
+            np.min(np.abs(self._dist_array[:, :, 2]), axis=1),
+            self._dist_array[:, :, 2],
+            out=self._z_dist,
+        )
+
+    def _get_smaller_dist(self):
+        dist_mask = self._dist_array.mask
+        dist_mask[:, :, 2] = np.where(
+            self._dist_array[:, :, 2] > 0, True, dist_mask[:, :, 2]
+        )
+        self._dist_array.mask = dist_mask
+        np.compress(
+            np.min(np.abs(self._dist_array[:, :, 2]), axis=1),
+            self._dist_array[:, :, 2],
+            out=self._z_dist,
+        )
 
     def _single_frame(self) -> NoReturn:
         self._dist_array.fill(0)
         self._dist_array.mask = False
         self._sel_mask.fill(0)
         self._sel_mask.mask = False
-        self._z_dist.fill(0)
         self._sel_mask.soften_mask()
         # Wrap coordinates back into simulation box (use mda apply_PBC)
         sel_pos = apply_PBC(self.sel.positions, self._ts.dimensions)
@@ -183,14 +247,7 @@ class ZDens(ClayAnalysisBase):
         )
 
         # get minimum z-distance to clay for each sel atom
-        self._z_dist = np.min(
-            np.abs(self._dist_array[:, :, 2]), axis=1, out=self._z_dist
-        )
-        self._zdist = self._dist_array[
-            np.argwhere(np.min(np.abs(self._dist_array[:, :, 2]), axis=1)),
-            :,
-            2,
-        ]
+        self._get_z_dist()
         # if np.isnan(self._z_dist).any():
         # logger.info(f"{self._z_dist}, {self._z_dist.shape}")
         # logger.info(np.argwhere(self._z_dist[np.isnan(self._z_dist)]))
@@ -382,6 +439,13 @@ parser.add_argument(
     help="Read trajectory in memory.",
     dest="in_mem",
 )
+parser.add_argument(
+    "--asymmetrical_clay",
+    default=False,
+    action="store_true",
+    help="Separate clay surfaces for OB and OH atoms.",
+    dest="assymmetrical_clay",
+)
 
 if __name__ == "__main__":
     logger.info(f"Using MDAnalysis {mda.__version__}")
@@ -466,6 +530,8 @@ if __name__ == "__main__":
         sel=args.sel,
         clay_type=args.clay_type,
         in_memory=args.in_mem,
+        only_surface=True,
+        separate_ob_oh_surfaces=args.assymmetrical_clay,
     )
 
     if args.save == "True":
@@ -476,19 +542,29 @@ if __name__ == "__main__":
         args.write = True
     elif args.write == "False":
         args.write = False
+    if not type(clay) == tuple:
+        clay = (clay,)
+        dist_type = "symmetrical"
+    else:
+        dist_selection_dict = {0: "smaller", 1: "larger"}
+        mean_clay_z = list(map(lambda c: np.mean(c.positions[:, 2]), clay))
+        dist_type = list(
+            map(lambda z: dist_selection_dict[z], np.argsort(mean_clay_z))
+        )
+    for c, dist_selection in zip(clay, dist_type):
+        zdens = ZDens(
+            sysname=sysname,
+            sel=sel,
+            clay=c,
+            dist_selection=dist_selection,
+            n_bins=args.n_bins,
+            bin_step=args.bin_step,
+            xy_rad=args.xyrad,
+            cutoff=args.cutoff,
+            save=args.save,
+            write=args.write,
+            overwrite=args.overwrite,
+            check_traj_len=args.check_traj_len,
+        )
 
-    zdens = ZDens(
-        sysname=sysname,
-        sel=sel,
-        clay=clay,
-        n_bins=args.n_bins,
-        bin_step=args.bin_step,
-        xy_rad=args.xyrad,
-        cutoff=args.cutoff,
-        save=args.save,
-        write=args.write,
-        overwrite=args.overwrite,
-        check_traj_len=args.check_traj_len,
-    )
-
-    run_analysis(zdens, start=args.start, stop=args.stop, step=args.step)
+        run_analysis(zdens, start=args.start, stop=args.stop, step=args.step)
