@@ -28,7 +28,7 @@ ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
 
 ## Docs and Examples:
-Please see ClayCode website [erastova-group.github.io/ClayCode](https://erastova-group.github.io/ClayCode) for the Manual and Tutorials.
+Please see ClayCode website [claycode.readthedocs.io/en/latest](https://erastova-group.github.io/ClayCode) for the Manual and Tutorials.
 
 
 ## Future Development and Contribution:
