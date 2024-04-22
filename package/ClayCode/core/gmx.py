@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 r""":mod:`ClayCode.core.gmx` --- GROMACS commands
 =================================================
+This module provides a class for running
+GROMACS commands.
 """
 
 from __future__ import annotations
@@ -193,6 +195,7 @@ class GMXCommands:
         run_type: Optional[str] = None,
         freeze_dims: Optional[Union[str, List[str]]] = None,
         freeze_grps: Optional[List[str]] = None,
+        define: Optional[List[str]] = None,
     ):
         """Write MDP options file.
         `mdp_prms can be all valid MDP options for
@@ -256,6 +259,15 @@ class GMXCommands:
                 file_or_str=mdp_str,
                 freeze_dims=freeze_dims,
             )
+        if define is not None:
+            if isinstance(define, str):
+                define_str = f"-D{define}"
+            else:
+                for definition in define:
+                    define_str = " ".join(
+                        list(map(lambda d: f"-D{d}", definition))
+                    )
+            mdp_str = set_mdp_parameter("define", define_str, mdp_str)
         mdp_str = re.sub(
             "(^|\n)[^\n]*?\s*?=\s*?\n",
             r"\1",
@@ -306,6 +318,7 @@ class GMXCommands:
                         "run_type",
                         "freeze_dims",
                         "freeze_grps",
+                        "define",
                     ]:
                         try:
                             prm_dict[prm] = kwdargs[prm]
@@ -502,6 +515,7 @@ class GMXCommands:
         run_type: Optional[str] = None,
         freeze_dims: Optional[List[str]] = None,
         freeze_grps: Optional[List[str]] = None,
+        define: Optional[List[str]] = None,
     ):
         temp_file = self.get_mdp_parameter_file(
             mdp_file=mdp_file,
@@ -509,6 +523,7 @@ class GMXCommands:
             run_type=run_type,
             freeze_dims=freeze_dims,
             freeze_grps=freeze_grps,
+            define=define,
         )
         return (
             "grompp",
@@ -602,6 +617,53 @@ class GMXCommands:
     )
     def run_gmx_select(self):
         return "select", {"capture_output": True, "text": True}
+
+    @run_gmx_command(
+        commandargs_dict={"cutoff": "0.27"},
+        opt_args_list=[
+            "f",
+            "n",
+            "o",
+            "of",
+            "fc",
+            "freeze",
+            "disre",
+            "nodisre",
+            "disre_dist",
+            "disre_frac",
+            "disre_up2",
+            "constr",
+            "noconstr",
+        ],
+    )
+    def run_gmx_genrestr(self):
+        """Generate position or distance restraints or constraints. Default cutoff for distance restraints is 0.27 nm.
+        :param f: input coordinates filename
+        :type f: str
+        :param n: input index filename
+        :type n: str
+        :param o: output itp filename
+        :type o: str
+        :param of: output index filename
+        :type of: str
+        :param fc: force constant for restraints
+        :type fc: float
+        :param freeze: freeze atoms with B-factor 0
+        :type freeze: List[str]
+        :param disre: distance restraints
+        :type disre: str
+        :param nodisre: no distance restraints
+        :type nodisre: str
+        :param disre_dist: distance restraints distance
+        :type disre_dist: float
+        :param disre_frac: distance restraints fraction
+        :type disre_frac: float
+        :param constr: constraints
+        :type constr: str
+        :param noconstr: no constraints
+        :type noconstr: str
+        """
+        return "genrestr", {"capture_output": True, "text": True}
 
     @run_gmx_command(
         commandargs_dict={"try": 9000},

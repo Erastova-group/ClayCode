@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r""":mod:`ClayCode.core.parsing` --- Argument parsing module
-==========================================================="""
+===========================================================
+This module provides classes for parsing command line arguments.
+"""
 
 from __future__ import annotations
 
@@ -42,7 +44,7 @@ from ClayCode.core.utils import (
     parse_yaml,
     select_file,
 )
-from ClayCode.data.consts import ALL_UCS, FF, MDP_DEFAULTS, UCS, USER_UCS
+from ClayCode.data.consts import FF, MDP_DEFAULTS, UCS, USER_UCS
 from ClayCode.siminp.writer import MDPRunGenerator
 
 __all__ = {
@@ -812,6 +814,7 @@ class BuildArgs(_Args):
         "MAX_UCS",
         "MATCH_TOLERANCE",
         "EM_FREEZE_CLAY",
+        "EM_CONSTRAIN_CLAY_DIST",
         "SAVE_PROGRESS",
         "LOAD_PROGRESS",
     ]
@@ -993,6 +996,12 @@ class BuildArgs(_Args):
             pass
         self.em_freeze_clay = self._charge_occ_df.loc[
             pd.IndexSlice["T", self._uc_name], ["em_freeze"]
+        ].values[0]
+        self.em_constrain_clay_dist = self._charge_occ_df.loc[
+            pd.IndexSlice["T", self._uc_name], ["em_constrain_clay_dist"]
+        ].values[0]
+        self.em_n_runs = self._charge_occ_df.loc[
+            pd.IndexSlice["T", self._uc_name], ["em_n_runs"]
         ].values[0]
         self._get_outpath()
         self._get_gmx_prms()
@@ -1249,7 +1258,7 @@ class BuildArgs(_Args):
 
     def get_bulk_ions(self) -> None:
         """Get bulk ion concentrations."""
-        from ClayCode.builder.claycomp import BulkIons, InterlayerIons
+        from ClayCode.builder.claycomp import BulkIons
 
         self.bulk_ions = BulkIons(
             self.bulk_ions, self._build_defaults["BULK_IONS"]
@@ -1603,10 +1612,17 @@ class SiminpArgs(_Args):
                 "INGRO"
             ].parent
         if "INGRO" not in self.data.keys():
+            logger.finfo(
+                f'Selecting latest GRO file from "{self.data["INPATH"]}:"'
+            )
             self.data["INGRO"] = select_file(
                 self.data["INPATH"], suffix=".gro", how="latest"
             )
         if "INTOP" not in self.data.keys():
+            logger.finfo(
+                f'Selecting latest TOP file from "{self.data["INPATH"]}:"',
+                indent="\t",
+            )
             self.data["INTOP"] = select_file(
                 self.data["INPATH"], suffix=".top", how="latest"
             )

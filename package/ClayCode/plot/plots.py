@@ -4,55 +4,49 @@ from __future__ import annotations
 import copy
 import itertools
 import logging
-import re
-import sys
-from argparse import ArgumentParser
-from functools import wraps
-from pathlib import Path
-
-import matplotlib.patches
-import scipy.optimize
-from ClayCode.analysis.analysisbase import AnalysisData
-from ClayCode.analysis.utils import gauss_peak, heavyside_func, n_gauss_peaks
-from ClayCode.core.classes import Dir
-from numpy.typing import NDArray
-from scipy.signal import find_peaks
-
-# import dask as da
-# import dask.dataframe
-
-# from dask.diagnostics import ProgressBar
-
-
-logger = logging.getLogger(Path(__file__).stem)
-logger.setLevel(logging.DEBUG)
-
-from scipy.interpolate import make_smoothing_spline
-from tqdm import tqdm
-from tqdm.contrib.logging import logging_redirect_tqdm
-
-tqdm.pandas(desc="pandas")
-import logging
 import os
 import pickle as pkl
+import re
+import shutil
+import sys
 from abc import ABC, abstractmethod
+from argparse import ArgumentParser
 from collections import UserString
-from functools import cached_property, partialmethod
+from functools import cached_property, partialmethod, wraps
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Union
 
 import matplotlib.colors as mpc
 import matplotlib.gridspec as gridspec
+import matplotlib.patches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from ClayCode.analysis.dataclasses import Data
-from ClayCode.analysis.utils import _check_methods, redirect_tqdm
-from ClayCode.plots.dataclasses import Bins, Cutoff
-from matplotlib import colormaps
-from matplotlib.table import table
+import scipy.optimize
+from ClayCode.analysis.analysisbase import AnalysisData
 
-# from dask.diagnostics import ProgressBar
+# from ClayCode.analysis.classes import AtomTypeData, HistData
+from ClayCode.analysis.utils import (
+    _check_methods,
+    gauss_peak,
+    heavyside_func,
+    n_gauss_peaks,
+    redirect_tqdm,
+)
+from ClayCode.core.classes import Dir
+from ClayCode.core.consts import LINE_LENGTH
+from ClayCode.plots.classes import Bins, Cutoff
+from matplotlib import colormaps, ticker
+from matplotlib.table import table
+from numpy.typing import NDArray
+from scipy.interpolate import make_smoothing_spline
+from scipy.signal import find_peaks
+from seaborn import saturate, set_hls_values
+from sklearn.neighbors import KernelDensity
+from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
+
+tqdm.pandas(desc="pandas")
 
 __all__ = [
     "Plot",
@@ -63,11 +57,8 @@ __all__ = [
     "HistPlot2D",
     "Data",
 ]
-# from blume.table import table
 
-logger = logging.getLogger(Path(__file__).stem)
-
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 # ch = logging.StreamHandler()
@@ -266,185 +257,164 @@ logger.setLevel(logging.DEBUG)
 #     #     ...
 
 
-class Plot(ABC):
-    # __slots__ = ('data')
-    sel_list = None
-    title_dict = None
-    cmaps = None
-    _init_args = {}
-    _plot_args = {}
-
-    # def __init_subclass__(cls, data, **kwargs):
-    #     cls.data = data
-
-    def __repr__(self):
-        return f'{self.__class__.__name__!r} ({len(self.data.dropna(how="all"))} entries)'
-
-    @classmethod
-    def __subclasshook__(cls, subclass):
-        if cls is Plot:
-            return _check_methods(
-                subclass, "plot", "save", "_process_data", "plot_df"
-            )
-
-    def plot_args_decorator(select: str):
-        def plot_decorator(plot_f):
-            def wrapper(self, **kwargs):
-                self.select = select
-                plot_f(self, **kwargs)
-                self.select = None
-
-            return wrapper
-
-        return plot_decorator
-
-    @redirect_tqdm
-    def __init__(
-        self,
-        data: Data,  # lx: int,
-        # ly: int,
-        # xmax: int,
-        # ymax: int,
-        **kwargs,
-    ):
-        logger.info(f"{self.__class__.__name__}")
-        # assert (
-        #     type(data).__name__ == DataD.__name__
-        # ), f"expected {Data.__name__}, found {type(data).__name__}"
-        self.data = data
-        init_args = {}
-        logger.info(f"{kwargs.keys()}")
-        for key, val in kwargs.items():
-            try:
-                setattr(self, key, val)
-            except AttributeError:
-                logger.error(
-                    f"{key} cannot be set for {self.__class__.__name__}"
-                )
-            if key in self.__class__._init_args:
-                init_args[key] = val
-        self._process_data(**init_args)
-        logger.info(f"{self.__class__.__name__}")
-
-    @abstractmethod
-    def _process_data(self, **kwargs):
-        pass
-
-    @abstractmethod
-    def plot(self, **kwargs):
-        pass
-
-    @abstractmethod
-    def save(self, **kwargs):
-        pass
-
-    def get_figsize(self, xmax: int, ymax: int):
-        logger.info(f"Setting figsize to x > {xmax}," f" y > {ymax}")
-        return tuple(
-            [
-                6 * self.x.l if (6 * self.x.l) < xmax else xmax,
-                7 * self.y.l if (7 * self.y.l) < ymax else ymax,
-            ]
-        )
-
-    def _get_idx_iter(self, idx):
-        # logger.info(f'idx: {idx}')
-        idx_iter = np.array(
-            np.meshgrid(
-                *[
-                    self.plot_df.index.get_level_values(idxit).unique()
-                    for idxit in idx
-                ]
-            )
-        ).T.reshape(-1, len(idx))
-        # logger.info(f'{idx_iter}')
-        return idx_iter
-
-    @staticmethod
-    def modify_plot_labels(l: Tuple[str, str]):
-        """
-
-        :param l: tuple of label category and value
-        :type l: Tuple[str, str]
-        :return: label value
-        :rtype: str
-        """
-        # logging.info(f'{l}, {len(l)}')
-        new_str = ", ".join(
-            [li.upper() if namei == "aas" else li for li, namei in l]
-        )
-        new_str = re.sub("_", " ", new_str)
-        return new_str
-
-    def init_legend(self, lx, ly):
-        # initialise legends
-        legends_list: list = [(a, b) for a in range(ly) for b in range(lx)]
-        self.legends: dict = dict(
-            zip(legends_list, [[] for a in range(len(legends_list))])
-        )
-        self.handles = dict(
-            zip(legends_list, [[] for a in range(len(legends_list))])
-        )
-
-    def _get_attr(self, attr: Literal["clays", "aas", "atoms", "ions"]):
-        return pd.unique(self.plot_df.index.get_level_values(attr))
-
-    get_clays = partialmethod(_get_attr, attr="clays")
-    get_aas = partialmethod(_get_attr, attr="aas")
-    get_ions = partialmethod(_get_attr, attr="ions")
-    get_atoms = partialmethod(_get_attr, attr="atoms")
-    get_other = partialmethod(_get_attr, attr="other")
-
-    @property
-    @abstractmethod
-    def plot_df(self):
-        ...
-
-    def _init_plot(self, x, y, select):
-        sel_list = ["clays", "aas", "atoms", "ions"]
-
-        if self.select == "ions":
-            sel_list.pop(-1)
-
-        if self.data.other is not None:
-            sel_list.append("other")
-
-        assert x in sel_list, f"{x} not in sel list"
-        assert y in sel_list, f"{y} not in sel list"
-        assert select in sel_list, f"{select} not in sel list"
-
-    # @abstractmethod
-    # def plot_ions(self, *args, **kwargs):
-    #     ...
-    #
-    # @abstractmethod
-    # def plot_other(self, *args, **kwargs):
-    #     ...
-
-    def _get_colour_dict(self):
-        from seaborn import saturate, set_hls_values
-
-        colours = [
-            "#8dd3c7",  # cyan (C)
-            "#ffffb3",  # yellow (S)
-            "#bebada",  # blue (N)
-            "#fb8072",  # red (O)
-            "#80b1d3",  # light blue (Mg)
-            "#fdb462",  # orange (K)
-            "#b3de69",  # light green (Ca)
-            "#fccde5",  # pink (Na)
-            # "#d9d9d9",  # grey (other)
-        ]
-        colours = [set_hls_values(saturate(cval), l=0.4) for cval in colours]
-        colour_keys = ["C", "S", "N", "O", "Mg", "K", "Ca", "Na"]
-        colour_dict = dict(zip(colour_keys, colours))
-        return colour_dict
-
-    def get_atom_colour_codes_from_names(self, atom_name):
-        # atom_name = AtomHistPlot.get_atom_type_group(atom_name, group_all_atoms=True)
-        if atom_name not in self.data.ions:
-            atom_name = atom_name[0]
-        return atom_name
+# class Plot(ABC):
+#     # __slots__ = ('data')
+#     sel_list = None
+#     title_dict = None
+#     cmaps = None
+#     _init_args = {}
+#     _plot_args = {}
+#     linestyles = [(0, ()), (0, (5, 2)), (0, (5, 2, 1, 2)), (0, (5, 2, 1, 2, 1, 2)), (0, (1, 4)),
+#             (0, (3, 4, 1, 4)), (0, (3, 4, 1, 4, 1, 4)), (0, (7, 6)), (0, (7, 6, 3, 6)), (0, (7, 6, 3, 6, 1, 2)), ]
+#
+#     # def __init_subclass__(cls, data, **kwargs):
+#     #     cls.data = data
+#
+#     def __repr__(self):
+#         return f'{self.__class__.__name__!r} ({len(self.data.dropna(how="all"))} entries)'
+#
+#     @classmethod
+#     def __subclasshook__(cls, subclass):
+#         if cls is Plot:
+#             return _check_methods(subclass, "plot", "save", "_process_data", "plot_df")
+#
+#     def plot_args_decorator(select: str):
+#         def plot_decorator(plot_f):
+#             def wrapper(self, **kwargs):
+#                 self.select = select
+#                 plot_f(self, **kwargs)
+#                 self.select = None
+#
+#             return wrapper
+#
+#         return plot_decorator
+#
+#     @redirect_tqdm
+#     def __init__(self, data: Data,  # lx: int,
+#             # ly: int,
+#             # xmax: int,
+#             # ymax: int,
+#             **kwargs, ):
+#         logger.info(f"{self.__class__.__name__}")
+#         # assert (
+#         #     type(data).__name__ == DataD.__name__
+#         # ), f"expected {Data.__name__}, found {type(data).__name__}"
+#         self.data = data
+#         init_args = {}
+#         logger.info(f"{kwargs.keys()}")
+#         for key, val in kwargs.items():
+#             try:
+#                 setattr(self, key, val)
+#             except AttributeError:
+#                 logger.error(f"{key} cannot be set for {self.__class__.__name__}")
+#             if key in self.__class__._init_args:
+#                 init_args[key] = val
+#         self._process_data(**init_args)
+#         logger.info(f"{self.__class__.__name__}")
+#
+#     @abstractmethod
+#     def _process_data(self, **kwargs):
+#         pass
+#
+#     @abstractmethod
+#     def plot(self, **kwargs):
+#         pass
+#
+#     @abstractmethod
+#     def save(self, **kwargs):
+#         pass
+#
+#     def get_figsize(self, xmax: int, ymax: int):
+#         logger.info(f"Setting figsize to x > {xmax}," f" y > {ymax}")
+#         return tuple(
+#             [6 * self.x.l if (6 * self.x.l) < xmax else xmax, 7 * self.y.l if (7 * self.y.l) < ymax else ymax, ])
+#
+#     def _get_idx_iter(self, idx):
+#         # logger.info(f'idx: {idx}')
+#         idx_iter = np.array(
+#             np.meshgrid(*[self.plot_df.index.get_level_values(idxit).unique() for idxit in idx])).T.reshape(-1,
+#                                                                                                             len(idx))
+#         # logger.info(f'{idx_iter}')
+#         return idx_iter
+#
+#     @staticmethod
+#     def modify_plot_labels(l: Tuple[str, str]):
+#         """
+#
+#         :param l: tuple of label category and value
+#         :type l: Tuple[str, str]
+#         :return: label value
+#         :rtype: str
+#         """
+#         # logging.info(f'{l}, {len(l)}')
+#         new_str = ", ".join([li.upper() if namei == "aas" else li for li, namei in l])
+#         new_str = re.sub("_", " ", new_str)
+#         return new_str
+#
+#     def init_legend(self, lx, ly):
+#         # initialise legends
+#         legends_list: list = [(a, b) for a in range(ly) for b in range(lx)]
+#         self.legends: dict = dict(zip(legends_list, [[] for a in range(len(legends_list))]))
+#         self.handles = dict(zip(legends_list, [[] for a in range(len(legends_list))]))
+#
+#     def _get_attr(self, attr: Literal["clays", "aas", "atoms", "ions"]):
+#         return pd.unique(self.plot_df.index.get_level_values(attr))
+#
+#     get_clays = partialmethod(_get_attr, attr="clays")
+#     get_aas = partialmethod(_get_attr, attr="aas")
+#     get_ions = partialmethod(_get_attr, attr="ions")
+#     get_atoms = partialmethod(_get_attr, attr="atoms")
+#     get_other = partialmethod(_get_attr, attr="other")
+#
+#     @property
+#     @abstractmethod
+#     def plot_df(self):
+#         ...
+#
+#     def _init_plot(self, x, y, select):
+#         sel_list = ["clays", "aas", "atoms", "ions"]
+#
+#         if self.select == "ions":
+#             sel_list.pop(-1)
+#
+#         if self.data.other is not None:
+#             sel_list.append("other")
+#
+#         assert x in sel_list, f"{x} not in sel list"
+#         assert y in sel_list, f"{y} not in sel list"
+#         assert select in sel_list, f"{select} not in sel list"
+#
+#     # @abstractmethod
+#     # def plot_ions(self, *args, **kwargs):
+#     #     ...
+#     #
+#     # @abstractmethod
+#     # def plot_other(self, *args, **kwargs):
+#     #     ...
+#
+#     def _get_colour_dict(self):
+#         from seaborn import saturate, set_hls_values
+#
+#         colours = ["#8dd3c7",  # cyan (C)
+#             "#ffffb3",  # yellow (S)
+#             "#bebada",  # blue (N)
+#             "#fb8072",  # red (O)
+#             "#80b1d3",  # light blue (Mg)
+#             "#fdb462",  # orange (K)
+#             "#b3de69",  # light green (Ca)
+#             "#fccde5",  # pink (Na)
+#             # "#d9d9d9",  # grey (other)
+#         ]
+#         colours = [set_hls_values(saturate(cval), l=0.4) for cval in colours]
+#         colour_keys = ["C", "S", "N", "O", "Mg", "K", "Ca", "Na"]
+#         colour_dict = dict(zip(colour_keys, colours))
+#         return colour_dict
+#
+#     def get_atom_colour_codes_from_names(self, atom_name):
+#         # atom_name = AtomHistPlot.get_atom_type_group(atom_name, group_all_atoms=True)
+#         if atom_name not in self.data.ions:
+#             atom_name = atom_name[0]
+#         return atom_name
 
 
 class Axis(UserString):
@@ -1125,975 +1095,660 @@ class Axis(UserString):
 #         )
 
 
-class LinePlot(Plot):
-    sel_list = ["clays", "ions", "aas", "_atoms"]
-    title_dict = {
-        "clays": "Clay type",
-        "ions": "Ion type",
-        "aas": "Amino acid",
-        "atoms": "Atom type",
-        "other": "Other atom type",
-    }
-    _init_args = {"x", "y", "lines"}
-    _plot_args = {
-        "rowlabel": "y",
-        "columnlabel": "x",
-        "dpi": None,
-        "figsize": None,
-    }
-    _default_colour = "#7f7f7f"
-
-    def __init__(self, data, **kwargs):
-        super().__init__(data, **kwargs)
-        self.bins = "x"
-        self.line = None
-
-    def plot_args_decorator(select: str):
-        def plot_decorator(plot_f):
-            def wrapper(self, **kwargs):
-                self.select = select
-                plot_f(self, **kwargs)
-                self.select = None
-
-            return wrapper
-
-        return plot_decorator
-
-    @property
-    def plot_df(self):
-        try:
-            return getattr(self, f"_{self.select}_bin_df")  # _{self.line}")
-        except AttributeError:
-            logging.error(f"Wrong usage of property, select not assigned yet.")
-
-    @property
-    def colour_df(self):
-        try:
-            return getattr(self, f"_{self.select}_colour_df")  # _{self.line}")
-        except AttributeError:
-            logging.error(f"Wrong usage of property, select not assigned yet.")
-
-    def _get_binned_plot_colour_dfs_1d(
-        self,
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        logger.info(f"Getting plot and colour dfs")
-        # from seaborn import set_hls_values, saturate
-        #
-        # # atom type colour cycle
-        # colours = [
-        #     "#8dd3c7",  # cyan (C)
-        #     "#ffffb3",  # yellow (S)
-        #     "#bebada",  # blue (N)
-        #     "#fb8072",  # red (O)
-        #     "#80b1d3",  # light blue (Mg)
-        #     "#fdb462",  # orange (K)
-        #     "#b3de69",  # light green (Ca)
-        #     "#fccde5",  # pink (Na)
-        # ]
-        # colours = [set_hls_values(saturate(cval), l=0.4) for cval in colours]
-        # colour_keys = ["C", "S", "N", "O", "Mg", "K", "Ca", "Na"]
-        colour_dict = (
-            self._get_colour_dict()
-        )  # dict(zip(colour_keys, colours))
-        # colours = color_palette('dark').as_hex()
-        sel = self.data.clays
-
-        # get data for plotting
-        try:
-            # clays still in columns
-            plot_df = self.data.bin_df[sel].copy()
-
-            # move clays category from columns to index
-            idx_names = ["clays", *plot_df.index.droplevel(["x_bins"]).names]
-            # DataFrame -> Series
-            plot_df = plot_df.stack()
-        except KeyError:
-            plot_df = self.data.bin_df.copy()
-            idx_names = plot_df.index.droplevel(["x_bins"]).names
-
-        # get values for atom types (including separate ions)
-        atoms: np.array = plot_df.index.get_level_values("_atoms").to_numpy()
-        # atom_type_groups = np.unique(atoms)
-        transform_atom_names_vec = np.vectorize(
-            self.get_atom_colour_codes_from_names, otypes=[str]
-        )
-        # transform_dict = dict(zip(atom_type_groups, transform_atom_names_vec(atom_type_groups)))
-        atoms = transform_atom_names_vec(atoms)
-        # atom_type_groups = transform_atom_names_vec(atom_type_groups)
-
-        # make new DataFrame from atom_type index level and values
-        plot_df.index = plot_df.index.droplevel(["x_bins"])
-        # plot_df.index.names = [name.strip('_') for name in plot_df.index.names]
-
-        try:
-            plot_df = pd.DataFrame({"values": plot_df, "colours": atoms})
-        except ValueError:
-            #     if self.select == 'ions':
-            plot_df["colours"] = atoms
-            plot_df["values"] = plot_df[
-                self.data.analysis
-            ]  # else:  #     plot_df['colours'] = atoms.transform(lambda x: x[0])
-
-        # self._plot_df = {}
-        # self._colour_df = {}
-
-        # color_cycle = itertools.cycle(colours)
-        # colour_dict = {}
-        # for atom_type in np.unique(atoms):
-        #     if atom_type not in colour_dict.keys():
-        #         colour_dict[atom_type] = next(color_cycle)
-        # colour_dict = dict(zip(atom_type_groups, colours[:len(atom_type_groups)]))
-        try:
-            plot_df["colours"] = plot_df["colours"].apply(
-                lambda x: colour_dict[x]
-            )
-        except KeyError:
-            plot_df["colours"] = self._default_colour
-
-        # reorder index for grouping
-        plot_df = plot_df.reorder_levels(idx_names)
-
-        # # group and sum densities within adsorption shell bins
-        # plot_df = plot_df.groupby(plot_df.index.names).agg(
-        #     values=pd.NamedAgg("values", "sum"), colours=pd.NamedAgg("colours", "first")
-        # )
-
-        # separate colour column from plot_df -> yields 2 Series
-        colour_df = plot_df["colours"]
-        plot_df = plot_df["values"]
-
-        # add missing atom probabilities from bulk to the largest bin
-        # (bin.left, cutoff] -> (bin.left, all bulk])
-        # inner_sum = plot_df.groupby(plot_df.index.droplevel("x_bins").names).sum()
-        # extra = 1 - inner_sum
-        # plot_df.where(
-        #     np.rint(plot_df.index.get_level_values("x_bins").right)
-        #     != int(self.data.cutoff),
-        #     lambda x: x + extra,
-        #     inplace=True,
-        # )
-        # setattr(self, "_plot_df", plot_df.copy())
-        self._plot_df, self._colour_df = plot_df.copy(), colour_df.copy()
-        logger.info(
-            f"{self._plot_df}\n{self._colour_df}"
-        )  # print("sel list", self.sel_list)
-
-        # for line in self.sel_list:  #  #     line_plot_df = plot_df.copy()  #     # get values for atom types (including separate ions)  #     if line == "_atoms":  #         line = "atoms"  #     lines = line_plot_df.index.get_level_values(line)  #  #     # make new DataFrame from atom_type index level and values  #     line_plot_df.index = line_plot_df.index.droplevel(["x_bins"])  #  #     # plot_df.index.names = [name.strip('_') for name in plot_df.index.names]  #  #     line_plot_df = pd.DataFrame({"values": line_plot_df, "colours": lines})  #  #     # map unique atom types to colour map  #     line_types = lines.unique()  #     colour_dict = dict(zip(line_types, colours[: len(line_types)]))  #     print(colour_dict)  #     line_plot_df["colours"] = line_plot_df["colours"].transform(  #         lambda x: colour_dict[x]  #     )  #  #     # reorder index for grouping  #     line_plot_df = line_plot_df.reorder_levels(idx_names)  #  #     # group and sum densities within adsorption shell bins  #     colour_df = line_plot_df.groupby(line_plot_df.index.names).agg(  #         colours=pd.NamedAgg("colours", "first")  #     )  #  #     # separate colour column from plot_df -> yields 2 Series  #     colour_df = colour_df["colours"]  #     # print(colour_df)  #     line_plot_df = line_plot_df["values"]  #  #     # add missing atom probabilities from bulk to the largest bin  #     # (bin.left, cutoff] -> (bin.left, all bulk])  #     # inner_sum = plot_df.groupby(plot_df.index.droplevel("x_bins").names).sum()  #     # extra = 1 - inner_sum  #     # plot_df.where(  #     #     np.rint(plot_df.index.get_level_values("x_bins").right)  #     #     != int(self.data.cutoff),  #     #     lambda x: x + extra,  #     #     inplace=True,  #     # )  #     # setattr(self, f"_plot_df_{line}", line_plot_df.copy())  #     self._plot_df[line], self._colour_df[line] = (  #         line_plot_df.copy(),  #         colour_df.copy(),  #     )
-
-    @redirect_tqdm
-    def _split_plot_dfs(self):
-        logger.info(f"Splitting plot and colour dfs")
-        bin_df = self._plot_df.copy()
-        plot_df = self._colour_df.copy()
-        dfs = {"bin": bin_df, "colour": plot_df}
-        for key, df in dfs.items():
-            if "ions" in self.data.atoms:
-                not_ions = [a for a in self.data.atoms if a != "ions"]
-                ion_view = df.xs("ions", level="atoms")
-                ion_view.index = ion_view.index.droplevel(["ions"])
-                ion_view.index.names = [
-                    idstr.strip("_") for idstr in ion_view.index.names
-                ]
-                setattr(self, f"_ions_{key}_df", ion_view.copy())
-            else:
-                not_ions = np.unique(self.data.atoms).tolist()
-
-            other_view = df.loc[pd.IndexSlice[:, :, :, not_ions, :]]
-            other_view.index = other_view.index.droplevel("_atoms")
-
-            setattr(
-                self, f"_other_{key}_df", other_view.copy()
-            )  # dfs = {}  # # print(self._plot_df.keys())  # for line in self.sel_list:  #     if line == "_atoms":  #         line = "atoms"  #     bin_df = self._plot_df[line].copy()  #     plot_df = self._colour_df[line].copy()  #     dfs[line] = {"bin": bin_df.copy(), "colour": plot_df.copy()}  #     for key, df in dfs[line].items():  #         not_ions = [a for a in self.data.atoms if a != "ions"]  #         ion_view = df.xs("ions", level="atoms")  #         ion_view.index = ion_view.index.droplevel(["ions"])  #         ion_view.index.names = [  #             idstr.strip("_") for idstr in ion_view.index.names  #         ]  #  #         other_view = df.loc[pd.IndexSlice[:, :, :, not_ions, :]]  #         other_view.index = other_view.index.droplevel("_atoms")  #         print(f"_ions_{key}_df_{line}")  #         setattr(self, f"_ions_{key}_df_{line}", ion_view.copy())  #         setattr(self, f"_other_{key}_df_{line}", other_view.copy())
-
-    def _process_data(self):
-        self._get_binned_plot_colour_dfs_1d()
-        self._split_plot_dfs()
-
-    def get_suptitle(self, pl, separate):
-        self.fig.suptitle(
-            (
-                ", ".join([self.title_dict[s].upper() for s in separate])
-                + f": {self.label_mod(list(tuple(zip(pl, separate))))}"
-            ),
-            size=16,
-            weight="bold",
-        )
-
-    @redirect_tqdm
-    def plot(
-        self,
-        lines: Literal["clays", "ions", "aas", "atoms", "other"],
-        x: Literal["clays", "aas", "ions", "atoms", "other"],
-        y: Literal["clays", "ions", "aas", "atoms", "other"],
-        rowlabel: str = "y",
-        columnlabel: str = "x",
-        figsize=None,
-        dpi=None,
-        diff=False,
-        xmax=50,
-        ymax=50,
-        plsave=False,
-        xlim=None,
-        ylim=None,
-        odir=".",
-        plot_table=None,
-        edges=False,
-        sparse=None,
-        contract_binsize=None,
-        antialiased=True,
-        smooth_line=0.01,
-        colours=None,
-    ):
-        # line style cycler
-        linestyle_list = [
-            (0, ()),
-            (0, (1, 2)),
-            (0, (5, 2)),
-            (0, (5, 2, 1, 2)),
-            (0, (5, 2, 1, 2, 1, 2)),
-            (0, (1, 4)),
-            (0, (3, 4, 1, 4)),
-            (0, (3, 4, 1, 4, 1, 4)),
-            (0, (7, 6)),
-            (0, (7, 6, 3, 6)),
-            (0, (7, 6, 3, 6, 1, 2)),
-        ]
-        if sparse is True:
-            pass
-        self._init_plot(x, y, lines)
-
-        plot_df = self.plot_df.copy()
-        plot_df = plot_df.groupby(plot_df.index.names).sum()
-        colour_df = self.colour_df.copy()
-        colour_df = colour_df.groupby(colour_df.index.names).sum()
-        # linestyle_dict = {}
-        line_cycle = itertools.cycle(linestyle_list)
-        # line_idx = colour_df.index.droplevel('x')
-        line_grouped = (
-            colour_df.groupby("atoms").first().duplicated(False).to_dict()
-        )
-        for at_type, duplicate in line_grouped.items():
-            if duplicate is True:
-                line_grouped[at_type] = next(line_cycle)
-            else:
-                line_cycle = itertools.cycle(linestyle_list)
-                line_grouped[at_type] = linestyle_list[0]
-        del at_type, duplicate, line_cycle
-
-        # logger.info(f'{plot_df}')
-
-        avail_attrs = plot_df.index.names
-        logger.info(f"Available attributes: {avail_attrs}")
-
-        logger.info("Setting x:")
-        self.x = Axis(self, x)
-        logger.info("Setting y:")
-        self.y = Axis(self, y)
-        logger.info("Setting lines:")
-        self.line = Axis(self, lines)
-
-        separate = [
-            s
-            for s in avail_attrs
-            if s not in [self.x, self.y, self.line, self.bins]
-        ]
-
-        if len(separate) != 0:
-            logger.info(f"Separate plots: {separate}")
-
-        idx = pd.Index(
-            [
-                s
-                for s in avail_attrs
-                if (
-                    s != self.x
-                    and s != self.line
-                    and s not in [*separate, self.bins]
-                )
-            ]
-        )
-
-        if colours is not None:
-            from seaborn import saturate, set_hls_values
-
-            colours = [
-                set_hls_values(saturate(cval), l=0.4) for cval in colours
-            ]
-            colour_dict = dict(zip(self.line.v, colours))
-
-        logger.info(f"Iteration index: {idx.values}")
-
-        sep = pd.Index(separate)
-
-        yid = np.ravel(np.where(np.array(idx) == self.y))[0]
-
-        if figsize is None:
-            logger.info(f"{xmax}, {ymax} figsize")
-            figsize = self.get_figsize(xmax=xmax, ymax=ymax)
-
-        # set resultion
-        if dpi is None:
-            dpi = 100
-
-        # get plotting iter from index
-        iters = self._get_idx_iter(idx=idx)
-
-        logger.info(
-            f"Printing line plots for {self.line}\nColumns: {self.x.v}\nRows: {self.y.v}"
-        )
-
-        # set label modifier function
-        self.label_mod = self.modify_plot_labels
-
-        try:
-            # iterator for more than one plot
-            sep_it = self._get_idx_iter(idx=sep)
-        except ValueError:
-            # only one plot
-            sep_it = [None]
-        # logger.info(f'{sep_it}\n{plot_df}')
-
-        # iterate over separate plots
-        for pl in sep_it:
-            y_max = 0
-            if pl is None:
-                pl_str = ""
-            else:
-                pl_str = f"_{pl[0]}"
-            self.name = (
-                f"{self.data.name}_{self.data.analysis}_{self.select}"
-                f"_{x}_{y}_{lines}{pl_str}_{self.data.cutoff}_{self.data.bins}"
-            )
-            if xlim is not None:
-                self.name += f"_{xlim:.0f}"
-            logger.info(f"plot {self.name}")
-
-            # index map for y values
-            # y_dict: dict = dict(zip(vy, np.arange(ly)))
-
-            self.init_legend(ly=self.y.l, lx=self.x.l)
-
-            self.fig, self.ax = plt.subplots(
-                nrows=self.y.l,
-                ncols=self.x.l,
-                figsize=tuple(figsize),
-                sharey=True,
-                sharex=True,
-                dpi=dpi,
-                constrained_layout=True,
-            )
-
-            if pl is None:
-                logger.info(f"Generating plot")
-                sepview = plot_df.view()
-                save_str = ""
-
-            # multiple plots
-            else:
-                logger.info(f"Generating {pl} plot:")
-                # print(plot_df.head(20), "\n", separate, pl)
-                sepview = plot_df.xs((pl), level=separate, drop_level=False)
-                save_str = pl  # self.get_suptitle(pl, separate)
-
-            # set plot index
-            pi = 0
-
-            # iterate over subplot columns
-            for col in self.x.v:
-                # logger.info(col)
-                try:
-                    # print(sepview.dropna().index)
-                    view = sepview.xs(
-                        col, level=self.x, axis=0, drop_level=False
-                    )
-                    pi = 1
-                except ValueError:
-                    view = sepview
-                    col = self.x.v
-                    pi += 1
-                except KeyError:
-                    continue
-                for it in iters:
-                    try:
-                        values = view.xs(
-                            tuple(it), level=idx.tolist(), drop_level=False
-                        )
-                        v = values.index.get_level_values("atoms").unique()
-                        logger.info(v)
-                        # print(values)
-                        # x_labels = []
-
-                        # logging.info(f"it: {it}")  # , {self.line.v}, {values}")
-                        x_id, y_id = self.x.dict[col], self.y.dict[it[yid]]
-                        # if edges is True:
-                        #     atom_type = values.index.get_level_values("atoms").unique()[
-                        #         0
-                        #     ]
-                        #     edge_list = self.data.edges[atom_type]
-                        #     p = self.ax[y_id, x_id].vlines(
-                        #         edge_list, 0, ylim, color="gray", linestyles=(0, (1, 4))
-                        #     )
-                        line_cycle = itertools.cycle(linestyle_list)
-                        for line_num, vline in enumerate(self.line.v):
-                            logging.info(
-                                f"line {vline} ({line_num + 1}/{self.line.l})"
-                            )
-                            # set linestyle
-                            if self.line != "atoms":
-                                # line_cycle = itertools.cycle(linestyle_list)
-                                # linestyle_dict = {}
-                                # for atom_type in np.unique(self.data.atoms):
-                                #     linestyle_dict[atom_type] = next(line_cycle)
-                                linestyle = next(
-                                    line_cycle
-                                )  # linestyle_list[line_num % len(linestyle_list)]
-                            else:
-                                linestyle = line_grouped[vline]
-
-                            try:
-                                line_vals: pd.Series = values.xs(
-                                    vline, level=self.line, drop_level=False
-                                )
-                                if contract_binsize is not None:
-                                    line_vals = (
-                                        line_vals.rolling(
-                                            contract_binsize,
-                                            closed="right",
-                                            center=True,
-                                            step=contract_binsize,
-                                        )
-                                        .sum()
-                                        .fillna(0)
-                                    )
-                            except KeyError:
-                                logger.info(f"No data for {vline}")
-                                continue
-                            if colours is None:
-                                colour = colour_df.loc[line_vals.index].values[
-                                    0
-                                ]
-                            else:
-                                colour = colour_dict[vline]
-                            # if sparse is True:
-                            #     line_vals = line_vals.rolling(10, min_periods=1, step=10).sum()
-                            bin_list = line_vals.index.get_level_values("x")
-                            if (
-                                smooth_line is not None
-                                and smooth_line is not False
-                            ):
-                                if isinstance(smooth_line, float):
-                                    if self.data.bins.num < smooth_line:
-                                        break
-                                elif isinstance(smooth_line, int):
-                                    smooth_line = (
-                                        self.data.bins.num / smooth_line
-                                    )
-                                else:
-                                    smooth_line = self.data.bins.num / 10
-                                dense_bin_list = np.arange(
-                                    bin_list[0], bin_list[-1], smooth_line
-                                )
-                            line_vals.index = bin_list
-                            # logger.info(f'{vline}, {self.line}')
-                            # print(line_vals.hasnans, np.max(line_vals.values), vline, line_num, y_id, x_id)
-                            summed = np.round(np.sum(line_vals.values), 4)
-                            if (
-                                not line_vals.hasnans and summed > 0.0
-                            ):  # and vline != 'C':
-                                if np.max(line_vals) > y_max:
-                                    y_max = np.max(line_vals)
-                                    logger.info(
-                                        f"adjusting max value: {y_max}"
-                                    )
-                                try:
-                                    label = f"{self.label_mod([(vline, self.line)]):<2}"
-                                    if hasattr(
-                                        self.data, "ignore_density_sum"
-                                    ):
-                                        logger.debug(
-                                            f"Ignoring line value sum check sum={summed:.2f}"
-                                        )
-                                        if summed != 1.0:
-                                            logger.info(
-                                                f"labelling sum {summed}"
-                                            )
-                                            label_add = (
-                                                rf" ({summed * 100:>.0f} \%)"
-                                            )
-                                            label = f"{label:<3}{label_add:>7}"
-                                    else:
-                                        assert (
-                                            np.round(summed) == 1.00
-                                        ), f"Densities ({np.round(summed)}) do not sum to 1.00"
-                                    if pi == 1:
-                                        self.legends[(y_id, x_id)].append(
-                                            label
-                                        )
-                                    # if sparse is True:
-                                    #     line_vals_mask = line_vals.values != 0
-                                    # spline = splrep(bin_list,#[line_vals_mask],
-                                    #                               line_vals.values)#[line_vals_mask])
-                                    # line_vals = splev(bin_list, spline)
-                                    # else:
-                                    #     line_vals = line_vals.values
-                                    # print(x_id)
-                                    if (
-                                        smooth_line is not None
-                                        and smooth_line is not False
-                                    ):
-                                        bin_list_plot = dense_bin_list
-                                        line_vals_plot = make_smoothing_spline(
-                                            bin_list, line_vals.values
-                                        )(bin_list_plot)
-                                    else:
-                                        bin_list_plot = bin_list
-                                        line_vals_plot = line_vals.values
-                                    try:
-                                        # f, ax = plt.subplots()
-                                        # ax.plot(bin_list, line_vals)
-                                        # f.suptitle(vline)
-                                        # f.show()
-                                        logger.info(
-                                            f"{len(bin_list)}, {len(line_vals)}"
-                                        )
-                                        # p = self.ax[y_id, x_id].plot([1,1], [0,1], label='a')
-                                        try:
-                                            p = self.ax[y_id, x_id].plot(
-                                                bin_list_plot,
-                                                line_vals_plot,
-                                                label=label,
-                                                color=colour,
-                                                linestyle=linestyle,
-                                                antialiased=antialiased,
-                                            )
-
-                                        except IndexError:
-                                            xy_id = np.max([x_id, y_id])
-                                            p = self.ax[xy_id].plot(
-                                                bin_list_plot,
-                                                line_vals_plot,
-                                                label=label,
-                                                color=colour,
-                                                linestyle=linestyle,
-                                                antialiased=antialiased,
-                                            )
-                                        except TypeError:
-                                            p = self.ax.plot(
-                                                bin_list_plot,
-                                                line_vals_plot,
-                                                label=label,
-                                                color=colour,
-                                                linestyle=linestyle,
-                                                antialiased=antialiased,
-                                            )  # self.fig.show()  # self.fig.show()  # self.fig.savefig('a.png')  # logger.info('wrote file')  # logger.info(f'{pl} {col} {vline} {it[yid]}')  # handles[(y_id, x_id)] = p
-                                    except Exception as e:
-                                        # del p
-                                        print(e, y_id, x_id, line_num, vline)
-
-                                    # self.ax[y_id, x_id].bar_label(p, labels=[label],  #                          fmt='%s',  #                          label_type='center')
-                                except IndexError:
-                                    p = self.ax[x_id].plot(
-                                        bin_list,
-                                        line_vals.values,
-                                        label=label,
-                                        color=colour,
-                                        linestyle=linestyle,
-                                        antialiased=antialiased,
-                                    )
-                            else:
-                                logger.info(
-                                    f"nan or 0: {vline}"
-                                )  # self.ax[y_id, x_id].legend()
-                    # except FileNotFoundError:
-                    except KeyError:
-                        logger.info(
-                            f"No data for {pl}, {self.x}, {it} {it[yid]}"
-                        )
-            i = 0
-            j = 0
-            for i in range(self.y.l):
-                y_ax_label = f"{self.label_mod([(self.y.v[i], self.y)])}\n"
-                if self.y.l > 1:
-                    if i == 0:
-                        self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
-                else:
-                    if i == 0 and not re.match(
-                        y_ax_label, "\nctl", flags=re.IGNORECASE
-                    ):
-                        self.fig.supylabel(
-                            f"{self.title_dict[y]}: {y_ax_label}", size=14
-                        )
-                    self.name = re.sub(
-                        rf"(.*)_{y}_(.*)",
-                        r"\1_" + y_ax_label.strip("\n") + r"_\2",
-                        self.name,
-                    )
-                    y_ax_label = (
-                        ""  # f"{self.label_mod([(self.y.v[i], self.y)])}\n"
-                    )
-                try:
-                    self.ax[i, 0].set_ylabel(y_ax_label + rowlabel)
-                except IndexError:
-                    self.ax[i].set_ylabel(y_ax_label + rowlabel)
-                except TypeError:
-                    self.ax.set_ylabel(y_ax_label + rowlabel)
-                for j in range(self.x.l):
-                    x_ax_label = f"\n{self.label_mod([(self.x.v[j], self.x)])}"
-                    if self.x.l > 1:
-                        if j == 0:
-                            self.fig.supxlabel(
-                                f"{self.title_dict[x]}s", size=14
-                            )
-                    else:
-                        if j == 0 and not re.match(
-                            x_ax_label, "\nctl", flags=re.IGNORECASE
-                        ):
-                            self.fig.supxlabel(
-                                f"{self.title_dict[x]}: {x_ax_label}", size=14
-                            )
-
-                        self.name = re.sub(
-                            rf"(.*)_{x}_(.*)",
-                            r"\1_" + x_ax_label.strip("\n") + r"_\2",
-                            self.name,
-                        )
-                        x_ax_label = ""  # f"\n{self.label_mod([(self.x.v[j], self.x)])}"
-                    label = [
-                        self.label_mod([(leg, self.line)])
-                        for leg in self.legends[i, j]
-                    ]
-                    if len(label) % 3 == 0:
-                        ncol = 3
-                    else:
-                        ncol = 2
-                    try:
-                        self.ax[i, j].legend(
-                            label,
-                            ncol=ncol,
-                            title=self.title_dict[lines],
-                            frameon=False,
-                            loc="upper right",
-                        )
-                        if xlim is not None:
-                            self.ax[i, j].set_xlim((0.0, float(xlim)))
-                        if ylim is not None:
-                            self.ax[i, j].set_ylim((0.0, float(ylim)))
-                        else:
-                            self.ax[i, j].set_ylim((0.0, float(y_max)))
-                        self.ax[self.y.l - 1, j].set_xlabel(
-                            columnlabel + x_ax_label
-                        )
-                        self.ax[i, j].spines[["top", "right"]].set_visible(
-                            False
-                        )
-                    except IndexError:
-                        try:
-                            max_id = np.max(i, j)
-                        except IndexError:
-                            max_id = np.max(i, j)[0]
-                        self.ax[max_id].legend(
-                            label,
-                            ncol=ncol,
-                            title=self.title_dict[lines],
-                            frameon=False,
-                            loc="upper right",
-                        )
-                        if xlim is not None:
-                            self.ax[j].set_xlim((0.0, float(xlim)))
-                        if ylim is not None:
-                            self.ax[i].set_ylim((0.0, float(ylim)))
-                        else:
-                            self.ax[i].set_ylim(
-                                (0.0, np.round(float(y_max + 0.05 * y_max), 2))
-                            )
-                        self.ax[self.y.l - 1].set_xlabel(
-                            columnlabel + x_ax_label
-                        )
-                        self.ax[j].spines[["top", "right"]].set_visible(False)
-                        self.ax[i].spines[["top", "right"]].set_visible(False)
-                    except TypeError:
-                        self.ax.legend(
-                            label,
-                            ncol=ncol,
-                            title=self.title_dict[lines],
-                            frameon=False,
-                            loc="upper right",
-                        )
-                        if xlim is not None:
-                            self.ax.set_xlim((0.0, float(xlim)))
-                        if ylim is not None:
-                            self.ax.set_ylim((0.0, float(ylim)))
-                        else:
-                            self.ax.set_ylim(
-                                (0.0, np.round(float(y_max + 0.05 * y_max), 2))
-                            )
-                        self.ax.set_xlabel(columnlabel + x_ax_label)
-                        self.ax.spines[["top", "right"]].set_visible(False)
-                    if j == 0:
-                        try:
-                            y_ticks = self.ax[i, 0].get_yticks()
-                            x_ticks = self.ax[i, j].get_xticks()
-                        except IndexError:
-                            y_ticks = self.ax[i].get_yticks()
-                            x_ticks = self.ax[j].get_xticks()
-                        except TypeError:
-                            y_ticks = self.ax.get_yticks()
-                            x_ticks = self.ax.get_xticks()
-                        finally:
-                            y_int = np.rint(len(y_ticks) / 5).astype(int)
-                            y_ticks = y_ticks[::y_int]
-                            x_int = np.rint(len(x_ticks) / 5).astype(int)
-                            x_ticks = x_ticks[::x_int]
-                            try:
-                                self.ax[i, j].set_xticks(x_ticks, x_ticks)
-                            except IndexError:
-                                self.ax[j].set_xticks(
-                                    x_ticks, x_ticks.astype(int)
-                                )
-                            except TypeError:
-                                self.ax.set_xticks(
-                                    x_ticks, x_ticks.astype(int)
-                                )
-                            if i == 0:
-                                try:
-                                    self.ax[i, 0].set_yticks(y_ticks, y_ticks)
-                                except IndexError:
-                                    self.ax[i].set_yticks(y_ticks, y_ticks)
-                                except TypeError:
-                                    self.ax.set_yticks(
-                                        y_ticks, y_ticks
-                                    )  # self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)  # self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
-
-                # except IndexError:  #     self.ax[i].set_ylabel(  #         f"{self.label_mod([(self.y.v[i], y)])}\n" + rowlabel  #     )  #     # self.ax[i].legend([self.label_mod([(leg, self.label_key)]) for leg in self.legends[i, 0]], ncol=3)  #     self.ax[self.y.l - 1].set_xlabel(  #         columnlabel + f"\n{self.label_mod([(self.x.v[0], self.x)])}"  #     )
-            if edges is True:
-                if self.line != "atoms":
-                    max_y = plot_df.max()
-                    for col in self.x.v:
-                        # logger.info(col)
-                        try:
-                            view = sepview.xs(
-                                col, level=self.x, axis=0, drop_level=False
-                            )
-                            pi = 1
-                        except ValueError:
-                            view = sepview
-                            col = self.x.v
-                            pi += 1
-                        for it in iters:
-                            try:
-                                values = view.xs(
-                                    tuple(it),
-                                    level=idx.tolist(),
-                                    drop_level=False,
-                                )
-                                # print(values)
-                                # x_labels = []
-
-                                logging.info(
-                                    f"it: {it}"
-                                )  # , {self.line.v}, {values}")
-                                x_id, y_id = (
-                                    self.x.dict[col],
-                                    self.y.dict[it[yid]],
-                                )
-
-                                atom_type = values.index.get_level_values(
-                                    "atoms"
-                                ).unique()[0]
-                                edge_list = self.data.edges[atom_type]
-                                try:
-                                    p = self.ax[y_id, x_id].vlines(
-                                        edge_list,
-                                        0,  # np.max(line_vals),
-                                        max_y,
-                                        color="gray",
-                                        linestyles=(0, (1, 4)),
-                                    )
-                                except IndexError:
-                                    xy_id = np.max([x_id, y_id])
-                                    p = self.ax[xy_id].vlines(
-                                        edge_list,
-                                        0,  # np.max(line_vals),
-                                        max_y,
-                                        color="gray",
-                                        linestyles=(0, (1, 4)),
-                                    )
-                            except TypeError:
-                                xy_id = np.max([x_id, y_id])
-                                p = self.ax.vlines(
-                                    edge_list,
-                                    0,  # np.max(line_vals),
-                                    max_y,
-                                    color="gray",
-                                    linestyles=(0, (1, 4)),
-                                )
-                            except KeyError:
-                                logger.info(
-                                    f"No data for {pl}, {self.x}, {it}"
-                                )
-
-            # self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
-            # self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
-
-            if plsave != False:
-                logger.info("Saving plot")
-                if type(plsave) == str:
-                    outname = f"{plsave}.png"
-                else:
-                    outname = f"{self.name}.png"
-                odir = Path(odir).absolute()
-                logger.info(f"output to {odir.absolute()}")
-                if not odir.is_dir():
-                    os.makedirs(odir)
-                logger.info(odir / outname)
-                self.fig.savefig(str(odir / outname))
-            else:
-                if type(plsave) == str:
-                    outname = f"{plsave}.p"
-                else:
-                    outname = f"{self.name}.p"
-                odir = Path(odir).absolute()
-                logger.info(f"output to {odir.absolute()}")
-                if not odir.is_dir():
-                    os.makedirs(odir)
-                logger.info(odir / outname)
-                with open(odir / outname, "wb") as pklfile:
-                    pkl.dump(
-                        {"fig": self.fig, "ax": self.ax, "data": self.data.df},
-                        pklfile,
-                    )
-                self.fig.show()
-            self.fig.clear()
-
-        def _get_bin_label(self, x_bin, bin_list):
-            if x_bin.right < np.max(bin_list.right):
-                label = f"${x_bin.left} - {x_bin.right}$ \AA"  # barwidth = x_bin.right - x_bin.left
-
-            else:
-                label = f"$ > {x_bin.left}$ \AA"
-            return label
-
-    # @property
-    # def plot_df(self):
-    #     try:
-    #         return getattr(self, f"_{self.select}_bin_df")
-    #     except AttributeError:
-    #         logging.error(f"Wrong usage of property, line not assigned yet.")
-    #
-    # @property
-    # def colour_df(self):
-    #     try:
-    #         return getattr(self, f"_{self.select}_colour_df")
-    #     except AttributeError:
-    #         logging.error(f"Wrong usage of property, line not assigned yet.")
-
-    def _get_attr(self, attr: Literal["clays", "aas", "atoms", "ions"]):
-        return pd.unique(self.plot_df.index.get_level_values(attr))
-
-    get_clays = partialmethod(_get_attr, attr="clays")
-    get_aas = partialmethod(_get_attr, attr="aas")
-    get_ions = partialmethod(_get_attr, attr="ions")
-    get_atoms = partialmethod(_get_attr, attr="atoms")
-    get_other = partialmethod(_get_attr, attr="other")
-
-    def save(self, **kwargs):
-        ...
-
-    @plot_args_decorator(select="ions")
-    def plot_ions(
-        self,
-        lines: Literal["clays", "ions", "aas", "atoms", "other"],
-        x: Literal["clays", "aas", "ions", "atoms", "other"],
-        y: Literal["clays", "ions", "aas", "atoms", "other"],
-        rowlabel: str = "y",
-        columnlabel: str = "x",
-        figsize=None,
-        dpi=None,
-        diff=False,
-        xmax=50,
-        ymax=50,
-        plsave=False,
-        xlim=None,
-        ylim=None,
-        odir=".",
-        plot_table=None,
-        edges=True,
-        sparse=None,
-        antialiased=True,
-        smooth_line=0.01,
-        colours=None,
-    ):
-        self.plot(
-            lines=lines,
-            x=x,
-            y=y,
-            rowlabel=rowlabel,
-            columnlabel=columnlabel,
-            figsize=figsize,
-            dpi=dpi,
-            diff=diff,
-            xmax=xmax,
-            ymax=ymax,
-            plsave=plsave,
-            xlim=xlim,
-            ylim=ylim,
-            odir=odir,
-            plot_table=plot_table,
-            edges=edges,
-            sparse=sparse,
-            antialiased=antialiased,
-            smooth_line=smooth_line,
-            colours=colours,
-        )
-
-    @plot_args_decorator(select="other")
-    def plot_other(
-        self,
-        lines: Literal["clays", "ions", "aas", "atoms", "other"],
-        x: Literal["clays", "aas", "ions", "atoms", "other"],
-        y: Literal["clays", "ions", "aas", "atoms", "other"],
-        rowlabel: str = "y",
-        columnlabel: str = "x",
-        figsize=None,
-        dpi=None,
-        diff=False,
-        xmax=50,
-        ymax=50,
-        plsave=False,
-        xlim=None,
-        ylim=None,
-        odir=".",
-        plot_table=None,
-        edges=True,
-        sparse=None,
-        contract_binsize=None,
-        antialiased=True,
-        smooth_line=0.01,
-        colours=None,
-    ):
-        self.plot(
-            lines=lines,
-            x=x,
-            y=y,
-            rowlabel=rowlabel,
-            columnlabel=columnlabel,
-            figsize=figsize,
-            dpi=dpi,
-            diff=diff,
-            xmax=xmax,
-            ymax=ymax,
-            plsave=plsave,
-            xlim=xlim,
-            ylim=ylim,
-            odir=odir,
-            plot_table=plot_table,
-            edges=edges,
-            sparse=sparse,
-            contract_binsize=contract_binsize,
-            antialiased=antialiased,
-            smooth_line=smooth_line,
-            colours=colours,
-        )
+# class LinePlot(Plot):
+#     sel_list = ["clays", "ions", "aas", "_atoms"]
+#     title_dict = {"clays": "Clay type", "ions": "Ion type", "aas": "Amino acid", "atoms": "Atom type",
+#         "other": "Other atom type", }
+#     _init_args = {"x", "y", "lines"}
+#     _plot_args = {"rowlabel": "y", "columnlabel": "x", "dpi": None, "figsize": None, }
+#     _default_colour = "#7f7f7f"
+#
+#     def __init__(self, data, **kwargs):
+#         super().__init__(data, **kwargs)
+#         self.bins = "x"
+#         self.line = None
+#
+#     def plot_args_decorator(select: str):
+#         def plot_decorator(plot_f):
+#             def wrapper(self, **kwargs):
+#                 self.select = select
+#                 plot_f(self, **kwargs)
+#                 self.select = None
+#
+#             return wrapper
+#
+#         return plot_decorator
+#
+#     @property
+#     def plot_df(self):
+#         try:
+#             return getattr(self, f"_{self.select}_bin_df")  # _{self.line}")
+#         except AttributeError:
+#             logging.error(f"Wrong usage of property, select not assigned yet.")
+#
+#     @property
+#     def colour_df(self):
+#         try:
+#             return getattr(self, f"_{self.select}_colour_df")  # _{self.line}")
+#         except AttributeError:
+#             logging.error(f"Wrong usage of property, select not assigned yet.")
+#
+#     def _get_binned_plot_colour_dfs_1d(self, ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+#         logger.info(f"Getting plot and colour dfs")
+#         # from seaborn import set_hls_values, saturate
+#         #
+#         # # atom type colour cycle
+#         # colours = [
+#         #     "#8dd3c7",  # cyan (C)
+#         #     "#ffffb3",  # yellow (S)
+#         #     "#bebada",  # blue (N)
+#         #     "#fb8072",  # red (O)
+#         #     "#80b1d3",  # light blue (Mg)
+#         #     "#fdb462",  # orange (K)
+#         #     "#b3de69",  # light green (Ca)
+#         #     "#fccde5",  # pink (Na)
+#         # ]
+#         # colours = [set_hls_values(saturate(cval), l=0.4) for cval in colours]
+#         # colour_keys = ["C", "S", "N", "O", "Mg", "K", "Ca", "Na"]
+#         colour_dict = (self._get_colour_dict())  # dict(zip(colour_keys, colours))
+#         # colours = color_palette('dark').as_hex()
+#         sel = self.data.clays
+#
+#         # get data for plotting
+#         try:
+#             # clays still in columns
+#             plot_df = self.data.bin_df[sel].copy()
+#
+#             # move clays category from columns to index
+#             idx_names = ["clays", *plot_df.index.droplevel(["x_bins"]).names]
+#             # DataFrame -> Series
+#             plot_df = plot_df.stack()
+#         except KeyError:
+#             plot_df = self.data.bin_df.copy()
+#             idx_names = plot_df.index.droplevel(["x_bins"]).names
+#
+#         # get values for atom types (including separate ions)
+#         atoms: np.array = plot_df.index.get_level_values("_atoms").to_numpy()
+#         # atom_type_groups = np.unique(atoms)
+#         transform_atom_names_vec = np.vectorize(self.get_atom_colour_codes_from_names, otypes=[str])
+#         # transform_dict = dict(zip(atom_type_groups, transform_atom_names_vec(atom_type_groups)))
+#         atoms = transform_atom_names_vec(atoms)
+#         # atom_type_groups = transform_atom_names_vec(atom_type_groups)
+#
+#         # make new DataFrame from atom_type index level and values
+#         plot_df.index = plot_df.index.droplevel(["x_bins"])
+#         # plot_df.index.names = [name.strip('_') for name in plot_df.index.names]
+#
+#         try:
+#             plot_df = pd.DataFrame({"values": plot_df, "colours": atoms})
+#         except ValueError:
+#             #     if self.select == 'ions':
+#             plot_df["colours"] = atoms
+#             plot_df["values"] = plot_df[
+#                 self.data.analysis]  # else:  #     plot_df['colours'] = atoms.transform(lambda x: x[0])
+#
+#         # self._plot_df = {}
+#         # self._colour_df = {}
+#
+#         # color_cycle = itertools.cycle(colours)
+#         # colour_dict = {}
+#         # for atom_type in np.unique(atoms):
+#         #     if atom_type not in colour_dict.keys():
+#         #         colour_dict[atom_type] = next(color_cycle)
+#         # colour_dict = dict(zip(atom_type_groups, colours[:len(atom_type_groups)]))
+#         try:
+#             plot_df["colours"] = plot_df["colours"].apply(lambda x: colour_dict[x])
+#         except KeyError:
+#             plot_df["colours"] = self._default_colour
+#
+#         # reorder index for grouping
+#         plot_df = plot_df.reorder_levels(idx_names)
+#
+#         # # group and sum densities within adsorption shell bins
+#         # plot_df = plot_df.groupby(plot_df.index.names).agg(
+#         #     values=pd.NamedAgg("values", "sum"), colours=pd.NamedAgg("colours", "first")
+#         # )
+#
+#         # separate colour column from plot_df -> yields 2 Series
+#         colour_df = plot_df["colours"]
+#         plot_df = plot_df["values"]
+#
+#         # add missing atom probabilities from bulk to the largest bin
+#         # (bin.left, cutoff] -> (bin.left, all bulk])
+#         # inner_sum = plot_df.groupby(plot_df.index.droplevel("x_bins").names).sum()
+#         # extra = 1 - inner_sum
+#         # plot_df.where(
+#         #     np.rint(plot_df.index.get_level_values("x_bins").right)
+#         #     != int(self.data.cutoff),
+#         #     lambda x: x + extra,
+#         #     inplace=True,
+#         # )
+#         # setattr(self, "_plot_df", plot_df.copy())
+#         self._plot_df, self._colour_df = plot_df.copy(), colour_df.copy()
+#         logger.info(f"{self._plot_df}\n{self._colour_df}")  # print("sel list", self.sel_list)
+#
+#         # for line in self.sel_list:  #  #     line_plot_df = plot_df.copy()  #     # get values for atom types (including separate ions)  #     if line == "_atoms":  #         line = "atoms"  #     lines = line_plot_df.index.get_level_values(line)  #  #     # make new DataFrame from atom_type index level and values  #     line_plot_df.index = line_plot_df.index.droplevel(["x_bins"])  #  #     # plot_df.index.names = [name.strip('_') for name in plot_df.index.names]  #  #     line_plot_df = pd.DataFrame({"values": line_plot_df, "colours": lines})  #  #     # map unique atom types to colour map  #     line_types = lines.unique()  #     colour_dict = dict(zip(line_types, colours[: len(line_types)]))  #     print(colour_dict)  #     line_plot_df["colours"] = line_plot_df["colours"].transform(  #         lambda x: colour_dict[x]  #     )  #  #     # reorder index for grouping  #     line_plot_df = line_plot_df.reorder_levels(idx_names)  #  #     # group and sum densities within adsorption shell bins  #     colour_df = line_plot_df.groupby(line_plot_df.index.names).agg(  #         colours=pd.NamedAgg("colours", "first")  #     )  #  #     # separate colour column from plot_df -> yields 2 Series  #     colour_df = colour_df["colours"]  #     # print(colour_df)  #     line_plot_df = line_plot_df["values"]  #  #     # add missing atom probabilities from bulk to the largest bin  #     # (bin.left, cutoff] -> (bin.left, all bulk])  #     # inner_sum = plot_df.groupby(plot_df.index.droplevel("x_bins").names).sum()  #     # extra = 1 - inner_sum  #     # plot_df.where(  #     #     np.rint(plot_df.index.get_level_values("x_bins").right)  #     #     != int(self.data.cutoff),  #     #     lambda x: x + extra,  #     #     inplace=True,  #     # )  #     # setattr(self, f"_plot_df_{line}", line_plot_df.copy())  #     self._plot_df[line], self._colour_df[line] = (  #         line_plot_df.copy(),  #         colour_df.copy(),  #     )
+#
+#     @redirect_tqdm
+#     def _split_plot_dfs(self):
+#         logger.info(f"Splitting plot and colour dfs")
+#         bin_df = self._plot_df.copy()
+#         plot_df = self._colour_df.copy()
+#         dfs = {"bin": bin_df, "colour": plot_df}
+#         for key, df in dfs.items():
+#             if "ions" in self.data.atoms:
+#                 not_ions = [a for a in self.data.atoms if a != "ions"]
+#                 ion_view = df.xs("ions", level="atoms")
+#                 ion_view.index = ion_view.index.droplevel(["ions"])
+#                 ion_view.index.names = [idstr.strip("_") for idstr in ion_view.index.names]
+#                 setattr(self, f"_ions_{key}_df", ion_view.copy())
+#             else:
+#                 not_ions = np.unique(self.data.atoms).tolist()
+#
+#             other_view = df.loc[pd.IndexSlice[:, :, :, not_ions, :]]
+#             other_view.index = other_view.index.droplevel("_atoms")
+#
+#             setattr(self, f"_other_{key}_df",
+#                 other_view.copy())  # dfs = {}  # # print(self._plot_df.keys())  # for line in self.sel_list:  #     if line == "_atoms":  #         line = "atoms"  #     bin_df = self._plot_df[line].copy()  #     plot_df = self._colour_df[line].copy()  #     dfs[line] = {"bin": bin_df.copy(), "colour": plot_df.copy()}  #     for key, df in dfs[line].items():  #         not_ions = [a for a in self.data.atoms if a != "ions"]  #         ion_view = df.xs("ions", level="atoms")  #         ion_view.index = ion_view.index.droplevel(["ions"])  #         ion_view.index.names = [  #             idstr.strip("_") for idstr in ion_view.index.names  #         ]  #  #         other_view = df.loc[pd.IndexSlice[:, :, :, not_ions, :]]  #         other_view.index = other_view.index.droplevel("_atoms")  #         print(f"_ions_{key}_df_{line}")  #         setattr(self, f"_ions_{key}_df_{line}", ion_view.copy())  #         setattr(self, f"_other_{key}_df_{line}", other_view.copy())
+#
+#     def _process_data(self):
+#         self._get_binned_plot_colour_dfs_1d()
+#         self._split_plot_dfs()
+#
+#     def get_suptitle(self, pl, separate):
+#         self.fig.suptitle((", ".join(
+#             [self.title_dict[s].upper() for s in separate]) + f": {self.label_mod(list(tuple(zip(pl, separate))))}"),
+#             size=16, weight="bold", )
+#
+#     @redirect_tqdm
+#     def plot(self, lines: Literal["clays", "ions", "aas", "atoms", "other"],
+#             x: Literal["clays", "aas", "ions", "atoms", "other"], y: Literal["clays", "ions", "aas", "atoms", "other"],
+#             rowlabel: str = "y", columnlabel: str = "x", figsize=None, dpi=None, diff=False, xmax=50, ymax=50,
+#             plsave=False, xlim=None, ylim=None, odir=".", plot_table=None, edges=False, sparse=None,
+#             contract_binsize=None, antialiased=True, smooth_line=0.01, colours=None, ):
+#         # line style cycler
+#         linestyle_list = self.linestyles
+#         if sparse is True:
+#             pass
+#         self._init_plot(x, y, lines)
+#
+#         plot_df = self.plot_df.copy()
+#         plot_df = plot_df.groupby(plot_df.index.names).sum()
+#         colour_df = self.colour_df.copy()
+#         colour_df = colour_df.groupby(colour_df.index.names).sum()
+#         # linestyle_dict = {}
+#         line_cycle = itertools.cycle(linestyle_list)
+#         # line_idx = colour_df.index.droplevel('x')
+#         line_grouped = (colour_df.groupby("atoms").first().duplicated(False).to_dict())
+#         for at_type, duplicate in line_grouped.items():
+#             if duplicate is True:
+#                 line_grouped[at_type] = next(line_cycle)
+#             else:
+#                 line_cycle = itertools.cycle(linestyle_list)
+#                 line_grouped[at_type] = linestyle_list[0]
+#         del at_type, duplicate, line_cycle
+#
+#         # logger.info(f'{plot_df}')
+#
+#         avail_attrs = plot_df.index.names
+#         logger.info(f"Available attributes: {avail_attrs}")
+#
+#         logger.info("Setting x:")
+#         self.x = Axis(self, x)
+#         logger.info("Setting y:")
+#         self.y = Axis(self, y)
+#         logger.info("Setting lines:")
+#         self.line = Axis(self, lines)
+#
+#         separate = [s for s in avail_attrs if s not in [self.x, self.y, self.line, self.bins]]
+#
+#         if len(separate) != 0:
+#             logger.info(f"Separate plots: {separate}")
+#
+#         idx = pd.Index([s for s in avail_attrs if (s != self.x and s != self.line and s not in [*separate, self.bins])])
+#
+#         if colours is not None:
+#             from seaborn import saturate, set_hls_values
+#
+#             colours = [set_hls_values(saturate(cval), l=0.4) for cval in colours]
+#             colour_dict = dict(zip(self.line.v, colours))
+#
+#         logger.info(f"Iteration index: {idx.values}")
+#
+#         sep = pd.Index(separate)
+#
+#         yid = np.ravel(np.where(np.array(idx) == self.y))[0]
+#
+#         if figsize is None:
+#             logger.info(f"{xmax}, {ymax} figsize")
+#             figsize = self.get_figsize(xmax=xmax, ymax=ymax)
+#
+#         # set resultion
+#         if dpi is None:
+#             dpi = 100
+#
+#         # get plotting iter from index
+#         iters = self._get_idx_iter(idx=idx)
+#
+#         logger.info(f"Printing line plots for {self.line}\nColumns: {self.x.v}\nRows: {self.y.v}")
+#
+#         # set label modifier function
+#         self.label_mod = self.modify_plot_labels
+#
+#         try:
+#             # iterator for more than one plot
+#             sep_it = self._get_idx_iter(idx=sep)
+#         except ValueError:
+#             # only one plot
+#             sep_it = [None]
+#         # logger.info(f'{sep_it}\n{plot_df}')
+#
+#         # iterate over separate plots
+#         for pl in sep_it:
+#             y_max = 0
+#             if pl is None:
+#                 pl_str = ""
+#             else:
+#                 pl_str = f"_{pl[0]}"
+#             self.name = (f"{self.data.name}_{self.data.analysis}_{self.select}"
+#                          f"_{x}_{y}_{lines}{pl_str}_{self.data.cutoff}_{self.data.bins}")
+#             if xlim is not None:
+#                 self.name += f"_{xlim:.0f}"
+#             logger.info(f"plot {self.name}")
+#
+#             # index map for y values
+#             # y_dict: dict = dict(zip(vy, np.arange(ly)))
+#
+#             self.init_legend(ly=self.y.l, lx=self.x.l)
+#
+#             self.fig, self.ax = plt.subplots(nrows=self.y.l, ncols=self.x.l, figsize=tuple(figsize), sharey=True,
+#                 sharex=True, dpi=dpi, constrained_layout=True, )
+#
+#             if pl is None:
+#                 logger.info(f"Generating plot")
+#                 sepview = plot_df.view()
+#                 save_str = ""
+#
+#             # multiple plots
+#             else:
+#                 logger.info(f"Generating {pl} plot:")
+#                 # print(plot_df.head(20), "\n", separate, pl)
+#                 sepview = plot_df.xs((pl), level=separate, drop_level=False)
+#                 save_str = pl  # self.get_suptitle(pl, separate)
+#
+#             # set plot index
+#             pi = 0
+#
+#             # iterate over subplot columns
+#             for col in self.x.v:
+#                 # logger.info(col)
+#                 try:
+#                     # print(sepview.dropna().index)
+#                     view = sepview.xs(col, level=self.x, axis=0, drop_level=False)
+#                     pi = 1
+#                 except ValueError:
+#                     view = sepview
+#                     col = self.x.v
+#                     pi += 1
+#                 except KeyError:
+#                     continue
+#                 for it in iters:
+#                     try:
+#                         values = view.xs(tuple(it), level=idx.tolist(), drop_level=False)
+#                         v = values.index.get_level_values("atoms").unique()
+#                         logger.info(v)
+#                         # print(values)
+#                         # x_labels = []
+#
+#                         # logging.info(f"it: {it}")  # , {self.line.v}, {values}")
+#                         x_id, y_id = self.x.dict[col], self.y.dict[it[yid]]
+#                         # if edges is True:
+#                         #     atom_type = values.index.get_level_values("atoms").unique()[
+#                         #         0
+#                         #     ]
+#                         #     edge_list = self.data.edges[atom_type]
+#                         #     p = self.ax[y_id, x_id].vlines(
+#                         #         edge_list, 0, ylim, color="gray", linestyles=(0, (1, 4))
+#                         #     )
+#                         line_cycle = itertools.cycle(linestyle_list)
+#                         for line_num, vline in enumerate(self.line.v):
+#                             logging.info(f"line {vline} ({line_num + 1}/{self.line.l})")
+#                             # set linestyle
+#                             if self.line != "atoms":
+#                                 # line_cycle = itertools.cycle(linestyle_list)
+#                                 # linestyle_dict = {}
+#                                 # for atom_type in np.unique(self.data.atoms):
+#                                 #     linestyle_dict[atom_type] = next(line_cycle)
+#                                 linestyle = next(line_cycle)  # linestyle_list[line_num % len(linestyle_list)]
+#                             else:
+#                                 linestyle = line_grouped[vline]
+#
+#                             try:
+#                                 line_vals: pd.Series = values.xs(vline, level=self.line, drop_level=False)
+#                                 if contract_binsize is not None:
+#                                     line_vals = (line_vals.rolling(contract_binsize, closed="right", center=True,
+#                                         step=contract_binsize, ).sum().fillna(0))
+#                             except KeyError:
+#                                 logger.info(f"No data for {vline}")
+#                                 continue
+#                             if colours is None:
+#                                 colour = colour_df.loc[line_vals.index].values[0]
+#                             else:
+#                                 colour = colour_dict[vline]
+#                             # if sparse is True:
+#                             #     line_vals = line_vals.rolling(10, min_periods=1, step=10).sum()
+#                             bin_list = line_vals.index.get_level_values("x")
+#                             if (smooth_line is not None and smooth_line is not False):
+#                                 if isinstance(smooth_line, float):
+#                                     if self.data.bins.num < smooth_line:
+#                                         break
+#                                 elif isinstance(smooth_line, int):
+#                                     smooth_line = (self.data.bins.num / smooth_line)
+#                                 else:
+#                                     smooth_line = self.data.bins.num / 10
+#                                 dense_bin_list = np.arange(bin_list[0], bin_list[-1], smooth_line)
+#                             line_vals.index = bin_list
+#                             # logger.info(f'{vline}, {self.line}')
+#                             # print(line_vals.hasnans, np.max(line_vals.values), vline, line_num, y_id, x_id)
+#                             summed = np.round(np.sum(line_vals.values), 4)
+#                             if (not line_vals.hasnans and summed > 0.0):  # and vline != 'C':
+#                                 if np.max(line_vals) > y_max:
+#                                     y_max = np.max(line_vals)
+#                                     logger.info(f"adjusting max value: {y_max}")
+#                                 try:
+#                                     label = f"{self.label_mod([(vline, self.line)]):<2}"
+#                                     if hasattr(self.data, "ignore_density_sum"):
+#                                         logger.debug(f"Ignoring line value sum check sum={summed:.2f}")
+#                                         if summed != 1.0:
+#                                             logger.info(f"labelling sum {summed}")
+#                                             label_add = (rf" ({summed * 100:>.0f} \%)")
+#                                             label = f"{label:<3}{label_add:>7}"
+#                                     else:
+#                                         assert (np.round(
+#                                             summed) == 1.00), f"Densities ({np.round(summed)}) do not sum to 1.00"
+#                                     if pi == 1:
+#                                         self.legends[(y_id, x_id)].append(label)
+#                                     # if sparse is True:
+#                                     #     line_vals_mask = line_vals.values != 0
+#                                     # spline = splrep(bin_list,#[line_vals_mask],
+#                                     #                               line_vals.values)#[line_vals_mask])
+#                                     # line_vals = splev(bin_list, spline)
+#                                     # else:
+#                                     #     line_vals = line_vals.values
+#                                     # print(x_id)
+#                                     if (smooth_line is not None and smooth_line is not False):
+#                                         bin_list_plot = dense_bin_list
+#                                         line_vals_plot = make_smoothing_spline(bin_list, line_vals.values)(
+#                                             bin_list_plot)
+#                                     else:
+#                                         bin_list_plot = bin_list
+#                                         line_vals_plot = line_vals.values
+#                                     try:
+#                                         # f, ax = plt.subplots()
+#                                         # ax.plot(bin_list, line_vals)
+#                                         # f.suptitle(vline)
+#                                         # f.show()
+#                                         logger.info(f"{len(bin_list)}, {len(line_vals)}")
+#                                         # p = self.ax[y_id, x_id].plot([1,1], [0,1], label='a')
+#                                         try:
+#                                             p = self.ax[y_id, x_id].plot(bin_list_plot, line_vals_plot, label=label,
+#                                                 color=colour, linestyle=linestyle, antialiased=antialiased, )
+#
+#                                         except IndexError:
+#                                             xy_id = np.max([x_id, y_id])
+#                                             p = self.ax[xy_id].plot(bin_list_plot, line_vals_plot, label=label,
+#                                                 color=colour, linestyle=linestyle, antialiased=antialiased, )
+#                                         except TypeError:
+#                                             p = self.ax.plot(bin_list_plot, line_vals_plot, label=label, color=colour,
+#                                                 linestyle=linestyle,
+#                                                 antialiased=antialiased, )  # self.fig.show()  # self.fig.show()  # self.fig.savefig('a.png')  # logger.info('wrote file')  # logger.info(f'{pl} {col} {vline} {it[yid]}')  # handles[(y_id, x_id)] = p
+#                                     except Exception as e:
+#                                         # del p
+#                                         print(e, y_id, x_id, line_num, vline)
+#
+#                                     # self.ax[y_id, x_id].bar_label(p, labels=[label],  #                          fmt='%s',  #                          label_type='center')
+#                                 except IndexError:
+#                                     p = self.ax[x_id].plot(bin_list, line_vals.values, label=label, color=colour,
+#                                         linestyle=linestyle, antialiased=antialiased, )
+#                             else:
+#                                 logger.info(f"nan or 0: {vline}")  # self.ax[y_id, x_id].legend()
+#                     # except FileNotFoundError:
+#                     except KeyError:
+#                         logger.info(f"No data for {pl}, {self.x}, {it} {it[yid]}")
+#             i = 0
+#             j = 0
+#             for i in range(self.y.l):
+#                 y_ax_label = f"{self.label_mod([(self.y.v[i], self.y)])}\n"
+#                 if self.y.l > 1:
+#                     if i == 0:
+#                         self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
+#                 else:
+#                     # if i == 0 and not re.match(y_ax_label, "\nctl", flags=re.IGNORECASE):
+#                     #     self.fig.supylabel(f"{self.title_dict[y]}: {y_ax_label}", size=14)
+#                     self.name = re.sub(rf"(.*)_{y}_(.*)", r"\1_" + y_ax_label.strip("\n") + r"_\2", self.name, )
+#                     y_ax_label = ""  # f"{self.label_mod([(self.y.v[i], self.y)])}\n"
+#                 try:
+#                     self.ax[i, 0].set_ylabel(y_ax_label + rowlabel)
+#                 except IndexError:
+#                     self.ax[i].set_ylabel(y_ax_label + rowlabel)
+#                 except TypeError:
+#                     self.ax.set_ylabel(y_ax_label + rowlabel)
+#                 for j in range(self.x.l):
+#                     x_ax_label = f"\n{self.label_mod([(self.x.v[j], self.x)])}"
+#                     if self.x.l > 1:
+#                         if j == 0:
+#                             self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
+#                     else:
+#                     #     if j == 0 and not re.match(x_ax_label, "\nctl", flags=re.IGNORECASE):
+#                     #         self.fig.supxlabel(f"{self.title_dict[x]}: {x_ax_label}", size=14)
+#
+#                         self.name = re.sub(rf"(.*)_{x}_(.*)", r"\1_" + x_ax_label.strip("\n") + r"_\2", self.name, )
+#                         x_ax_label = ""  # f"\n{self.label_mod([(self.x.v[j], self.x)])}"
+#                     label = [self.label_mod([(leg, self.line)]) for leg in self.legends[i, j]]
+#                     if len(label) % 3 == 0:
+#                         ncol = 3
+#                     else:
+#                         ncol = 2
+#                     try:
+#                         self.ax[i, j].legend(label, ncol=ncol, title=self.title_dict[lines], frameon=False,
+#                             loc="upper right", )
+#                         if xlim is not None:
+#                             self.ax[i, j].set_xlim((0.0, float(xlim)))
+#                         if ylim is not None:
+#                             self.ax[i, j].set_ylim((0.0, float(ylim)))
+#                         else:
+#                             self.ax[i, j].set_ylim((0.0, float(y_max)))
+#                         self.ax[self.y.l - 1, j].set_xlabel(columnlabel + x_ax_label)
+#                         self.ax[i, j].spines[["top", "right"]].set_visible(False)
+#                     except IndexError:
+#                         try:
+#                             max_id = np.max(i, j)
+#                         except IndexError:
+#                             max_id = np.max(i, j)[0]
+#                         self.ax[max_id].legend(label, ncol=ncol, title=self.title_dict[lines], frameon=False,
+#                             loc="upper right", )
+#                         if xlim is not None:
+#                             self.ax[j].set_xlim((0.0, float(xlim)))
+#                         if ylim is not None:
+#                             self.ax[i].set_ylim((0.0, float(ylim)))
+#                         else:
+#                             self.ax[i].set_ylim((0.0, np.round(float(y_max + 0.05 * y_max), 2)))
+#                         self.ax[self.y.l - 1].set_xlabel(columnlabel + x_ax_label)
+#                         self.ax[j].spines[["top", "right"]].set_visible(False)
+#                         self.ax[i].spines[["top", "right"]].set_visible(False)
+#                     except TypeError:
+#                         self.ax.legend(label, ncol=ncol, title=self.title_dict[lines], frameon=False,
+#                             loc="upper right", )
+#                         if xlim is not None:
+#                             self.ax.set_xlim((0.0, float(xlim)))
+#                         if ylim is not None:
+#                             self.ax.set_ylim((0.0, float(ylim)))
+#                         else:
+#                             self.ax.set_ylim((0.0, np.round(float(y_max + 0.05 * y_max), 2)))
+#                         self.ax.set_xlabel(columnlabel + x_ax_label)
+#                         self.ax.spines[["top", "right"]].set_visible(False)
+#                     if j == 0:
+#                         try:
+#                             y_ticks = self.ax[i, 0].get_yticks()
+#                             x_ticks = self.ax[i, j].get_xticks()
+#                         except IndexError:
+#                             y_ticks = self.ax[i].get_yticks()
+#                             x_ticks = self.ax[j].get_xticks()
+#                         except TypeError:
+#                             y_ticks = self.ax.get_yticks()
+#                             x_ticks = self.ax.get_xticks()
+#                         finally:
+#                             y_int = np.rint(len(y_ticks) / 5).astype(int)
+#                             y_ticks = y_ticks[::y_int]
+#                             x_int = np.rint(len(x_ticks) / 5).astype(int)
+#                             x_ticks = x_ticks[::x_int]
+#                             try:
+#                                 self.ax[i, j].set_xticks(x_ticks, x_ticks)
+#                             except IndexError:
+#                                 self.ax[j].set_xticks(x_ticks, x_ticks.astype(int))
+#                             except TypeError:
+#                                 self.ax.set_xticks(x_ticks, x_ticks.astype(int))
+#                             if i == 0:
+#                                 try:
+#                                     self.ax[i, 0].set_yticks(y_ticks, y_ticks)
+#                                 except IndexError:
+#                                     self.ax[i].set_yticks(y_ticks, y_ticks)
+#                                 except TypeError:
+#                                     self.ax.set_yticks(y_ticks,
+#                                         y_ticks)  # self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)  # self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
+#
+#                 # except IndexError:  #     self.ax[i].set_ylabel(  #         f"{self.label_mod([(self.y.v[i], y)])}\n" + rowlabel  #     )  #     # self.ax[i].legend([self.label_mod([(leg, self.label_key)]) for leg in self.legends[i, 0]], ncol=3)  #     self.ax[self.y.l - 1].set_xlabel(  #         columnlabel + f"\n{self.label_mod([(self.x.v[0], self.x)])}"  #     )
+#             if edges is True:
+#                 if self.line != "atoms":
+#                     max_y = plot_df.max()
+#                     for col in self.x.v:
+#                         # logger.info(col)
+#                         try:
+#                             view = sepview.xs(col, level=self.x, axis=0, drop_level=False)
+#                             pi = 1
+#                         except ValueError:
+#                             view = sepview
+#                             col = self.x.v
+#                             pi += 1
+#                         for it in iters:
+#                             try:
+#                                 values = view.xs(tuple(it), level=idx.tolist(), drop_level=False, )
+#                                 # print(values)
+#                                 # x_labels = []
+#
+#                                 logging.info(f"it: {it}")  # , {self.line.v}, {values}")
+#                                 x_id, y_id = (self.x.dict[col], self.y.dict[it[yid]],)
+#
+#                                 atom_type = values.index.get_level_values("atoms").unique()[0]
+#
+#                                 if self.line != 'clays':
+#                                     clay_type = values.index.get_level_values('clays').unique()
+#                                     assert values.size == 1, 'Expected only one clay type'
+#                                     clay_type = clay_type[0]
+#                                     edge_list = self.data.edges[atom_type][clay_type]
+#                                     # edge_list = self.data._read_edge_file(atom_type=atom_type,
+#                                     #                                        other=self.other,
+#                                     #                                        clay_type=clay_type)
+#                                 else:
+#                                     edge_list = self.data.edges[atom_type]['all']
+#                                 try:
+#                                     p = self.ax[y_id, x_id].vlines(edge_list, 0,  # np.max(line_vals),
+#                                         max_y, color="gray", linestyles=(0, (1, 4)), )
+#                                 except IndexError:
+#                                     xy_id = np.max([x_id, y_id])
+#                                     p = self.ax[xy_id].vlines(edge_list, 0,  # np.max(line_vals),
+#                                         max_y, color="gray", linestyles=(0, (1, 4)), )
+#                             except TypeError:
+#                                 xy_id = np.max([x_id, y_id])
+#                                 p = self.ax.vlines(edge_list, 0,  # np.max(line_vals),
+#                                     max_y, color="gray", linestyles=(0, (1, 4)), )
+#                             except KeyError:
+#                                 logger.info(f"No data for {pl}, {self.x}, {it}")
+#
+#             # self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
+#             # self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
+#
+#             if plsave != False:
+#                 logger.info("Saving plot")
+#                 if type(plsave) == str:
+#                     outname = f"{plsave}.png"
+#                 else:
+#                     outname = f"{self.name}.png"
+#                 odir = Path(odir).absolute()
+#                 logger.info(f"output to {odir.absolute()}")
+#                 if not odir.is_dir():
+#                     os.makedirs(odir)
+#                 logger.info(odir / outname)
+#                 self.fig.savefig(str(odir / outname))
+#             else:
+#                 if type(plsave) == str:
+#                     outname = f"{plsave}.p"
+#                 else:
+#                     outname = f"{self.name}.p"
+#                 odir = Path(odir).absolute()
+#                 logger.info(f"output to {odir.absolute()}")
+#                 if not odir.is_dir():
+#                     os.makedirs(odir)
+#                 logger.info(odir / outname)
+#                 with open(odir / outname, "wb") as pklfile:
+#                     pkl.dump({"fig": self.fig, "ax": self.ax, "data": self.data.df}, pklfile, )
+#                 self.fig.show()
+#             self.fig.clear()
+#
+#         def _get_bin_label(self, x_bin, bin_list):
+#             if x_bin.right < np.max(bin_list.right):
+#                 label = f"${x_bin.left} - {x_bin.right}$ \AA"  # barwidth = x_bin.right - x_bin.left
+#
+#             else:
+#                 label = f"$ > {x_bin.left}$ \AA"
+#             return label
+#
+#     # @property
+#     # def plot_df(self):
+#     #     try:
+#     #         return getattr(self, f"_{self.select}_bin_df")
+#     #     except AttributeError:
+#     #         logging.error(f"Wrong usage of property, line not assigned yet.")
+#     #
+#     # @property
+#     # def colour_df(self):
+#     #     try:
+#     #         return getattr(self, f"_{self.select}_colour_df")
+#     #     except AttributeError:
+#     #         logging.error(f"Wrong usage of property, line not assigned yet.")
+#
+#     def _get_attr(self, attr: Literal["clays", "aas", "atoms", "ions"]):
+#         return pd.unique(self.plot_df.index.get_level_values(attr))
+#
+#     get_clays = partialmethod(_get_attr, attr="clays")
+#     get_aas = partialmethod(_get_attr, attr="aas")
+#     get_ions = partialmethod(_get_attr, attr="ions")
+#     get_atoms = partialmethod(_get_attr, attr="atoms")
+#     get_other = partialmethod(_get_attr, attr="other")
+#
+#     def save(self, **kwargs):
+#         ...
+#
+#     @plot_args_decorator(select="ions")
+#     def plot_ions(self, lines: Literal["clays", "ions", "aas", "atoms", "other"],
+#             x: Literal["clays", "aas", "ions", "atoms", "other"], y: Literal["clays", "ions", "aas", "atoms", "other"],
+#             rowlabel: str = "y", columnlabel: str = "x", figsize=None, dpi=None, diff=False, xmax=50, ymax=50,
+#             plsave=False, xlim=None, ylim=None, odir=".", plot_table=None, edges=True, sparse=None, antialiased=True,
+#             smooth_line=0.01, colours=None, colour_sel='atoms'):
+#         self.plot(lines=lines, x=x, y=y, rowlabel=rowlabel, columnlabel=columnlabel, figsize=figsize, dpi=dpi,
+#             diff=diff, xmax=xmax, ymax=ymax, plsave=plsave, xlim=xlim, ylim=ylim, odir=odir, plot_table=plot_table,
+#             edges=edges, sparse=sparse, antialiased=antialiased, smooth_line=smooth_line, colours=colours, colour_sel=colour_sel, )
+#
+#     @plot_args_decorator(select="other")
+#     def plot_other(self, lines: Literal["clays", "ions", "aas", "atoms", "other"],
+#             x: Literal["clays", "aas", "ions", "atoms", "other"], y: Literal["clays", "ions", "aas", "atoms", "other"],
+#             rowlabel: str = "y", columnlabel: str = "x", figsize=None, dpi=None, diff=False, xmax=50, ymax=50,
+#             plsave=False, xlim=None, ylim=None, odir=".", plot_table=None, edges=True, sparse=None,
+#             contract_binsize=None, antialiased=True, smooth_line=0.01, colours=None, colour_sel='atoms'):
+#         self.plot(lines=lines, x=x, y=y, rowlabel=rowlabel, columnlabel=columnlabel, figsize=figsize, dpi=dpi,
+#             diff=diff, xmax=xmax, ymax=ymax, plsave=plsave, xlim=xlim, ylim=ylim, odir=odir, plot_table=plot_table,
+#             edges=edges, sparse=sparse, contract_binsize=contract_binsize, antialiased=antialiased,
+#             smooth_line=smooth_line, colours=colours, colour_sel=colour_sel, )
 
 
 # class SDevLinePlot(LinePlot):
@@ -4650,90 +4305,90 @@ class LinePlot(Plot):
 #         return f"HistData([{self.min}:{self.max}:{self.stepsize}])"
 
 
-if __name__ == "__main__":
-    # d = RawData("../test_data/")
-    data = Data(
-        "/storage/results/zdist_full",
-        cutoff=50,
-        bins=0.02,
-        odir="/storage/plots/zdist_full",  # _plots",
-        namestem="zdist",
-        nameparts=1,
-        analysis="zdens",  # aas=["ctl"],
-    )
-    logger.info(f"Start")
-    # vdata = Data2D(
-    #     indir="/storage/results/rdf_full",
-    #     zdir="/storage/results/zdist_full",
-    #     cutoff=50,
-    #     bins=0.02,
-    #     # aas=['gly'],
-    #     # clays=['NAu-1'],
-    #     # ions=['Na'],
-    #     odir="/storage/plots/rdf_full",  # _plots",
-    #     namestem="rdf",
-    #     other=['OW'],
-    #     zstem="zdist",
-    #     nameparts=1,
-    #     zname="zdens",
-    #     # aas=["ctl"],
-    #     # load='../data/vdata.pkl'
-    #     analyses=['rdens']
-    # )
-    # vdata.save("../data/rdata.pkl")
-    # print(vdata.df)
-    # print(vdata.zf)
-    # print(data.df)
-    # for i in ['Na', 'K', 'Mg', 'Ca', '']:
-    # data._get_edges()
-    # data.plot(x='clays', y='atoms', select='aas')
-
-    # plot = HistPlot2D(vdata)
-    # plot = HistPlot(data)
-    plot_l = LinePlot(data)
-    # plot_l.select = 'ions'
-    # plot.select = 'ions'
-    # print(plot_l._plot_df, plot_l._colour_df)#, plot_l.colour_df)
-    # plot_l.plot_ions(
-    #     y="aas", x="atoms", lines="clays", xlim=10, ylim=0.4
-    # )  # , plot_table=True)
-    plot_l.plot_ions(
-        y="atoms",
-        x="clays",
-        lines="aas",  # ylim=0.1,
-        dpi=200,
-        edges=True,
-        columnlabel=r"distance from surface (\AA)",
-        rowlabel=r"$\rho_z$ ()",
-        plsave=True,
-        xlim=50,
-        odir="/storage/plots/zdist_u/",
-    )  # , plot_table=True)
-    # plot_l.plot_ions(
-    #     y="aas",
-    #     x="clays",
-    #     lines="atoms",
-    #     # ylim=0.1,
-    #     dpi=200,
-    #     ads_edges=False,
-    #     columnlabel=r"distance from surface (\AA)",
-    #     rowlabel="position density ()",
-    #     plsave=True,
-    #     xlim=10,
-    #     odir='/storage/plots/zdist_u/'
-    # )  # , plot_table=True)
-    plot_l.plot_other(
-        y="aas",
-        x="ions",
-        lines="clays",  # ylim=0.02,
-        dpi=200,
-        edges=False,
-        columnlabel=r"distance from surface (\AA)",
-        rowlabel=r"$\rho_z$ ()",
-        xlim=50,
-        plsave=True,
-        odir="/storage/plots/zdist_u/",
-    )  # plot_l.plot_other(  #     y="aas",  #     x="ions",  #     lines="atoms",  #     # ylim=0.02,  #     dpi=200,  #     xlim=20,  #     ads_edges=False,  #     columnlabel=r"distance from surface (\AA)",  #     rowlabel="position density ()",  #     plsave=True,  #     odir='/storage/plots/zdist_u/'  # )  # plot.plot_ions(  #     y="aas",  #     x="atoms",  #     bars="clays",  #     plot_table=False,  #     plsave=True,  #     odir="/storage/plots/zdist_r/",  #     col_sel=["rdens"],  #     get_new_data=True,  #     ads_edges=[0, 1],  #     nbins=200,  # )  # plot.plot_other(y="aas", x="ions", bars="clays", plot_table=True)  # plot_l.plot_ions(y="aas", x="atoms", bars="clays", plot_table=True,  #                plsave=True, odir="/storage/plots/zdist_h/",)  # fig = data.plot_bars(y='ions', x='clays', bars='aas')
+# if __name__ == "__main__":
+#     # d = RawData("../test_data/")
+#     data = Data(
+#         "/storage/results/zdist_full",
+#         cutoff=50,
+#         bins=0.02,
+#         odir="/storage/plots/zdist_full",  # _plots",
+#         namestem="zdist",
+#         nameparts=1,
+#         analysis="zdens",  # aas=["ctl"],
+#     )
+#     logger.info(f"Start")
+#     # vdata = Data2D(
+#     #     indir="/storage/results/rdf_full",
+#     #     zdir="/storage/results/zdist_full",
+#     #     cutoff=50,
+#     #     bins=0.02,
+#     #     # aas=['gly'],
+#     #     # clays=['NAu-1'],
+#     #     # ions=['Na'],
+#     #     odir="/storage/plots/rdf_full",  # _plots",
+#     #     namestem="rdf",
+#     #     other=['OW'],
+#     #     zstem="zdist",
+#     #     nameparts=1,
+#     #     zname="zdens",
+#     #     # aas=["ctl"],
+#     #     # load='../data/vdata.pkl'
+#     #     analyses=['rdens']
+#     # )
+#     # vdata.save("../data/rdata.pkl")
+#     # print(vdata.df)
+#     # print(vdata.zf)
+#     # print(data.df)
+#     # for i in ['Na', 'K', 'Mg', 'Ca', '']:
+#     # data._get_edges()
+#     # data.plot(x='clays', y='atoms', select='aas')
+#
+#     # plot = HistPlot2D(vdata)
+#     # plot = HistPlot(data)
+#     plot_l = LinePlot(data)
+#     # plot_l.select = 'ions'
+#     # plot.select = 'ions'
+#     # print(plot_l._plot_df, plot_l._colour_df)#, plot_l.colour_df)
+#     # plot_l.plot_ions(
+#     #     y="aas", x="atoms", lines="clays", xlim=10, ylim=0.4
+#     # )  # , plot_table=True)
+#     plot_l.plot_ions(
+#         y="atoms",
+#         x="clays",
+#         lines="aas",  # ylim=0.1,
+#         dpi=200,
+#         edges=True,
+#         columnlabel=r"distance from surface (\AA)",
+#         rowlabel=r"$\rho_z$ ()",
+#         plsave=True,
+#         xlim=50,
+#         odir="/storage/plots/zdist_u/",
+#     )  # , plot_table=True)
+#     # plot_l.plot_ions(
+#     #     y="aas",
+#     #     x="clays",
+#     #     lines="atoms",
+#     #     # ylim=0.1,
+#     #     dpi=200,
+#     #     ads_edges=False,
+#     #     columnlabel=r"distance from surface (\AA)",
+#     #     rowlabel="position density ()",
+#     #     plsave=True,
+#     #     xlim=10,
+#     #     odir='/storage/plots/zdist_u/'
+#     # )  # , plot_table=True)
+#     plot_l.plot_other(
+#         y="aas",
+#         x="ions",
+#         lines="clays",  # ylim=0.02,
+#         dpi=200,
+#         edges=False,
+#         columnlabel=r"distance from surface (\AA)",
+#         rowlabel=r"$\rho_z$ ()",
+#         xlim=50,
+#         plsave=True,
+#         odir="/storage/plots/zdist_u/",
+#     )  # plot_l.plot_other(  #     y="aas",  #     x="ions",  #     lines="atoms",  #     # ylim=0.02,  #     dpi=200,  #     xlim=20,  #     ads_edges=False,  #     columnlabel=r"distance from surface (\AA)",  #     rowlabel="position density ()",  #     plsave=True,  #     odir='/storage/plots/zdist_u/'  # )  # plot.plot_ions(  #     y="aas",  #     x="atoms",  #     bars="clays",  #     plot_table=False,  #     plsave=True,  #     odir="/storage/plots/zdist_r/",  #     col_sel=["rdens"],  #     get_new_data=True,  #     ads_edges=[0, 1],  #     nbins=200,  # )  # plot.plot_other(y="aas", x="ions", bars="clays", plot_table=True)  # plot_l.plot_ions(y="aas", x="atoms", bars="clays", plot_table=True,  #                plsave=True, odir="/storage/plots/zdist_h/",)  # fig = data.plot_bars(y='ions', x='clays', bars='aas')
 
 
 # class AtomHistPlot(Plot):
@@ -5604,16 +5259,16 @@ if __name__ == "__main__":
 # pbar.register() # global registration
 
 
-def redirect_tqdm(f):
-    """Decorator to redirect tqdm output to logger."""
-
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        with logging_redirect_tqdm():
-            result = f(*args, **kwargs)
-        return result
-
-    return wrapper
+# def redirect_tqdm(f):
+#     """Decorator to redirect tqdm output to logger."""
+#
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         with logging_redirect_tqdm():
+#             result = f(*args, **kwargs)
+#         return result
+#
+#     return wrapper
 
 
 # ------------------------------------------------------------------------------
@@ -5808,11 +5463,13 @@ class Data:
         load: Union[str, Literal[False], Path] = False,
         odir: Optional[str] = None,
         nameparts: int = 1,
+        min=0,
         namestem: str = "",
         analysis: Optional[str] = None,
         atomname=True,
         use_rel_data=False,
         group_all=False,
+        max_line_width=LINE_LENGTH,
     ):
         """Constructor method"""
         logger.info(f"Initialising {self.__class__.__name__}")
@@ -5820,6 +5477,7 @@ class Data:
         self.bins: Bins = Bins(bins)
         self.cutoff: float = Cutoff(cutoff)
         self.analysis: Union[str, None] = analysis
+        self._min = Cutoff(min)
         if use_rel_data is True:
             self._arr_col = 2
         else:
@@ -5883,7 +5541,8 @@ class Data:
                 logger.info(f"Using custom {atoms} for atoms")
             if atomname is False:
                 assert len(atoms) == 1, "Expected one atom category"
-                self.atomnames = atoms[0]
+                self.atomnames = atoms
+                logger.finfo(f"Setting atomnames to {self.atomnames}")
             else:
                 self.atomnames = None
             if aas is None:
@@ -5899,15 +5558,33 @@ class Data:
                     f"clays not specified, using default {self.__class__.clays}"
                 )
             else:
+                self.clays = clays
                 logger.info(f"Using custom {clays} for clays")
-
-            f = self.filelist[0]
+            if len(self.filelist) == 0:
+                logger.error(f"No files found in {indir!r}")
+            # f = self.filelist[0]
             # print(f)
-
-            x = pd.read_csv(
-                f, delimiter="\s+", comment="#", header=None
-            ).to_numpy()
-            x = x[:, 0]
+            x = None
+            for fi, f in enumerate(self.filelist):
+                new_x = pd.read_csv(
+                    f, delimiter="\s+", comment="#", header=None
+                ).to_numpy()
+                new_x = new_x[:, 0]
+                if not np.isclose(
+                    np.ceil(new_x[-1]), self.cutoff.num
+                ) or not np.any(np.isclose(np.diff(new_x), self.bins.num)):
+                    self.filelist.pop(fi)
+                    logger.info(
+                        f"Bins ({np.unique(np.diff(new_x).round(2))}) and cutoff {np.ceil(new_x[-1])} do not match requirements!\n"
+                        f"Removing {f.name!r} from filelist"
+                    )
+                    continue
+                if x is not None:
+                    if np.min(new_x) < np.min(x) or np.max(new_x) > np.max(x):
+                        x = np.union1d(x, new_x)
+                else:
+                    x = new_x
+            self._min = Cutoff(np.floor(np.min(x)))
 
             cols = pd.Index(clays, name="clays")
 
@@ -5929,14 +5606,40 @@ class Data:
             self.df: pd.DataFrame = pd.DataFrame(index=idx, columns=cols)
 
             self._get_data(nameparts)
+        try:
+            below_zero = self.df.query(f"x < {self.bins.num}").copy()
+            below_zero[below_zero == 0] = np.NaN
+            try:
+                first_valid_entry = (
+                    below_zero.dropna(how="all", axis=0)
+                    .index.get_level_values("x")
+                    .sort_values()[0]
+                    - self.bins.num
+                )
+                self._min = Cutoff(first_valid_entry - 1.5 * self.bins.num)
+            except IndexError:
+                self._min = Cutoff(0.0)
+            else:
+                below_zero.loc[
+                    below_zero.query(f"x >= {first_valid_entry}").index, :
+                ].fillna(0.0, inplace=True)
+        except:
+            pass
+        else:
+            self.df.loc[below_zero.index] = below_zero
         self.df.dropna(inplace=True, how="all", axis=0)
         self.df.dropna(inplace=True, how="all", axis=1)
+        # if np.all(np.equal(self.df.reset_index('x').query('x < 0').iloc[:, 1:].nunique().values, 1)):
+        #
+        # else:
+        #     self._min = Cutoff(np.floor(self.df.index.get_level_values('x').min()))
         # self.not_ions = [atom for atom in self.df.index.get_level_values('atoms').unique() if (atom != 'ions' and atom not in self.df.index.get_level_values('ions').unique())]
         if group_all is True:
             mod_at = self.df.reset_index("atoms")["atoms"]
-            mod_at.update(
-                mod_at[mod_at != "ions"].apply(lambda x: x[0])
-            )  # groupby(self.df.index.drop('atoms').names)['atoms'].
+            if mod_at.unique().size > 1:
+                mod_at.update(
+                    mod_at[mod_at != "ions"].apply(lambda x: x[0])
+                )  # groupby(self.df.index.drop('atoms').names)['atoms'].
             self.df.reset_index("atoms", inplace=True)
             self.df["atoms"].update(mod_at)
             self.df.set_index("atoms", append=True, inplace=True)
@@ -5946,13 +5649,16 @@ class Data:
             self.group_all = "_grouped"
         else:
             self.group_all = ""
-        self.df = self.df.groupby(self.df.index.names).sum()
+        # self.df = self.df.groupby(self.df.index.names).sum()
         self.not_ions = [
             atom
             for atom in self.df.index.get_level_values("atoms").unique()
             if (
                 atom != "ions"
-                and atom not in self.df.index.get_level_values("ions").unique()
+                and atom
+                not in self.df.index.get_level_values("ions")
+                .unique()
+                .to_numpy()
             )
         ]
 
@@ -5964,7 +5670,9 @@ class Data:
             value: List[Union[str, float]] = (
                 self.df.index._get_level_values(level=iid).unique().tolist()
             )
-            logger.info(f"Setting {i} to {value}")
+            logger.info(
+                f"Setting {i} to {np.array2string(np.array(value), precision=2, separator=', ', suppress_small=True)}"
+            )
             setattr(self, i, value)
 
         if odir is not None:
@@ -6025,31 +5733,37 @@ class Data:
                 else:
                     clay, ion, aa, pH, cutoff, bins = namesplit
                     atom = self.atomnames
+                if clay not in self.clays:
+                    continue
                 assert cutoff == self.cutoff
                 assert bins == self.bins
                 array = pd.read_csv(
-                    f, delimiter="\s+", comment="#", header=None
-                ).to_numpy()
-
+                    f, delimiter="\s+", comment="#", header=None, index_col=0
+                )
                 try:
-                    self.df.loc[idsl[ion, aa, atom, :], clay] = array[
-                        :, self._arr_col
+                    self.df.loc[
+                        idsl[ion, aa, atom, array.index.values], clay
+                    ] = array.values[
+                        :, self._arr_col - 1
                     ]  # print(array[:, self._arr_col].sum(), clay, ion)
-
                 except ValueError:
                     try:
                         self.df.loc[
-                            idsl[ion, aa, atom, other, :], clay
-                        ] = array[:, self._arr_col]
+                            idsl[ion, aa, atom, other, array.index.values],
+                            clay,
+                        ] = array.values[:, self._arr_col - 1]
                     except NameError:
                         pass
                 except IndexError:
                     try:
-                        self.df.loc[idsl[ion, aa, atom, :], clay] = array[:, 1]
+                        self.df.loc[
+                            idsl[ion, aa, atom, array.index.values], clay
+                        ] = array.values[:, 0]
                     except ValueError:
                         self.df.loc[
-                            idsl[ion, aa, atom, other, :], clay
-                        ] = array[:, 1]
+                            idsl[ion, aa, atom, other, array.index.values],
+                            clay,
+                        ] = array.values[:, 0]
                 except KeyError:
                     pass
             except IndexError as e:
@@ -6346,18 +6060,23 @@ class Data:
         self,
         atom_type: str,
         other: Optional[str],
+        clay_type="all",
         name: Union[Literal["pe"], Literal["edge"]] = "pe",
     ):
         if other is not None:
             other = f"{other}_"
         else:
             other = ""
+        if clay_type == "all":
+            clay_type = ""
+        else:
+            clay_type = f"{clay_type}_"
         # fname = Path.cwd() / f"edge_data/edges_{atom_type}_{self.cutoff}_{self.bins}.p"
         fname = (
-            Path.cwd()
-            / f"pe_data/{atom_type}_{other}{name}_data_{self.cutoff}_{self.bins}.p"
+            Path(__file__).parent.parent
+            / f"analysis/pe_data/{clay_type}{atom_type}_{other}{name}_data_{self._min}_{self.cutoff}_{self.bins}.p"
         )
-        logger.info(f"Peak/edge Filename: {fname}")
+        logger.info(f"Peak/edge Filename: {fname}\n")
         return fname
 
     def _get_edges(
@@ -6386,8 +6105,6 @@ class Data:
         :type wlen: int
         :return: list of peak edges
         :rtype: List[float]"""
-        from ClayAnalysis.peaks import Peaks
-        from sklearn.neighbors import KernelDensity
 
         p = Peaks(self)
         edge_df: pd.DataFrame = self.df.copy()
@@ -6562,25 +6279,45 @@ class Data:
                     f"Wrote {atom_type} edges to {outname}."
                 )  # plt.show()  # p.get_peaks(atom_type=atom_type)  # edges = self._read_edge_file(atom_type=atom_type, skip=False)  # self._edges[atom_type] = edges  # self._peaks[atom_type] = x_vals[peaks]  #
 
-    def _read_edge_file(self, atom_type: str, skip=True, other=None):
-        fname = self._get_edge_fname(atom_type, name="edges", other=other)
+    def _read_edge_file(
+        self,
+        atom_type: str,
+        skip=True,
+        other=None,
+        clay_type="all",
+    ):
+        clay_sel = np.unique([clay_type, "all"])
+        for clay_type in clay_sel:
+            fname = self._get_edge_fname(
+                atom_type, name="pe", other=other, clay_type=clay_type
+            )
+            if fname.exists():
+                break
         if not fname.exists():
             logger.debug(f"No {atom_type} edge file found.")
             os.makedirs(fname.parent, exist_ok=True)
             logger.info(f"{fname.parent}")
             if skip is True:
                 logger.info(f"Continuing without {atom_type} edges")
-                p = [0, self.cutoff.num]
+                p = [self._min.num, self.cutoff.num]
             else:
                 # self._get_edges(atom_type=atom_type)
                 raise FileNotFoundError(
                     f"No {atom_type} edge file found {fname!r}."
                 )
-
         else:
             with open(fname, "rb") as edges_file:
                 logger.info(f"Reading {atom_type} edges {edges_file.name!r}")
-                p = pkl.load(edges_file)["edges"]
+                try:
+                    p = list(
+                        map(
+                            lambda e: e.round(5), pkl.load(edges_file)["edges"]
+                        )
+                    )
+                except AttributeError:
+                    logger.info(f"Removing {fname}")
+                    os.remove(fname)
+                    p = [self._min.num, self.cutoff.num]
         logger.debug(f"edges: {p}")
         return p
 
@@ -6620,16 +6357,29 @@ class Data:
             pass
         else:
             for atom_type in self._atoms:
-                # try:
-                self._edges[atom_type] = self._read_edge_file(
-                    atom_type
-                )  # logger.info(f"Reading peaks")  # except FileNotFoundError:  #     logger.info(f"Getting new edges")  #     self._get_edges(atom_type)
+                self._edges[atom_type] = {}
+                self._edges[atom_type]["all"] = self._read_edge_file(atom_type)
+                if self.other is not None:
+                    self._edges[atom_type][self.other] = self._read_edge_file(
+                        atom_type, other=self.other
+                    )
+                for clay_type in self.clays:
+                    self._edges[atom_type][clay_type] = self._read_edge_file(
+                        atom_type, clay_type=clay_type
+                    )
+                    if self.other is not None:
+                        self._edges[atom_type][
+                            self.other
+                        ] = self._read_edge_file(
+                            atom_type, other=self.other, clay_type=clay_type
+                        )
         return self._edges
 
     def get_bin_df(self):
         idx = self.df.index.names
         bin_df = self.df.copy()
         atom_types = bin_df.index.get_level_values("_atoms").unique().tolist()
+        clay_types = bin_df.columns.tolist()
         bin_df.reset_index(["x_bins", "x", "_atoms"], drop=False, inplace=True)
         bin_df = bin_df.convert_dtypes(
             infer_objects=True, convert_integer=True, convert_floating=True
@@ -6640,17 +6390,23 @@ class Data:
             atom_types, position=0, desc="atom types", leave=False
         ):
             # logger.info(f"{atom_type}")
-            try:
-                edges = self._edges[atom_type]
-            except KeyError:
-                # edge_fname = self._get_edge_fname(atom_type)
-                edges = self._read_edge_file(
-                    atom_type=atom_type, other=self.other
-                )  # if edge_fname.is_file():  #     self._edges[atom_type] = self._read_edge_file(atom_type)  # else:  #     raise  #     self._get_edges(atom_type=atom_type)  # edges = self._edges[atom_type]
-            # print(edges, bin_df['x_bins'].where(bin_df['_atoms'] == atom_type))
+            # for clay_type in tqdm(clay_types, position=1, desc="clay types", leave=False):
+            edges = self.edges[atom_type]["all"]  # clay_type]
+            #     try:
+            #     # edge_fname = self._get_edge_fname(atom_type)
+            #         edges = self._read_edge_file(atom_type=atom_type,
+            #         other=self.other, clay_type=clay_type)  # if edge_fname.is_file():  #     self._edges[atom_type] = self._read_edge_file(atom_type)  # else:  #     raise  #     self._get_edges(atom_type=atom_type)  # edges = self._edges[atom_type]
+            # # print(edges, bin_df['x_bins'].where(bin_df['_atoms'] == atom_type))
+            #     except FileNotFoundError:
+            #         try:
+            #             edges = self._edges[atom_type]['all']
+            #         except KeyError:
+            #             self._get_edges(atom_type=atom_type, other=self.other)
+            # finally:
+            #     self._edges[atom_type][clay_type] = edges
             bin_df["x_bins"].where(
                 bin_df["_atoms"] != atom_type,
-                pd.cut(bin_df["x"], [*edges]),
+                pd.cut(bin_df["x"], [*np.array(edges).astype(float)]),
                 inplace=True,
             )
         bin_df = bin_df.reset_index(drop=False).set_index(idx)
@@ -7199,7 +6955,7 @@ class Data:
         plot_df = plot_df.stack()
 
         # get values for atom types (including separate ions)
-        atoms = plot_df.index.get_level_values("_atoms")
+        atoms = plot_df.index.get_level_values("_atoms").to_numpy()
 
         # make new DataFrame from atom_type index level and values
         plot_df.index = plot_df.index.droplevel(["x"])
@@ -7266,7 +7022,9 @@ class Data:
     @property
     def max_shell_edge(self) -> float:
         # determine largest shell bin limit
-        max_edge = list(map(lambda x: np.max(x[:-1]), self.edges.values()))
+        max_edge = list(
+            map(lambda x: np.max(x["all"][:-1]), self.edges.values())
+        )
         max_edge = np.max(max_edge)
         return max_edge
 
@@ -7281,10 +7039,10 @@ class Data:
             pi += 1
         return view, col, pi
 
-    def get_bar_peaks(self, atom_type, other=None):
+    def get_bar_peaks(self, atom_type, other=None, clay_type="all"):
         # if len(self._peaks) != len(self.df.index.get_level_values("_atoms").unique()):
         peaks = self._read_edge_file(
-            atom_type=atom_type, other=other
+            atom_type=atom_type, other=other, clay_type=clay_type
         )  # ['peaks']
         return peaks  # print(peaks)  # logger.info(f"Found peaks {peaks}")  # try:  #     print(peaks)  #     print(bar_vals.index.get_level_values('atoms'))  #     bar_peaks = peaks[  #         bar_vals.index.get_level_values("atoms").unique().tolist()#[0]  #     ]  #     print(bar_peaks)  #     bar_peaks=bar_peaks[0]  # except:  #     bar_peaks = peaks[  #         bar_vals.index.get_level_values("ions").unique().tolist()#[0]  #     ]  #     print(bar_peaks)  #     bar_peaks = bar_peaks[0]  # return bar_peaks
 
@@ -7462,7 +7220,7 @@ class AtomTypeData(Data):
             value: List[Union[str, float]] = (
                 self.df.index._get_level_values(level=iid).unique().tolist()
             )
-            logger.info(f"Setting {i} to {value}")
+            logger.info(f"Setting {i} to {np.array(value)}")
             setattr(self, i, value)
 
         if odir is not None:
@@ -9157,6 +8915,18 @@ class Plot(ABC):
     cmaps = None
     _init_args = {}
     _plot_args = {}
+    linestyles = [
+        (0, ()),
+        (0, (5, 2)),
+        (0, (5, 2, 1, 2)),
+        (0, (5, 2, 1, 2, 1, 2)),
+        (0, (1, 4)),
+        (0, (3, 4, 1, 4)),
+        (0, (3, 4, 1, 4, 1, 4)),
+        (0, (7, 6)),
+        (0, (7, 6, 3, 6)),
+        (0, (7, 6, 3, 6, 1, 2)),
+    ]
 
     # def __init_subclass__(cls, data, **kwargs):
     #     cls.data = data
@@ -9257,6 +9027,7 @@ class Plot(ABC):
         new_str = ", ".join(
             [li.upper() if namei == "aas" else li for li, namei in l]
         )
+        new_str = re.sub("-([A-Za-z]+)-surface", r" \1-surface", new_str)
         new_str = re.sub("_", " ", new_str)
         return new_str
 
@@ -9306,8 +9077,6 @@ class Plot(ABC):
     #     ...
 
     def _get_colour_dict(self):
-        from seaborn import saturate, set_hls_values
-
         colours = [
             "#8dd3c7",  # cyan (C)
             "#ffffb3",  # yellow (S)
@@ -9347,6 +9116,294 @@ class Plot(ABC):
         if atom_name not in self.data.ions:
             atom_name = atom_name[0]
         return atom_name
+
+    def add_axis_labels(self, y, x, rowlabel, columnlabel):
+        """Add labels to plot."""
+        for y_id in range(self.y.l):
+            if y_id == self.y.l - 1:
+                y_ax_label = f"{self.label_mod([(self.y.v[y_id], self.y)])}\n"
+                if self.y.l > 1:
+                    self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
+                else:
+                    # if not re.match("\nctl|ctl\n", y_ax_label, flags=re.IGNORECASE):
+                    #     self.fig.supylabel(f"{self.title_dict[y]}: {y_ax_label}", size=14)
+                    # else:
+                    # self.fig.supylabel(f"{self.title_dict[y]}", size=14)
+                    self.name = re.sub(
+                        rf"(.*)_{y}_(.*)",
+                        r"\1_" + y_ax_label.strip("\n") + r"_\2",
+                        self.name,
+                    )
+                    y_ax_label = ""
+                try:
+                    self.ax[y_id, 0].set_ylabel(y_ax_label + rowlabel)
+                except IndexError:
+                    self.ax[y_id].set_ylabel(y_ax_label + rowlabel)
+                except TypeError:
+                    self.ax.set_ylabel(y_ax_label + rowlabel)
+            for x_id in range(self.x.l):
+                if y_id == self.y.l - 1:
+                    x_ax_label = (
+                        f"\n{self.label_mod([(self.x.v[x_id], self.x)])}"
+                    )
+                    if self.x.l > 1:
+                        if x_id == 0:
+                            self.fig.supxlabel(
+                                f"{self.title_dict[x]}s", size=14
+                            )
+                    else:
+                        if x_id == 0:
+                            self.name = re.sub(
+                                rf"(.*)_{x}_(.*)",
+                                r"\1_" + x_ax_label.strip("\n") + r"_\2",
+                                self.name,
+                            )
+                            # if not re.match("\nctl|ctl\n", x_ax_label, flags=re.IGNORECASE):
+                            #     self.fig.supxlabel(f"{self.title_dict[x]}: {x_ax_label}", size=14)
+                            x_ax_label = ""  # else:  #     self.fig.supxlabel(f"{self.title_dict[x]}", size=14)
+                    try:
+                        self.ax[y_id, x_id].set_xlabel(
+                            columnlabel + x_ax_label
+                        )
+                    except IndexError:
+                        self.ax[x_id].set_xlabel(columnlabel + x_ax_label)
+                    except TypeError:
+                        self.ax.set_xlabel(columnlabel + x_ax_label)
+                try:
+                    self.ax[y_id, x_id].spines[["top", "right"]].set_visible(
+                        False
+                    )
+                except IndexError:
+                    self.ax[y_id].spines[["top", "right"]].set_visible(False)
+                    self.ax[x_id].spines[["top", "right"]].set_visible(False)
+                except TypeError:
+                    self.ax.spines[["top", "right"]].set_visible(False)
+
+    def add_plot_labels(self, lines):
+        handle_colours = np.squeeze(
+            np.unique(
+                list(
+                    map(
+                        lambda handle: list(
+                            map(lambda line: line._color, handle)
+                        ),
+                        self.handles.values(),
+                    )
+                ),
+                axis=0,
+            )
+        )
+        handle_linestyles = np.squeeze(
+            np.unique(
+                list(
+                    map(
+                        lambda handle: list(
+                            map(lambda line: line._linestyle, handle)
+                        ),
+                        self.handles.values(),
+                    )
+                ),
+                axis=0,
+            )
+        )
+        unique_legends = np.squeeze(
+            np.unique(list(self.legends.values()), axis=0)
+        )
+        for i in range(self.y.l):
+            for j in range(self.x.l):
+                if len(list(self.legends.values())) > 1:
+                    handles = np.ravel(self.handles[(i, j)]).tolist()
+                    label = [
+                        self.label_mod([(leg, self.line)])
+                        for leg in self.legends[i, j]
+                    ]
+                    if (
+                        unique_legends.ndim == 1
+                        and handle_colours.ndim == 1
+                        and handle_linestyles.ndim == 1
+                    ):
+                        if i == 0 and j == self.x.l - 1:
+                            ncol = 1
+                            self.fig.legend(
+                                labels=label,
+                                handles=handles,
+                                ncol=ncol,
+                                title=self.title_dict[lines],
+                                frameon=False,
+                                bbox_to_anchor=(1, 1),
+                                loc="upper left",
+                                borderaxespad=0.0,
+                            )
+                    else:
+                        if len(label) % 3 == 0:
+                            ncol = 3
+                        else:
+                            ncol = 2
+                        try:
+                            self.ax[i, j].legend(
+                                labels=label,
+                                handles=handles,
+                                ncol=ncol,
+                                title=self.title_dict[lines],
+                                frameon=False,
+                                loc="upper right",
+                            )
+                        except IndexError:
+                            max_id = max(i, j)
+                            self.ax[max_id].legend(
+                                labels=label,
+                                handles=handles,
+                                ncol=ncol,
+                                title=self.title_dict[lines],
+                                frameon=False,
+                                loc="upper right",
+                            )
+                        except TypeError:
+                            self.ax.legend(
+                                labels=label,
+                                handles=handles,
+                                ncol=ncol,
+                                title=self.title_dict[lines],
+                                frameon=False,
+                                loc="upper right",
+                            )
+
+    def set_axis_limits(
+        self, xlim, ylim, y_max: float = None, x_max: float = None
+    ):
+        for i in range(self.y.l):
+            for j in range(self.x.l):
+                try:
+                    if xlim is not None:
+                        self.ax[i, j].set_xlim((0.0, float(xlim)))
+                    elif x_max is not None:
+                        self.ax[i, j].set_xlim((0.0, x_max))
+                    else:
+                        pass
+                    if ylim is not None:
+                        self.ax[i, j].set_ylim((0.0, float(ylim)))
+                    elif y_max is not None:
+                        self.ax[i, j].set_ylim((0.0, y_max))
+                    else:
+                        pass
+
+                except IndexError:
+                    max_id = max(i, j)
+                    if xlim is not None:
+                        self.ax[max_id].set_xlim((0.0, float(xlim)))
+                    elif x_max is not None:
+                        self.ax[max_id].set_xlim((0.0, x_max))
+                    else:
+                        pass
+                    if ylim is not None:
+                        self.ax[max_id].set_ylim((0.0, float(ylim)))
+                    elif y_max is not None:
+                        self.ax[max_id].set_ylim((0.0, y_max))
+                    else:
+                        pass
+                except TypeError:
+                    if xlim is not None:
+                        self.ax.set_xlim((0.0, float(xlim)))
+                    elif x_max is not None:
+                        self.ax.set_xlim((0.0, x_max))
+                    else:
+                        pass
+                    if ylim is not None:
+                        self.ax.set_ylim((0.0, float(ylim)))
+                    elif y_max is not None:
+                        self.ax.set_ylim((0.0, y_max))
+                    else:
+                        pass
+
+    def set_axis_ticks(self):
+        print_options = np.get_printoptions()
+        for i in range(self.y.l):
+            if i == 0:
+                try:
+                    self.ax[i, 0].yaxis.set_major_locator(
+                        ticker.MaxNLocator(6, min_n_ticks=4)
+                    )
+                    y_ticks = self.ax[i, 0].get_yticks()
+                except IndexError:
+                    self.ax[i].yaxis.set_major_locator(
+                        ticker.MaxNLocator(6, min_n_ticks=4)
+                    )
+                    y_ticks = self.ax[i].get_yticks()
+                except TypeError:
+                    self.ax.yaxis.set_major_locator(
+                        ticker.MaxNLocator(6, min_n_ticks=4)
+                    )
+                    y_ticks = self.ax.get_yticks()
+                finally:
+                    # y_int = np.rint(len(y_ticks) / 4.5).astype(int)
+                    # y_ticks = y_ticks[::y_int]
+                    y_ticks, precision = self.format_axis_ticks_array(y_ticks)
+                    formatter = ticker.StrMethodFormatter(
+                        "{x:." + f"{precision}" + "f}"
+                    )
+                    try:
+                        self.ax[i, 0].yaxis.set_major_formatter(formatter)
+                    except IndexError:
+                        self.ax[i].yaxis.set_major_formatter(formatter)
+                    except TypeError:
+                        self.ax.yaxis.set_major_formatter(
+                            formatter
+                        )  # np.set_printoptions(**print_options)
+            for j in range(self.x.l):
+                try:
+                    self.ax[i, j].xaxis.set_major_locator(
+                        ticker.MaxNLocator(6, min_n_ticks=4)
+                    )
+                    x_ticks = self.ax[i, j].get_xticks()
+                except IndexError:
+                    self.ax[j].xaxis.set_major_locator(
+                        ticker.MaxNLocator(6, min_n_ticks=4)
+                    )
+                    x_ticks = self.ax[j].get_xticks()
+                except TypeError:
+                    self.ax.xaxis.set_major_locator(
+                        ticker.MaxNLocator(6, min_n_ticks=4)
+                    )
+                    x_ticks = self.ax.get_xticks()
+                finally:
+                    # x_int = np.rint(len(x_ticks) / 4.5).astype(int)
+                    # x_ticks = x_ticks[::x_int]
+                    x_ticks, precision = self.format_axis_ticks_array(x_ticks)
+                    formatter = ticker.StrMethodFormatter(
+                        "{x:." + f"{precision}" + "f}"
+                    )
+                    try:
+                        self.ax[i, j].xaxis.set_major_formatter(
+                            formatter
+                        )  # self.ax[i, j].set_xticks(x_ticks, x_ticks.astype(str))
+                    except IndexError:
+                        self.ax[j].xaxis.set_major_formatter(
+                            formatter
+                        )  # self.ax[j].set_xticks(x_ticks, x_ticks.astype(str))
+                    except TypeError:
+                        self.ax.xaxis.set_major_formatter(
+                            formatter
+                        )  # self.ax.set_xticks(x_ticks, x_ticks.astype(str))  # np.set_printoptions(**print_options)
+
+    @staticmethod
+    def format_axis_ticks_array(ticks):
+        precision = 0
+        # np.set_printoptions(precision=precision, floatmode="fixed", suppress=True, )
+        while not np.all(
+            np.isclose(np.round(ticks, precision), ticks, atol=1e-5)
+        ):
+            precision += 1
+            print(
+                np.isclose(
+                    ticks.round(precision),
+                    ticks,
+                    atol=1e-5,
+                )
+            )  # np.set_printoptions(floatmode="fixed", suppress=True, )
+        if precision == 0:
+            return ticks.astype(int), precision
+        else:
+            return ticks.round(precision), precision
 
 
 # class Axis(UserString):
@@ -9509,7 +9566,7 @@ class LinePlot(Plot):
         # )
         # setattr(self, "_plot_df", plot_df.copy())
         self._plot_df, self._colour_df = plot_df.copy(), colour_df.copy()
-        logger.info(
+        logger.debug(
             f"{self._plot_df}\n{self._colour_df}"
         )  # print("sel list", self.sel_list)
 
@@ -9542,6 +9599,7 @@ class LinePlot(Plot):
 
     def _process_data(self):
         self._get_binned_plot_colour_dfs_1d()
+        # self._update_edges()
         self._split_plot_dfs()
 
     def get_suptitle(self, pl, separate):
@@ -9575,24 +9633,15 @@ class LinePlot(Plot):
         edges=False,
         sparse=None,
         contract_binsize=None,
+        format="png",
         antialiased=True,
         smooth_line=0.01,
         colours=None,
+        colour_sel="atoms",
+        debug=False,
     ):
         # line style cycler
-        linestyle_list = [
-            (0, ()),
-            (0, (1, 2)),
-            (0, (5, 2)),
-            (0, (5, 2, 1, 2)),
-            (0, (5, 2, 1, 2, 1, 2)),
-            (0, (1, 4)),
-            (0, (3, 4, 1, 4)),
-            (0, (3, 4, 1, 4, 1, 4)),
-            (0, (7, 6)),
-            (0, (7, 6, 3, 6)),
-            (0, (7, 6, 3, 6, 1, 2)),
-        ]
+        linestyle_list = self.linestyles
         if sparse is True:
             pass
         self._init_plot(x, y, lines)
@@ -9648,14 +9697,6 @@ class LinePlot(Plot):
             ]
         )
 
-        if colours is not None:
-            from seaborn import saturate, set_hls_values
-
-            colours = [
-                set_hls_values(saturate(cval), l=0.4) for cval in colours
-            ]
-            colour_dict = dict(zip(self.line.v, colours))
-
         logger.info(f"Iteration index: {idx.values}")
 
         sep = pd.Index(separate)
@@ -9688,6 +9729,21 @@ class LinePlot(Plot):
             sep_it = [None]
         # logger.info(f'{sep_it}\n{plot_df}')
 
+        if colours is not None:
+            # from seaborn import saturate, set_hls_values
+            # colours = [set_hls_values(saturate(cval), l=0.4) for cval in colours]
+
+            if (colour_sel == "atoms") or (
+                colour_sel == "ions" and self.select == "ions"
+            ):
+                colour_sel = "_atoms"
+            try:
+                colour_sel = getattr(self.data, colour_sel)
+            except AttributeError:
+                logger.finfo(f"Invalid colour selection: {colour_sel!r}")
+            else:
+                colour_dict = dict(zip(colour_sel, colours))
+
         # iterate over separate plots
         for pl in sep_it:
             y_max = 0
@@ -9715,7 +9771,7 @@ class LinePlot(Plot):
                 sharey=True,
                 sharex=True,
                 dpi=dpi,
-                constrained_layout=True,
+                layout="compressed",
             )
 
             if pl is None:
@@ -9808,7 +9864,13 @@ class LinePlot(Plot):
                                     0
                                 ]
                             else:
-                                colour = colour_dict[vline]
+                                for val in [vline, col, it, sep]:
+                                    try:
+                                        colour = colour_dict[val]
+                                    except KeyError:
+                                        pass
+                                    else:
+                                        break
                             # if sparse is True:
                             #     line_vals = line_vals.rolling(10, min_periods=1, step=10).sum()
                             bin_list = line_vals.index.get_level_values("x")
@@ -9835,8 +9897,8 @@ class LinePlot(Plot):
                             if (
                                 not line_vals.hasnans and summed > 0.0
                             ):  # and vline != 'C':
-                                if np.max(line_vals) > y_max:
-                                    y_max = np.max(line_vals)
+                                if np.max(line_vals) * 1.1 > y_max:
+                                    y_max = round(np.max(line_vals) * 1.1, 6)
                                     logger.info(
                                         f"adjusting max value: {y_max}"
                                     )
@@ -9845,21 +9907,17 @@ class LinePlot(Plot):
                                     if hasattr(
                                         self.data, "ignore_density_sum"
                                     ):
-                                        logger.debug(
-                                            f"Ignoring line value sum check sum={summed:.2f}"
-                                        )
-                                        if summed != 1.0:
-                                            logger.info(
-                                                f"labelling sum {summed}"
-                                            )
-                                            label_add = (
-                                                rf" ({summed * 100:>.0f} \%)"
-                                            )
-                                            label = f"{label:<3}{label_add:>7}"
+                                        if not np.isclose(
+                                            summed, 1.0, atol=0.01
+                                        ):
+                                            logger.fdebug(
+                                                debug,
+                                                f"Ignoring and labelling line value sum check sum={summed:.2f}",
+                                            )  # logger.info(f"labelling sum {summed}")  # label_add = rf" ({summed * 100:>.0f} \%)"  # label = f"{label:<3}{label_add:>7}"
                                     else:
-                                        assert (
-                                            np.round(summed) == 1.00
-                                        ), f"Densities ({np.round(summed)}) do not sum to 1.00"
+                                        assert np.isclose(
+                                            summed, 1.0, atol=0.01
+                                        ), f"Densities ({np.round(summed)}) do not sum to 1.00"  # np.round(summed) == 1.00
                                     if pi == 1:
                                         self.legends[(y_id, x_id)].append(
                                             label
@@ -9921,6 +9979,10 @@ class LinePlot(Plot):
                                                 linestyle=linestyle,
                                                 antialiased=antialiased,
                                             )  # self.fig.show()  # self.fig.show()  # self.fig.savefig('a.png')  # logger.info('wrote file')  # logger.info(f'{pl} {col} {vline} {it[yid]}')  # handles[(y_id, x_id)] = p
+                                        finally:
+                                            self.handles[(y_id, x_id)].extend(
+                                                p
+                                            )
                                     except Exception as e:
                                         # del p
                                         print(e, y_id, x_id, line_num, vline)
@@ -9952,12 +10014,8 @@ class LinePlot(Plot):
                     if i == 0:
                         self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
                 else:
-                    if i == 0 and not re.match(
-                        y_ax_label, "\nctl", flags=re.IGNORECASE
-                    ):
-                        self.fig.supylabel(
-                            f"{self.title_dict[y]}: {y_ax_label}", size=14
-                        )
+                    # if i == 0 and not re.match(y_ax_label, "\nctl", flags=re.IGNORECASE):
+                    #     self.fig.supylabel(f"{self.title_dict[y]}: {y_ax_label}", size=14)
                     self.name = re.sub(
                         rf"(.*)_{y}_(.*)",
                         r"\1_" + y_ax_label.strip("\n") + r"_\2",
@@ -9978,128 +10036,193 @@ class LinePlot(Plot):
                         if j == 0:
                             self.fig.supxlabel(
                                 f"{self.title_dict[x]}s", size=14
-                            )
-                    else:
-                        if j == 0 and not re.match(
-                            x_ax_label, "\nctl", flags=re.IGNORECASE
-                        ):
-                            self.fig.supxlabel(
-                                f"{self.title_dict[x]}: {x_ax_label}", size=14
-                            )
+                            )  # else:  # if j == 0 and not re.match(x_ax_label, "\nctl", flags=re.IGNORECASE):  #     self.fig.supxlabel(f"{self.title_dict[x]}: {x_ax_label}", size=14)
 
-                        self.name = re.sub(
-                            rf"(.*)_{x}_(.*)",
-                            r"\1_" + x_ax_label.strip("\n") + r"_\2",
-                            self.name,
-                        )
-                        x_ax_label = ""  # f"\n{self.label_mod([(self.x.v[j], self.x)])}"
-                    label = [
-                        self.label_mod([(leg, self.line)])
-                        for leg in self.legends[i, j]
-                    ]
-                    if len(label) % 3 == 0:
-                        ncol = 3
-                    else:
-                        ncol = 2
-                    try:
-                        self.ax[i, j].legend(
-                            label,
-                            ncol=ncol,
-                            title=self.title_dict[lines],
-                            frameon=False,
-                            loc="upper right",
-                        )
-                        if xlim is not None:
-                            self.ax[i, j].set_xlim((0.0, float(xlim)))
-                        if ylim is not None:
-                            self.ax[i, j].set_ylim((0.0, float(ylim)))
-                        else:
-                            self.ax[i, j].set_ylim((0.0, float(y_max)))
-                        self.ax[self.y.l - 1, j].set_xlabel(
-                            columnlabel + x_ax_label
-                        )
-                        self.ax[i, j].spines[["top", "right"]].set_visible(
-                            False
-                        )
-                    except IndexError:
-                        try:
-                            max_id = np.max(i, j)
-                        except IndexError:
-                            max_id = np.max(i, j)[0]
-                        self.ax[max_id].legend(
-                            label,
-                            ncol=ncol,
-                            title=self.title_dict[lines],
-                            frameon=False,
-                            loc="upper right",
-                        )
-                        if xlim is not None:
-                            self.ax[j].set_xlim((0.0, float(xlim)))
-                        if ylim is not None:
-                            self.ax[i].set_ylim((0.0, float(ylim)))
-                        else:
-                            self.ax[i].set_ylim(
-                                (0.0, np.round(float(y_max + 0.05 * y_max), 2))
-                            )
-                        self.ax[self.y.l - 1].set_xlabel(
-                            columnlabel + x_ax_label
-                        )
-                        self.ax[j].spines[["top", "right"]].set_visible(False)
-                        self.ax[i].spines[["top", "right"]].set_visible(False)
-                    except TypeError:
-                        self.ax.legend(
-                            label,
-                            ncol=ncol,
-                            title=self.title_dict[lines],
-                            frameon=False,
-                            loc="upper right",
-                        )
-                        if xlim is not None:
-                            self.ax.set_xlim((0.0, float(xlim)))
-                        if ylim is not None:
-                            self.ax.set_ylim((0.0, float(ylim)))
-                        else:
-                            self.ax.set_ylim(
-                                (0.0, np.round(float(y_max + 0.05 * y_max), 2))
-                            )
-                        self.ax.set_xlabel(columnlabel + x_ax_label)
-                        self.ax.spines[["top", "right"]].set_visible(False)
-                    if j == 0:
-                        try:
-                            y_ticks = self.ax[i, 0].get_yticks()
-                            x_ticks = self.ax[i, j].get_xticks()
-                        except IndexError:
-                            y_ticks = self.ax[i].get_yticks()
-                            x_ticks = self.ax[j].get_xticks()
-                        except TypeError:
-                            y_ticks = self.ax.get_yticks()
-                            x_ticks = self.ax.get_xticks()
-                        finally:
-                            y_int = np.rint(len(y_ticks) / 5).astype(int)
-                            y_ticks = y_ticks[::y_int]
-                            x_int = np.rint(len(x_ticks) / 5).astype(int)
-                            x_ticks = x_ticks[::x_int]
-                            try:
-                                self.ax[i, j].set_xticks(x_ticks, x_ticks)
-                            except IndexError:
-                                self.ax[j].set_xticks(
-                                    x_ticks, x_ticks.astype(int)
-                                )
-                            except TypeError:
-                                self.ax.set_xticks(
-                                    x_ticks, x_ticks.astype(int)
-                                )
-                            if i == 0:
-                                try:
-                                    self.ax[i, 0].set_yticks(y_ticks, y_ticks)
-                                except IndexError:
-                                    self.ax[i].set_yticks(y_ticks, y_ticks)
-                                except TypeError:
-                                    self.ax.set_yticks(
-                                        y_ticks, y_ticks
-                                    )  # self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)  # self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
+            self.add_axis_labels(y, x, rowlabel, columnlabel)
+            self.add_plot_labels(lines=lines)
+            self.set_axis_limits(xlim, ylim, y_max)
+            self.set_axis_ticks()
+            # for i in range(self.y.l):
+            #     # y_ax_label = f"{self.label_mod([(self.y.v[i], self.y)])}\n"
+            #     # if self.y.l > 1:
+            #     #     if i == 0:
+            #     #         self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
+            #     # else:
+            #     #     if i == 0:
+            #     #         self.name = re.sub(
+            #     #             rf"(.*)_{y}_(.*)",
+            #     #             r"\1_" + y_ax_label.strip("\n") + r"_\2",
+            #     #             self.name,
+            #     #         )
+            #     # if not re.match(y_ax_label, "\nctl|ctl\n", flags=re.IGNORECASE):
+            #     #     self.fig.supylabel(f"{self.title_dict[y]}: {y_ax_label}", size=14)
+            #     # else:
+            #     #     y_ax_label = ""  # f"{self.label_mod([(self.y.v[i], self.y)])}\n"
+            #     # try:
+            #     #     self.ax[i, 0].set_ylabel(y_ax_label + rowlabel)
+            #     # except IndexError:
+            #     #     self.ax[i].set_ylabel(y_ax_label + rowlabel)
+            #     # except TypeError:
+            #     #     self.ax.set_ylabel(y_ax_label + rowlabel)
+            #     for j in range(self.x.l):
+            #         # x_ax_label = f"\n{self.label_mod([(self.x.v[j], self.x)])}"
+            #         # if self.x.l > 1:
+            #         #     if j == 0:
+            #         #         self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
+            #         # else:
+            #         #     if j == 0:
+            #         #         self.name = re.sub(
+            #         #             rf"(.*)_{x}_(.*)",
+            #         #             r"\1_" + x_ax_label.strip("\n") + r"_\2",
+            #         #             self.name,
+            #         #         )
+            #         # if i == 0:
+            #         #     if not re.match(x_ax_label, "\nctl|ctl\n", flags=re.IGNORECASE):
+            #         #         self.fig.supxlabel(
+            #         #             f"{self.title_dict[x]}: {x_ax_label}", size=14
+            #         #         )
+            #         #
+            #         # else:
+            #         #     x_ax_label = (
+            #         #         ""  # f"\n{self.label_mod([(self.x.v[j], self.x)])}"
+            #         #     )
+            #         label = [
+            #             self.label_mod([(leg, self.line)]) for leg in self.legends[i, j]
+            #         ]
+            #         if len(label) % 3 == 0:
+            #             ncol = 3
+            #         else:
+            #             ncol = 2
+            #         try:
+            #             self.ax[i, j].legend(
+            #                 label,
+            #                 ncol=ncol,
+            #                 title=self.title_dict[lines],
+            #                 frameon=False,
+            #                 loc="upper right",
+            #             )
+            #             if xlim is not None:
+            #                 self.ax[i, j].set_xlim((0.0, float(xlim)))
+            #             if ylim is not None:
+            #                 self.ax[i, j].set_ylim((0.0, float(ylim)))
+            #             else:
+            #                 self.ax[i, j].set_ylim((0.0, float(y_max)))
+            #             self.ax[self.y.l - 1, j].set_xlabel(
+            #                 columnlabel + x_ax_label
+            #             )
+            #             self.ax[i, j].spines[["top", "right"]].set_visible(
+            #                 False
+            #             )
+            #         except IndexError:
+            #             try:
+            #                 max_id = np.max(i, j)
+            #             except IndexError:
+            #                 max_id = np.max(i, j)[0]
+            #             self.ax[max_id].legend(
+            #                 label,
+            #                 ncol=ncol,
+            #                 title=self.title_dict[lines],
+            #                 frameon=False,
+            #                 loc="upper right",
+            #             )
+            #             if xlim is not None:
+            #                 self.ax[j].set_xlim((0.0, float(xlim)))
+            #             if ylim is not None:
+            #                 self.ax[i].set_ylim((0.0, float(ylim)))
+            #             else:
+            #                 self.ax[i].set_ylim(
+            #                     (0.0, np.round(float(y_max + 0.05 * y_max), 2))
+            #                 )
+            #             self.ax[self.y.l - 1].set_xlabel(
+            #                 columnlabel + x_ax_label
+            #             )
+            #             self.ax[j].spines[["top", "right"]].set_visible(False)
+            #             self.ax[i].spines[["top", "right"]].set_visible(False)
+            #         except TypeError:
+            #             self.ax.legend(
+            #                 label,
+            #                 ncol=ncol,
+            #                 title=self.title_dict[lines],
+            #                 frameon=False,
+            #                 loc="upper right",
+            #             )
+            #             if xlim is not None:
+            #                 self.ax.set_xlim((0.0, float(xlim)))
+            #             if ylim is not None:
+            #                 self.ax.set_ylim((0.0, float(ylim)))
+            #             else:
+            #                 self.ax.set_ylim(
+            #                     (0.0, np.round(float(y_max + 0.05 * y_max), 2))
+            #                 )
+            #             self.ax.set_xlabel(columnlabel + x_ax_label)
+            #             self.ax.spines[["top", "right"]].set_visible(False)
+            #         if j == 0:
+            #             try:
+            #                 y_ticks = self.ax[i, 0].get_yticks()
+            #                 x_ticks = self.ax[i, j].get_xticks()
+            #             except IndexError:
+            #                 y_ticks = self.ax[i].get_yticks()
+            #                 x_ticks = self.ax[j].get_xticks()
+            #             except TypeError:
+            #                 y_ticks = self.ax.get_yticks()
+            #                 x_ticks = self.ax.get_xticks()
+            #             finally:
+            #                 y_int = np.rint(len(y_ticks) / 5).astype(int)
+            #                 y_ticks = y_ticks[::y_int]
+            #                 x_int = np.rint(len(x_ticks) / 5).astype(int)
+            #                 x_ticks = x_ticks[::x_int]
+            #                 if np.unique(x_ticks).size == x_ticks.size:
+            #                     x_ticks = x_ticks.astype(int)
+            #
+            #                 def string_function(y_ticks):
+            #                     precision = 0
+            #                     np.set_printoptions(
+            #                         precision=precision,
+            #                         floatmode="fixed",
+            #                         suppress=True,
+            #                     )
+            #                     while not np.all(
+            #                         np.isclose(
+            #                             np.round(y_ticks, precision), y_ticks, atol=1e-5
+            #                         )
+            #                     ):
+            #                         precision += 1
+            #                         print(
+            #                             np.isclose(
+            #                                 y_ticks.round(precision),
+            #                                 y_ticks,
+            #                                 atol=1e-5,
+            #                             )
+            #                         )
+            #                         np.set_printoptions(
+            #                             precision=precision,
+            #                             floatmode="fixed",
+            #                             suppress=True,
+            #                         )
+            #                     return y_ticks.round(precision)
+            #
+            #                 y_ticks = string_function(y_ticks)
+            #                 try:
+            #                     self.ax[i, j].set_xticks(x_ticks, x_ticks)
+            #                 except IndexError:
+            #                     self.ax[j].set_xticks(
+            #                         x_ticks, x_ticks.astype(int)
+            #                     )
+            #                 except TypeError:
+            #                     self.ax.set_xticks(
+            #                         x_ticks, x_ticks.astype(int)
+            #                     )
+            #                 if i == 0:
+            #                     try:
+            #                         self.ax[i, 0].set_yticks(y_ticks, y_ticks)
+            #                     except IndexError:
+            #                         self.ax[i].set_yticks(y_ticks, y_ticks)
+            #                     except TypeError:
+            #                         self.ax.set_yticks(
+            #                             y_ticks, y_ticks
+            #                         )  # self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)  # self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
 
-                # except IndexError:  #     self.ax[i].set_ylabel(  #         f"{self.label_mod([(self.y.v[i], y)])}\n" + rowlabel  #     )  #     # self.ax[i].legend([self.label_mod([(leg, self.label_key)]) for leg in self.legends[i, 0]], ncol=3)  #     self.ax[self.y.l - 1].set_xlabel(  #         columnlabel + f"\n{self.label_mod([(self.x.v[0], self.x)])}"  #     )
+            # except IndexError:  #     self.ax[i].set_ylabel(  #         f"{self.label_mod([(self.y.v[i], y)])}\n" + rowlabel  #     )  #     # self.ax[i].legend([self.label_mod([(leg, self.label_key)]) for leg in self.legends[i, 0]], ncol=3)  #     self.ax[self.y.l - 1].set_xlabel(  #         columnlabel + f"\n{self.label_mod([(self.x.v[0], self.x)])}"  #     )
             if edges is True:
                 if self.line != "atoms":
                     max_y = plot_df.max()
@@ -10135,7 +10258,22 @@ class LinePlot(Plot):
                                 atom_type = values.index.get_level_values(
                                     "atoms"
                                 ).unique()[0]
-                                edge_list = self.data.edges[atom_type]
+                                if self.line != "clays":
+                                    clay_type = values.index.get_level_values(
+                                        "clays"
+                                    ).unique()
+                                    assert (
+                                        clay_type.size == 1
+                                    ), "Expected only one clay type"
+                                    clay_type = clay_type[0]
+                                    edge_list = self.data.edges[atom_type][
+                                        clay_type
+                                    ]  # edge_list = self.data._read_edge_file(atom_type=atom_type,  #                                        other=self.other,  #                                        clay_type=clay_type)
+                                else:
+                                    edge_list = self.data.edges[atom_type][
+                                        "all"
+                                    ]
+                                edge_list = edge_list[1:]
                                 try:
                                     p = self.ax[y_id, x_id].vlines(
                                         edge_list,
@@ -10173,15 +10311,17 @@ class LinePlot(Plot):
             if plsave != False:
                 logger.info("Saving plot")
                 if type(plsave) == str:
-                    outname = f"{plsave}.png"
+                    outname = f"{plsave}.{format}"
                 else:
-                    outname = f"{self.name}.png"
+                    outname = f"{self.name}.{format}"
                 odir = Path(odir).absolute()
                 logger.info(f"output to {odir.absolute()}")
                 if not odir.is_dir():
                     os.makedirs(odir)
                 logger.info(odir / outname)
-                self.fig.savefig(str(odir / outname))
+                self.fig.savefig(
+                    str(odir / outname), format=format, bbox_inches="tight"
+                )
             else:
                 if type(plsave) == str:
                     outname = f"{plsave}.p"
@@ -10257,6 +10397,8 @@ class LinePlot(Plot):
         antialiased=True,
         smooth_line=0.01,
         colours=None,
+        colour_sel="atoms",
+        format="png",
     ):
         self.plot(
             lines=lines,
@@ -10279,6 +10421,8 @@ class LinePlot(Plot):
             antialiased=antialiased,
             smooth_line=smooth_line,
             colours=colours,
+            colour_sel=colour_sel,
+            format=format,
         )
 
     @plot_args_decorator(select="other")
@@ -10305,6 +10449,8 @@ class LinePlot(Plot):
         antialiased=True,
         smooth_line=0.01,
         colours=None,
+        colour_sel="atoms",
+        format="png",
     ):
         self.plot(
             lines=lines,
@@ -10328,6 +10474,8 @@ class LinePlot(Plot):
             antialiased=antialiased,
             smooth_line=smooth_line,
             colours=colours,
+            colour_sel=colour_sel,
+            format=format,
         )
 
 
@@ -10389,6 +10537,47 @@ class SDevLinePlot(LinePlot):
         # for attr in ['clays', 'ions', 'aas', 'atoms']:
         #     self.__setattr__(attr, new_data.__getattribute__(attr))
         super().__init__(new_data)
+
+    def add_plot_labels(self, lines):
+        for i in range(self.y.l):
+            for j in range(self.x.l):
+                label = [
+                    self.label_mod([(leg, self.line)])
+                    for leg in self.legends[i, j]
+                ]
+                handle = np.ravel(self.handles[(i, j)]).tolist()
+                if len(label) % 3 == 0:
+                    ncol = 3
+                else:
+                    ncol = 2
+                try:
+                    self.ax[i, j].legend(
+                        labels=label,
+                        handles=handle,
+                        ncol=ncol,
+                        title=self.title_dict[lines],
+                        frameon=False,
+                        loc="upper right",
+                    )
+                except IndexError:
+                    max_id = max(i, j)
+                    self.ax[max_id].legend(
+                        labels=label,
+                        handles=handle,
+                        ncol=ncol,
+                        title=self.title_dict[lines],
+                        frameon=False,
+                        loc="upper right",
+                    )
+                except TypeError:
+                    self.ax.legend(
+                        labels=label,
+                        handles=handle,
+                        ncol=ncol,
+                        title=self.title_dict[lines],
+                        frameon=False,
+                        loc="upper right",
+                    )
 
     def _get_binned_plot_colour_dfs_1d(
         self,
@@ -10556,6 +10745,108 @@ class SDevLinePlot(LinePlot):
             self.select = None
         return df_diff, sdev_diff
 
+    def plot_ions(
+        self,
+        lines: Literal["clays", "ions", "aas", "atoms", "other"],
+        x: Literal["clays", "aas", "ions", "atoms", "other"],
+        y: Literal["clays", "ions", "aas", "atoms", "other"],
+        rowlabel: str = "y",
+        columnlabel: str = "x",
+        figsize=None,
+        dpi=None,
+        diff=False,
+        xmax=50,
+        ymax=50,
+        plsave=False,
+        xlim=None,
+        ylim=None,
+        odir=".",
+        plot_table=None,
+        edges=False,
+        sparse=None,
+        contract_binsize=None,
+        smooth_line=0.01,
+        antialiased=True,
+        colours=None,
+        format="png",
+    ):
+        self.select = "ions"
+        self.plot(
+            lines=lines,
+            x=x,
+            y=y,
+            rowlabel=rowlabel,
+            columnlabel=columnlabel,
+            figsize=figsize,
+            dpi=dpi,
+            diff=diff,
+            xmax=xmax,
+            ymax=ymax,
+            plsave=plsave,
+            xlim=xlim,
+            ylim=ylim,
+            odir=odir,
+            plot_table=plot_table,
+            edges=edges,
+            sparse=sparse,
+            contract_binsize=contract_binsize,
+            smooth_line=smooth_line,
+            antialiased=antialiased,
+            colours=colours,
+            format=format,
+        )
+
+    def plot_other(
+        self,
+        lines: Literal["clays", "ions", "aas", "atoms", "other"],
+        x: Literal["clays", "aas", "ions", "atoms", "other"],
+        y: Literal["clays", "ions", "aas", "atoms", "other"],
+        rowlabel: str = "y",
+        columnlabel: str = "x",
+        figsize=None,
+        dpi=None,
+        diff=False,
+        xmax=50,
+        ymax=50,
+        plsave=False,
+        xlim=None,
+        ylim=None,
+        odir=".",
+        plot_table=None,
+        edges=False,
+        sparse=None,
+        contract_binsize=None,
+        smooth_line=0.01,
+        antialiased=True,
+        colours=None,
+        format="png",
+    ):
+        self.select = "other"
+        self.plot(
+            lines=lines,
+            x=x,
+            y=y,
+            rowlabel=rowlabel,
+            columnlabel=columnlabel,
+            figsize=figsize,
+            dpi=dpi,
+            diff=diff,
+            xmax=xmax,
+            ymax=ymax,
+            plsave=plsave,
+            xlim=xlim,
+            ylim=ylim,
+            odir=odir,
+            plot_table=plot_table,
+            edges=edges,
+            sparse=sparse,
+            contract_binsize=contract_binsize,
+            smooth_line=smooth_line,
+            antialiased=antialiased,
+            colours=colours,
+            format=format,
+        )
+
     @redirect_tqdm
     def plot(
         self,
@@ -10580,21 +10871,10 @@ class SDevLinePlot(LinePlot):
         smooth_line=0.01,
         antialiased=True,
         colours=None,
+        format="png",
     ):
-        # line style cycler
-        linestyle_list = [
-            (0, ()),
-            (0, (1, 2)),
-            (0, (5, 2)),
-            (0, (5, 2, 1, 2)),
-            (0, (5, 2, 1, 2, 1, 2)),
-            (0, (1, 4)),
-            (0, (3, 4, 1, 4)),
-            (0, (3, 4, 1, 4, 1, 4)),
-            (0, (7, 6)),
-            (0, (7, 6, 3, 6)),
-            (0, (7, 6, 3, 6, 1, 2)),
-        ]
+        # line style cycler (0, (1, 2)),
+        linestyle_list = self.linestyles
         if sparse is True:
             pass
         self._init_plot(x, y, lines)
@@ -10615,6 +10895,7 @@ class SDevLinePlot(LinePlot):
         line_grouped = (
             colour_df.groupby("atoms").first().duplicated(False).to_dict()
         )
+        print(line_grouped)
         for at_type, duplicate in line_grouped.items():
             if duplicate is True:
                 line_grouped[at_type] = next(line_cycle)
@@ -10716,6 +10997,7 @@ class SDevLinePlot(LinePlot):
                 sharex=True,
                 dpi=dpi,
                 constrained_layout=True,
+                subplot_kw={"xticks": [], "yticks": []},
             )
 
             if pl is None:
@@ -10818,7 +11100,7 @@ class SDevLinePlot(LinePlot):
                                         .fillna(0)
                                     )
                                     line_vals_sdev = (
-                                        line_vals.rolling(
+                                        line_vals_sdev.rolling(
                                             contract_binsize,
                                             closed="right",
                                             center=True,
@@ -10843,12 +11125,16 @@ class SDevLinePlot(LinePlot):
                             if (
                                 not line_vals.hasnans and summed > 0.0
                             ):  # and vline != 'C':
-                                if np.max(line_vals) > y_max:
-                                    y_max = (
+                                if np.max(line_vals) * 1.1 > y_max:
+                                    y_max = round(
                                         np.max(line_vals)
-                                        + line_vals_sdev.values[
-                                            np.argmax(line_vals)
-                                        ]
+                                        + np.abs(
+                                            line_vals_sdev.values[
+                                                np.argmax(line_vals)
+                                            ]
+                                        )
+                                        * 1.1,
+                                        5,
                                     )
                                     logger.info(
                                         f"adjusting max value: {y_max}"
@@ -10859,9 +11145,11 @@ class SDevLinePlot(LinePlot):
                                         self.data, "ignore_density_sum"
                                     ):
                                         logger.debug(
-                                            f"Ignoring line value sum check sum={summed:.2f}"
+                                            f"Ignoring line value sum check sum={7:.2f}"
                                         )
-                                        if summed != 1.0:
+                                        if not np.isclose(
+                                            summed, 1.0, atol=0.01
+                                        ):
                                             logger.info(
                                                 f"labelling sum {summed}"
                                             )  # label_add = rf" ({summed*100:>.0f} \%)"  # label = f"{label:<3}{label_add:>7}"
@@ -10992,150 +11280,154 @@ class SDevLinePlot(LinePlot):
                         logger.info(
                             f"No data for {pl}, {self.x}, {self.y}, {self.line}, {it} {it[yid]}"
                         )
-            i = 0
-            j = 0
-            for i in range(self.y.l):
-                y_ax_label = f"{self.label_mod([(self.y.v[i], self.y)])}\n"
-                if self.y.l > 1:
-                    if i == 0:
-                        pass  # self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
-                else:
-                    if i == 0:
-                        pass  # self.fig.supylabel(  #     f"{self.title_dict[y]}: {y_ax_label}", size=14  # )
-                    y_ax_label = (
-                        ""  # f"{self.label_mod([(self.y.v[i], self.y)])}\n"
-                    )
-                try:
-                    self.ax[i, 0].set_ylabel(y_ax_label + rowlabel)
-                except IndexError:
-                    self.ax[i].set_ylabel(y_ax_label + rowlabel)
-                except TypeError:
-                    self.ax.set_ylabel(y_ax_label + rowlabel)
-                for j in range(self.x.l):
-                    x_ax_label = f"\n{self.label_mod([(self.x.v[j], self.x)])}"
-                    if self.x.l > 1:
-                        if j == 0:
-                            pass  # self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
-                    else:
-                        if j == 0:
-                            pass
-                        # self.fig.supxlabel(
-                        #     f"{self.title_dict[x]}: {x_ax_label}", size=14
-                        # )
-                        x_ax_label = ""  # f"\n{self.label_mod([(self.x.v[j], self.x)])}"
-                    label = [
-                        self.label_mod([(leg, self.line)])
-                        for leg in self.legends[i, j]
-                    ]
-                    handle = np.ravel(self.handles[(i, j)]).tolist()
-                    if len(label) % 3 == 0:
-                        ncol = 3
-                    else:
-                        ncol = 2
-                    try:
-                        if j == self.x.l - 1 and i == 0:
-                            self.ax[i, j].legend(
-                                handles=handle,
-                                labels=label,
-                                ncol=ncol,
-                                title=lines,
-                                frameon=False,
-                                loc="upper right",
-                            )
-                        if xlim is not None:
-                            self.ax[i, j].set_xlim((0.0, float(xlim)))
-                        if ylim is not None:
-                            self.ax[i, j].set_ylim((0.0, float(ylim)))
-                        else:
-                            self.ax[i, j].set_ylim((0.0, float(y_max)))
-                        self.ax[self.y.l - 1, j].set_xlabel(
-                            columnlabel + x_ax_label
-                        )
-                        self.ax[i, j].spines[["top", "right"]].set_visible(
-                            False
-                        )
-                    except IndexError:
-                        try:
-                            max_id = np.max([i, j])
-                        except IndexError:
-                            max_id = np.max([i, j])[0]
-                        self.ax[max_id].legend(
-                            handles=handle,
-                            labels=label,  # label,
-                            ncol=ncol,
-                            title=lines,
-                            frameon=False,
-                            loc="upper right",
-                        )
-                        if xlim is not None:
-                            self.ax[j].set_xlim((0.0, float(xlim)))
-                        if ylim is not None:
-                            self.ax[i].set_ylim((0.0, float(ylim)))
-                        else:
-                            self.ax[i].set_ylim(
-                                (0.0, np.round(float(y_max + 0.05 * y_max), 2))
-                            )
-                        self.ax[max_id].set_xlabel(columnlabel + x_ax_label)
-                        self.ax[j].spines[["top", "right"]].set_visible(False)
-                        self.ax[i].spines[["top", "right"]].set_visible(False)
-                    except TypeError:
-                        self.ax.legend(
-                            label,
-                            ncol=ncol,
-                            title=lines,
-                            frameon=False,
-                            loc="upper right",
-                        )
-                        if xlim is not None:
-                            self.ax.set_xlim((0.0, float(xlim)))
-                        if ylim is not None:
-                            self.ax.set_ylim((0.0, float(ylim)))
-                        else:
-                            self.ax.set_ylim(
-                                (0.0, np.round(float(y_max + 0.05 * y_max), 2))
-                            )
-                        self.ax.set_xlabel(columnlabel + x_ax_label)
-                        self.ax.spines[["top", "right"]].set_visible(False)
-                    if j == 0:
-                        try:
-                            y_ticks = self.ax[i, 0].get_yticks()
-                            x_ticks = self.ax[i, j].get_xticks()
-                        except IndexError:
-                            y_ticks = self.ax[i].get_yticks()
-                            x_ticks = self.ax[j].get_xticks()
-                        except TypeError:
-                            y_ticks = self.ax.get_yticks()
-                            x_ticks = self.ax.get_xticks()
-                        finally:
-                            y_int = np.rint(len(y_ticks) / 5).astype(int)
-                            y_ticks = y_ticks[::y_int]
-                            x_int = np.rint(len(x_ticks) / 5).astype(int)
-                            x_ticks = x_ticks[::x_int]
-                            try:
-                                self.ax[i, j].set_xticks(
-                                    x_ticks.astype(int), x_ticks.astype(int)
-                                )
-                            except IndexError:
-                                self.ax[j].set_xticks(
-                                    x_ticks, x_ticks.astype(int)
-                                )
-                            except TypeError:
-                                self.ax.set_xticks(
-                                    x_ticks, x_ticks.astype(int)
-                                )
-                            if i == 0:
-                                try:
-                                    self.ax[i, 0].set_yticks(
-                                        y_ticks, [f"{t:.3f}" for t in y_ticks]
-                                    )
-                                except IndexError:
-                                    self.ax[i].set_yticks(y_ticks, y_ticks)
-                                except TypeError:
-                                    self.ax.set_yticks(y_ticks, y_ticks)
-                    self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
-                    self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
+            self.add_axis_labels(y, x, rowlabel, columnlabel)
+            self.add_plot_labels(lines)
+            self.set_axis_limits(xlim, ylim, y_max)
+            self.set_axis_ticks()
+            # i = 0
+            # j = 0
+            # for i in range(self.y.l):
+            #     y_ax_label = f"{self.label_mod([(self.y.v[i], self.y)])}\n"
+            #     if self.y.l > 1:
+            #         if i == 0:
+            #             pass  # self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
+            #     else:
+            #         if i == 0:
+            #             pass  # self.fig.supylabel(  #     f"{self.title_dict[y]}: {y_ax_label}", size=14  # )
+            #         y_ax_label = (
+            #             ""  # f"{self.label_mod([(self.y.v[i], self.y)])}\n"
+            #         )
+            #     try:
+            #         self.ax[i, 0].set_ylabel(y_ax_label + rowlabel)
+            #     except IndexError:
+            #         self.ax[i].set_ylabel(y_ax_label + rowlabel)
+            #     except TypeError:
+            #         self.ax.set_ylabel(y_ax_label + rowlabel)
+            #     for j in range(self.x.l):
+            #         x_ax_label = f"\n{self.label_mod([(self.x.v[j], self.x)])}"
+            #         if self.x.l > 1:
+            #             if j == 0:
+            #                 pass  # self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
+            #         else:
+            #             if j == 0:
+            #                 pass
+            #             # self.fig.supxlabel(
+            #             #     f"{self.title_dict[x]}: {x_ax_label}", size=14
+            #             # )
+            #             x_ax_label = ""  # f"\n{self.label_mod([(self.x.v[j], self.x)])}"
+            #         label = [
+            #             self.label_mod([(leg, self.line)])
+            #             for leg in self.legends[i, j]
+            #         ]
+            #         handle = np.ravel(self.handles[(i, j)]).tolist()
+            #         if len(label) % 3 == 0:
+            #             ncol = 3
+            #         else:
+            #             ncol = 2
+            #         try:
+            #             if j == self.x.l - 1 and i == 0:
+            #                 self.ax[i, j].legend(
+            #                     handles=handle,
+            #                     labels=label,
+            #                     ncol=ncol,
+            #                     title=lines,
+            #                     frameon=False,
+            #                     loc="upper right",
+            #                 )
+            #             if xlim is not None:
+            #                 self.ax[i, j].set_xlim((0.0, float(xlim)))
+            #             if ylim is not None:
+            #                 self.ax[i, j].set_ylim((0.0, float(ylim)))
+            #             else:
+            #                 self.ax[i, j].set_ylim((0.0, float(y_max)))
+            #             self.ax[self.y.l - 1, j].set_xlabel(
+            #                 columnlabel + x_ax_label
+            #             )
+            #             self.ax[i, j].spines[["top", "right"]].set_visible(
+            #                 False
+            #             )
+            #         except IndexError:
+            #             try:
+            #                 max_id = np.max([i, j])
+            #             except IndexError:
+            #                 max_id = np.max([i, j])[0]
+            #             self.ax[max_id].legend(
+            #                 handles=handle,
+            #                 labels=label,  # label,
+            #                 ncol=ncol,
+            #                 title=lines,
+            #                 frameon=False,
+            #                 loc="upper right",
+            #             )
+            #             if xlim is not None:
+            #                 self.ax[j].set_xlim((0.0, float(xlim)))
+            #             if ylim is not None:
+            #                 self.ax[i].set_ylim((0.0, float(ylim)))
+            #             else:
+            #                 self.ax[i].set_ylim(
+            #                     (0.0, np.round(float(y_max + 0.05 * y_max), 2))
+            #                 )
+            #             self.ax[max_id].set_xlabel(columnlabel + x_ax_label)
+            #             self.ax[j].spines[["top", "right"]].set_visible(False)
+            #             self.ax[i].spines[["top", "right"]].set_visible(False)
+            #         except TypeError:
+            #             self.ax.legend(
+            #                 label,
+            #                 ncol=ncol,
+            #                 title=lines,
+            #                 frameon=False,
+            #                 loc="upper right",
+            #             )
+            #             if xlim is not None:
+            #                 self.ax.set_xlim((0.0, float(xlim)))
+            #             if ylim is not None:
+            #                 self.ax.set_ylim((0.0, float(ylim)))
+            #             else:
+            #                 self.ax.set_ylim(
+            #                     (0.0, np.round(float(y_max + 0.05 * y_max), 2))
+            #                 )
+            #             self.ax.set_xlabel(columnlabel + x_ax_label)
+            #             self.ax.spines[["top", "right"]].set_visible(False)
+            #         if j == 0:
+            #             try:
+            #                 y_ticks = self.ax[i, 0].get_yticks()
+            #                 x_ticks = self.ax[i, j].get_xticks()
+            #             except IndexError:
+            #                 y_ticks = self.ax[i].get_yticks()
+            #                 x_ticks = self.ax[j].get_xticks()
+            #             except TypeError:
+            #                 y_ticks = self.ax.get_yticks()
+            #                 x_ticks = self.ax.get_xticks()
+            #             finally:
+            #                 y_int = np.rint(len(y_ticks) / 5).astype(int)
+            #                 y_ticks = y_ticks[::y_int]
+            #                 x_int = np.rint(len(x_ticks) / 5).astype(int)
+            #                 x_ticks = x_ticks[::x_int]
+            #                 try:
+            #                     self.ax[i, j].set_xticks(
+            #                         x_ticks.astype(int), x_ticks.astype(int)
+            #                     )
+            #                 except IndexError:
+            #                     self.ax[j].set_xticks(
+            #                         x_ticks, x_ticks.astype(int)
+            #                     )
+            #                 except TypeError:
+            #                     self.ax.set_xticks(
+            #                         x_ticks, x_ticks.astype(int)
+            #                     )
+            #                 if i == 0:
+            #                     try:
+            #                         self.ax[i, 0].set_yticks(
+            #                             y_ticks, [f"{t:.3f}" for t in y_ticks]
+            #                         )
+            #                     except IndexError:
+            #                         self.ax[i].set_yticks(y_ticks, y_ticks)
+            #                     except TypeError:
+            #                         self.ax.set_yticks(y_ticks, y_ticks)
+            #         self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
+            #         self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
 
-                # except IndexError:  #     self.ax[i].set_ylabel(  #         f"{self.label_mod([(self.y.v[i], y)])}\n" + rowlabel  #     )  #     # self.ax[i].legend([self.label_mod([(leg, self.label_key)]) for leg in self.legends[i, 0]], ncol=3)  #     self.ax[self.y.l - 1].set_xlabel(  #         columnlabel + f"\n{self.label_mod([(self.x.v[0], self.x)])}"  #     )
+            # except IndexError:  #     self.ax[i].set_ylabel(  #         f"{self.label_mod([(self.y.v[i], y)])}\n" + rowlabel  #     )  #     # self.ax[i].legend([self.label_mod([(leg, self.label_key)]) for leg in self.legends[i, 0]], ncol=3)  #     self.ax[self.y.l - 1].set_xlabel(  #         columnlabel + f"\n{self.label_mod([(self.x.v[0], self.x)])}"  #     )
             if edges is True:
                 if self.line != "atoms":
                     max_y = plot_df.max()
@@ -11175,7 +11467,21 @@ class SDevLinePlot(LinePlot):
                                 atom_type = values.index.get_level_values(
                                     "atoms"
                                 ).unique()[0]
-                                edge_list = self.data.edges[atom_type]
+                                if self.line != "clays":
+                                    clay_type = values.index.get_level_values(
+                                        "clays"
+                                    ).unique()
+                                    assert (
+                                        values.size == 1
+                                    ), "Expected only one clay type"
+                                    clay_type = clay_type[0]
+                                    edge_list = self.data.edges[atom_type][
+                                        clay_type
+                                    ]  # edge_list = self.data._read_edge_file(atom_type=atom_type,  #                                        other=self.other,  #                                        clay_type=clay_type)
+                                else:
+                                    edge_list = self.data.edges[atom_type][
+                                        "all"
+                                    ]
                                 try:
                                     p = self.ax[y_id, x_id].vlines(
                                         edge_list,
@@ -11213,15 +11519,15 @@ class SDevLinePlot(LinePlot):
             if plsave != False:
                 logger.info("Saving plot")
                 if type(plsave) == str:
-                    outname = f"{plsave}.png"
+                    outname = f"{plsave}{format}"
                 else:
-                    outname = f"{self.name}.png"
+                    outname = f"{self.name}{format}"
                 odir = Path(odir).absolute()
                 logger.info(f"output to {odir.absolute()}")
                 if not odir.is_dir():
                     os.makedirs(odir)
                 logger.info(odir / outname)
-                self.fig.savefig(str(odir / outname))
+                self.fig.savefig(str(odir / outname), format=format)
             else:
                 if type(plsave) == str:
                     outname = f"{plsave}.p"
@@ -11306,7 +11612,6 @@ class StackPlot(Plot):
         self,
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         logger.info(f"Getting plot and colour dfs")
-        from seaborn import saturate, set_hls_values
 
         # atom type colour cycle
         colours = [
@@ -11462,21 +11767,10 @@ class StackPlot(Plot):
         edges=False,
         sparse=None,
         antialiased=True,
+        format="png",
     ):
         # line style cycler
-        linestyle_list = [
-            (0, ()),
-            (0, (1, 2)),
-            (0, (5, 2)),
-            (0, (5, 2, 1, 2)),
-            (0, (5, 2, 1, 2, 1, 2)),
-            (0, (1, 4)),
-            (0, (3, 4, 1, 4)),
-            (0, (3, 4, 1, 4, 1, 4)),
-            (0, (7, 6)),
-            (0, (7, 6, 3, 6)),
-            (0, (7, 6, 3, 6, 1, 2)),
-        ]
+        linestyle_list = self.linestyles
         if sparse is True:
             pass
         self._init_plot(x, y, lines)
@@ -11841,15 +12135,15 @@ class StackPlot(Plot):
             if plsave != False:
                 logger.info("Saving plot")
                 if type(plsave) == str:
-                    outname = f"{plsave}.png"
+                    outname = f"{plsave}{format}"
                 else:
-                    outname = f"{self.name}.png"
+                    outname = f"{self.name}{format}"
                 odir = Path(odir).absolute()
                 logger.info(f"output to {odir.absolute()}")
                 if not odir.is_dir():
                     os.makedirs(odir)
                 logger.info(odir / outname)
-                self.fig.savefig(str(odir / outname))
+                self.fig.savefig(str(odir / outname), format=format)
             else:
                 plt.show()
             self.fig.clear()
@@ -12026,6 +12320,50 @@ class HistPlot(Plot):
 
         return plot_decorator
 
+    def _update_edges(self, df):
+        bin_df = df.copy()
+        bin_df = bin_df.to_frame()
+        bin_df.reset_index("x_bins", inplace=True)
+        for atom in self.data._atoms:
+            for clay in self.data.clays:
+                if self.data.other is not None:
+                    for other in self.data.other:
+                        slice = bin_df.xs(
+                            (atom, clay, other),
+                            level=("_atoms", "clays", "other"),
+                            drop_level=False,
+                        )
+                        bin_df.loc[slice.index, "x_bins"] = pd.cut(
+                            slice.index.get_level_values("x").unique(),
+                            bins=self.data.edges[atom][clay][other],
+                        )
+                else:
+                    slice = bin_df.xs(
+                        (atom, clay),
+                        level=("_atoms", "clays"),
+                        drop_level=False,
+                    )
+                    bin_df.loc[slice.index, "x_bins"] = pd.cut(
+                        slice.index.get_level_values("x").unique(),
+                        bins=self.data.edges[atom][clay],
+                    )
+        #     x_bins = bin_df.groupby(['_atoms', 'clays'], sort=False, group_keys=False).apply(lambda x: pd.cut(x['x'], bins=self.data.edges[x.name[0]][x.name[1]]))
+        #     x_bins.name = 'x_bins'
+        #
+        #     bin_df = bin_df.set_index('x', append=True).join(x_bins.drop_duplicates(), on=bin_df.index.names, how='inner', rsuffix='_new', validate='many_to_one')
+        # bin_df['x_bins'] = bin_df['x_new']
+        # bin_df.drop(columns=['x_new'], inplace=True)
+
+        # bin_df.loc[pd.IndexSlice[x_bins.index], 'x_bins'] = x_bins
+        # bin_df.[bin_df]["x_bins"].where((bin_df['_atoms'] != atom) & (bin_df['clays'] != clay),
+        #                         pd.cut(bin_df["x"],
+        #                                [*np.array(self.data.edges[atom][clay]).astype(float)], labels=None), inplace=True)
+        bin_df = bin_df.reset_index(drop=False).set_index(df.index.names)
+        return bin_df[0]
+
+    def get_table(self):
+        pass
+
     def _get_binned_plot_colour_dfs_1d(
         self,
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -12055,6 +12393,8 @@ class HistPlot(Plot):
         # DataFrame -> Series
         plot_df = plot_df.stack()
 
+        plot_df = self._update_edges(plot_df)
+
         # get values for atom types (including separate ions)
         atoms = plot_df.index.get_level_values("_atoms")
 
@@ -12082,7 +12422,7 @@ class HistPlot(Plot):
 
         # add missing atom probabilities from bulk to the largest bin
         # (bin.left, cutoff] -> (bin.left, all bulk])
-        if self.add_missing_bulk is True:
+        if self.data._arr_col == 2 and self.add_missing_bulk is True:
             inner_sum = plot_df.groupby(
                 plot_df.index.droplevel("x_bins").names
             ).sum()
@@ -12192,6 +12532,7 @@ class HistPlot(Plot):
         xpad=0.25,
         cmap="winter",
         plot_table=False,
+        only_table=False,
     ):
         self.plot(
             bars,
@@ -12210,6 +12551,7 @@ class HistPlot(Plot):
             xpad,
             cmap,
             plot_table=plot_table,
+            only_table=only_table,
         )
 
     @plot_args_decorator(select="other")
@@ -12231,6 +12573,7 @@ class HistPlot(Plot):
         xpad=0.25,
         cmap="winter",
         plot_table=None,
+        only_table=False,
     ):
         self.plot(
             bars,
@@ -12249,6 +12592,7 @@ class HistPlot(Plot):
             xpad,
             cmap,
             plot_table=plot_table,
+            only_table=only_table,
         )
 
     def get_suptitle(self, pl, separate):
@@ -12280,6 +12624,8 @@ class HistPlot(Plot):
         cmap="winter",
         tab_fontsize=12,
         plot_table=False,
+        only_table=False,
+        format="png",
     ):
         """Create stacked Histogram adsorption shell populations."""
 
@@ -12330,7 +12676,7 @@ class HistPlot(Plot):
         yid = np.ravel(np.where(np.array(idx) == self.y))[0]
 
         if figsize is None:
-            if plot_table is True:
+            if plot_table is True or only_table is True:
                 figsize = self.get_figsize(xmax=xmax, ymax=ymax * 2)
             else:
                 figsize = self.get_figsize(xmax=xmax, ymax=ymax)
@@ -12365,6 +12711,8 @@ class HistPlot(Plot):
             self.name = f"{self.data.name}_{self.data.analysis}_{self.select}_{x}_{y}_{bars}{pl_str}_{self.data.cutoff}_{self.data.bins}"
             if plot_table is True:
                 self.name += "_table"
+            elif only_table is True:
+                self.name += "_only_table"
             logger.info(f"plot {self.name}")
             # index map for y values
             # y_dict: dict = dict(zip(vy, np.arange(ly)))
@@ -12379,7 +12727,7 @@ class HistPlot(Plot):
             # print('rows ', plt_nrows)
 
             # generate figure and axes array
-            if plot_table is True:
+            if plot_table is True or only_table is True:
                 self.fig = plt.figure(figsize=figsize, dpi=dpi)
             else:
                 self.fig = plt.figure(
@@ -12476,7 +12824,9 @@ class HistPlot(Plot):
                         for bar_num, vbar in enumerate(self.bars.v):
                             tab_colours = []
                             tab_rows = []
-                            if plot_table is True and bar_num == 0:
+                            if (
+                                plot_table is True or only_table is True
+                            ) and bar_num == 0:
                                 # tab_colours = []
                                 # tab_rows = []
                                 try:
@@ -12563,7 +12913,7 @@ class HistPlot(Plot):
                                     #     label = f'$ > {x_bin.left}$ \AA'
                                     # if label not in table_rows and cmap == table_cmap:
                                     #     table_rows.append(label)
-                                    if y_val >= 0.001:
+                                    if y_val >= 0.001 and only_table is False:
                                         # barwidth = bulk_edge - x_bin.left
                                         # try:
                                         # x_tick = x_ticks[-1] + barwidth
@@ -12596,7 +12946,7 @@ class HistPlot(Plot):
                                 #     self.fig.subplots_adjust(left=0.2, bottom=0.2)
                                 # except IndexError:
                                 #     self.ax[y_id].subplots_adjust(left=0.2, bottom=0.2)
-                                if plot_table is True:
+                                if plot_table is True or only_table is True:
                                     # y_id += 1
                                     # print(tab_colours)
                                     logger.info(f"Has table, {y_id}")
@@ -12707,84 +13057,90 @@ class HistPlot(Plot):
             #                        n_bar * bulk_edge + bulk_edge, int(bulk_edge)) for n_bar in range(lbars)]
             # x_ticks = np.ravel(x_ticks)
             # x_labels = np.tile(np.arange(0, bulk_edge, 1), lbars)
-            for i in range(self.y.l):
-                # if plot_table is True:
-                #     ax_multi = 2
-                # else:
-                #     ax_multi = 1
-                # ax_i = i * ax_multi
-                # print(f"Axis index: {ax_i}, multi: {ax_multi}")
+            if only_table is False:
+                for i in range(self.y.l):
+                    # if plot_table is True:
+                    #     ax_multi = 2
+                    # else:
+                    #     ax_multi = 1
+                    # ax_i = i * ax_multi
+                    # print(f"Axis index: {ax_i}, multi: {ax_multi}")
 
-                try:
-                    # self.ax[]
-                    # self.ax[i, 0].set_ylabel(
-                    #     f"{self.label_mod([(self.y.v[i], self.y)])}\n" + rowlabel
-                    # )
-                    for j in range(self.x.l):
-                        # if plot_table is True:
-                        #     self.ax[i, j].subplots_adjust(bottom=0.2)
+                    try:
+                        # self.ax[]
+                        # self.ax[i, 0].set_ylabel(
                         #     f"{self.label_mod([(self.y.v[i], self.y)])}\n" + rowlabel
                         # )
-                        if j == 0:
-                            self.ax[i, 0].set_ylabel(
-                                f"{self.label_mod([(self.y.v[i], self.y)])}\n"
-                                + rowlabel
+                        for j in range(self.x.l):
+                            # if plot_table is True:
+                            #     self.ax[i, j].subplots_adjust(bottom=0.2)
+                            #     f"{self.label_mod([(self.y.v[i], self.y)])}\n" + rowlabel
+                            # )
+                            if j == 0:
+                                self.ax[i, 0].set_ylabel(
+                                    f"{self.label_mod([(self.y.v[i], self.y)])}\n"
+                                    + rowlabel
+                                )
+                                self.ax[i, j].set_yticks(
+                                    np.arange(0.0, 1.1, 0.2)
+                                )
+                            else:
+                                self.ax[i, j].set_yticks(
+                                    np.arange(0.0, 1.1, 0.2)
+                                )
+                                self.ax[i, j].set_yticklabels(
+                                    []
+                                )  # np.arange(0.0, 1.1, 0.2))
+                            self.ax[i, j].spines[["top", "right"]].set_visible(
+                                False
                             )
-                            self.ax[i, j].set_yticks(np.arange(0.0, 1.1, 0.2))
-                        else:
-                            self.ax[i, j].set_yticks(np.arange(0.0, 1.1, 0.2))
-                            self.ax[i, j].set_yticklabels(
-                                []
-                            )  # np.arange(0.0, 1.1, 0.2))
-                        self.ax[i, j].spines[["top", "right"]].set_visible(
-                            False
+                            self.ax[i, j].hlines(
+                                1.0,
+                                -xpad,
+                                self.bars.l * (barwidth + xpad) + xpad,
+                                linestyle="--",
+                            )
+                            # self.ax[i, j].legend(ncol=2, loc='lower center')#[leg for leg in legends[i, j]], ncol=3)
+                            #                  if xlim != None:
+                            self.ax[i, j].set_xlim(
+                                (-xpad, self.bars.l * (barwidth + xpad))
+                            )
+                            self.ax[i, j].set_xticks([], [])
+                            #                 if ylim != None:
+                            self.ax[i, j].set_ylim((0.0, 1.2))
+                            self.ax[self.y.l - 1, j].set_xticks(
+                                np.array(x_ticks) + 0.5 * barwidth, x_labels
+                            )
+                            self.ax[self.y.l - 1, j].set_xlabel(
+                                bars
+                                + f"\n{self.label_mod([(self.x.v[j], self.x)])}"
+                            )  # self.ax[i, j].set_yticklabels(np.arange(0.0, 1.1, 0.2))
+                    except IndexError:
+                        self.ax[i].set_ylabel(
+                            f"{self.label_mod([(self.y.v[i], y)])}\n"
+                            + rowlabel
                         )
-                        self.ax[i, j].hlines(
-                            1.0,
-                            -xpad,
-                            self.bars.l * (barwidth + xpad) + xpad,
-                            linestyle="--",
+                        # self.ax[i].legend([self.label_mod([(leg, self.label_key)]) for leg in self.legends[i, 0]], ncol=3)
+                        self.ax[self.y.l - 1].set_xlabel(
+                            columnlabel
+                            + f"\n{self.label_mod([(self.x.v[0], self.x)])}"
                         )
-                        # self.ax[i, j].legend(ncol=2, loc='lower center')#[leg for leg in legends[i, j]], ncol=3)
-                        #                  if xlim != None:
-                        self.ax[i, j].set_xlim(
-                            (-xpad, self.bars.l * (barwidth + xpad))
-                        )
-                        self.ax[i, j].set_xticks([], [])
-                        #                 if ylim != None:
-                        self.ax[i, j].set_ylim((0.0, 1.2))
-                        self.ax[self.y.l - 1, j].set_xticks(
-                            np.array(x_ticks) + 0.5 * barwidth, x_labels
-                        )
-                        self.ax[self.y.l - 1, j].set_xlabel(
-                            bars
-                            + f"\n{self.label_mod([(self.x.v[j], self.x)])}"
-                        )  # self.ax[i, j].set_yticklabels(np.arange(0.0, 1.1, 0.2))
-                except IndexError:
-                    self.ax[i].set_ylabel(
-                        f"{self.label_mod([(self.y.v[i], y)])}\n" + rowlabel
-                    )
-                    # self.ax[i].legend([self.label_mod([(leg, self.label_key)]) for leg in self.legends[i, 0]], ncol=3)
-                    self.ax[self.y.l - 1].set_xlabel(
-                        columnlabel
-                        + f"\n{self.label_mod([(self.x.v[0], self.x)])}"
-                    )
-            # # #
-            self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
-            self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
+                # # #
+                self.fig.supxlabel(f"{self.title_dict[x]}s", size=14)
+                self.fig.supylabel(f"{self.title_dict[y]}s", size=14)
             # if plsave is True:
             logger.info("Saving plot")
             if type(plsave) == str and plsave != "":
-                outname = f"{plsave}.png"
+                outname = f"{plsave}{format}"
             else:
-                outname = f"{self.name}.png"
+                outname = f"{self.name}{format}"
             odir = Path(odir).absolute()
             logger.info(f"output to {odir.absolute()}")
             if not odir.is_dir():
                 os.makedirs(odir)
             logger.info(odir)
             logger.info(outname)
-            self.fig.savefig(str(odir / outname))
+            self.fig.savefig(str(odir / outname), format=format)
             # else:
             #     plt.show()
             self.fig.clear()
@@ -12796,6 +13152,14 @@ class HistPlot(Plot):
         else:
             label = f"$ > {x_bin.left:>3.1f}$ \AA"
         return label
+
+
+class TablePlot(HistPlot):
+    def __init__(self, data, add_missing_bulk=True, **kwargs):
+        super().__init__(data, add_missing_bulk, **kwargs)
+
+    def df(self):
+        print(self.plot_df)
 
 
 class GaussHistPlot(Plot):
@@ -13372,6 +13736,7 @@ class GaussHistPlot(Plot):
         xpad=0.25,
         cmap="winter",
         plot_table=False,
+        format="png",
     ):
         self.plot(
             bars,
@@ -13390,6 +13755,7 @@ class GaussHistPlot(Plot):
             xpad,
             cmap,
             plot_table=plot_table,
+            format=format,
         )
 
     @plot_args_decorator(select="other")
@@ -13411,6 +13777,7 @@ class GaussHistPlot(Plot):
         xpad=0.25,
         cmap="winter",
         plot_table=None,
+        format="png",
     ):
         self.plot(
             bars,
@@ -13429,6 +13796,7 @@ class GaussHistPlot(Plot):
             xpad,
             cmap,
             plot_table=plot_table,
+            format=format,
         )
 
     def get_suptitle(self, pl, separate):
@@ -13460,6 +13828,7 @@ class GaussHistPlot(Plot):
         cmap="winter",
         tab_fontsize=12,
         plot_table=False,
+        format="png",
     ):
         """Create stacked Histogram adsorption shell populations."""
 
@@ -13952,16 +14321,16 @@ class GaussHistPlot(Plot):
             if plsave is not False:
                 logger.info("Saving plot")
                 if type(plsave) == str and plsave != "":
-                    outname = f"{plsave}.png"
+                    outname = f"{plsave}{format}"
                 else:
-                    outname = f"{self.name}.png"
+                    outname = f"{self.name}{format}"
                 odir = Path(odir).absolute()
                 logger.info(f"output to {odir.absolute()}")
                 if not odir.is_dir():
                     os.makedirs(odir)
                 logger.info(odir)
                 logger.info(outname)
-                self.fig.savefig(str(odir / outname))
+                self.fig.savefig(str(odir / outname), format=format)
             else:
                 plt.show()
             self.fig.clear()
@@ -14205,7 +14574,8 @@ class AtomHistPlot(Plot):
         odir=".",
         barwidth=0.75,
         xpad=0.25,
-        cmap="winter",  # group_atoms=False,
+        cmap="winter",
+        # group_atoms=False,
         plot_table=None,
     ):
         self.plot(
@@ -14258,6 +14628,7 @@ class AtomHistPlot(Plot):
         # group_atoms=False,
         tab_fontsize=12,
         plot_table=False,
+        format="png",
     ):
         """Create stacked Histogram adsorption shell populations."""
 
@@ -14805,16 +15176,16 @@ class AtomHistPlot(Plot):
             if plsave != False:
                 logger.info("Saving plot")
                 if type(plsave) == str and plsave != "":
-                    outname = f"{self.atomname}_{plsave}.png"
+                    outname = f"{self.atomname}_{plsave}{format}"
                 else:
-                    outname = f"{self.atomname}_{self.name}.png"
+                    outname = f"{self.atomname}_{self.name}{format}"
                 odir = Path(odir).absolute()
                 logger.info(f"output to {odir.absolute()}")
                 if not odir.is_dir():
                     os.makedirs(odir)
                 logger.info(odir)
                 logger.info(outname)
-                self.fig.savefig(str(odir / outname))
+                self.fig.savefig(str(odir / outname), format=format)
             else:
                 plt.show()
             self.fig.clear()
@@ -14996,6 +15367,7 @@ class HistPlot2D(Plot):
         cmap="winter",
         plot_table=False,
         get_new_data=False,
+        format="png",
     ):
         self.plot(
             bars,
@@ -15018,6 +15390,7 @@ class HistPlot2D(Plot):
             cmap,
             plot_table=plot_table,
             get_new_data=get_new_data,
+            format=format,
         )
 
     @plot_args_decorator(select="other")
@@ -15043,6 +15416,7 @@ class HistPlot2D(Plot):
         cmap="winter",
         plot_table=None,
         get_new_data=False,
+        format="png",
     ):
         self.plot(
             bars,
@@ -15064,6 +15438,7 @@ class HistPlot2D(Plot):
             xpad,
             cmap,
             get_new_data=get_new_data,
+            format=format,
         )
 
     def get_suptitle(self, pl, separate):
@@ -15101,6 +15476,7 @@ class HistPlot2D(Plot):
         tab_fontsize=12,
         plot_table=False,
         get_new_data=True,
+        format="png",
     ):
         """Create stacked Histogram adsorption shell populations."""
 
@@ -15412,8 +15788,7 @@ class HistPlot2D(Plot):
         v_edges: Optional[Tuple[float, float]] = None,
         z_nbins: Optional[int] = None,
         v_nbins: Optional[int] = None,
-        get_new_data=False,
-        # df_name: Union[Literal["df"], Literal["zf"]] = "df",
+        get_new_data=False,  # df_name: Union[Literal["df"], Literal["zf"]] = "df",
         **kwargs,
     ):
         # data save directory
@@ -15705,84 +16080,6 @@ class HistPlot2D(Plot):
 #
 
 
-class HistData:
-    __slots__ = ["min", "max", "nbins", "edges", "bins", "stepsize"]
-
-    def __init__(
-        self,
-        min=None,
-        max=None,
-        nbins=None,
-        edges=None,
-        bins=None,
-        stepsize=None,
-    ):
-        if bins is not None:
-            self.bins = bins.copy()
-            for attr in self.__class__.__slots__:
-                if attr != "bins":
-                    logger.info(f"{attr}")
-                    assert eval(f"{attr} is None")
-            logger.info(f"{self.bins}")
-            self.stepsize = np.round(self.bins[1] - self.bins[0], 5)
-            self.nbins = len(bins)
-            self.edges = np.linspace(
-                self.bins[0] - 1 / 2 * self.stepsize,
-                self.bins[-1] + 1 / 2 * self.stepsize,
-                self.nbins + 1,
-            )
-            self.min, self.max = np.min(self.edges), np.max(self.edges)
-        elif edges is not None:
-            for attr in self.__class__.__slots__:
-                self.edges = edges.copy()
-                if attr != "edges":
-                    assert eval(f"{attr} is None")
-            self.min, self.max = np.min(self.edges), np.max(self.edges)
-            self.nbins = len(self.edges) - 1
-            self.stepsize = self.edges[1] - self.edges[0]
-            self.get_bins_from_edges()
-        elif min is not None and max is not None and nbins is not None:
-            assert stepsize is None
-            self.min, self.max, self.nbins = float(min), float(max), int(nbins)
-            self.edges = np.linspace(self.min, self.max, self.nbins + 1)
-            self.stepsize = self.edges[1] - self.edges[0]
-            self.get_bins_from_edges()
-
-        elif min is not None and max is not None and stepsize is not None:
-            self.min, self.max, self.stepsize = (
-                float(min),
-                float(max),
-                float(stepsize),
-            )
-            self.edges = np.arange(
-                self.min, self.max + self.stepsize, self.stepsize
-            )
-            self.get_bins_from_edges()
-            self.nbins = len(self.bins)
-
-        else:
-            raise ValueError(
-                f"No initialisation with selected arguments is implemented."
-            )
-        self.stepsize = Bins(self.stepsize)
-        self.min, self.max = Cutoff(self.min), Cutoff(self.max)
-
-    def get_bins_from_edges(self):
-        try:
-            self.bins = np.linspace(
-                self.min + 0.5 * self.stepsize,
-                self.max - 0.5 * self.stepsize,
-                self.nbins,
-            )
-        except AttributeError:
-            self.bins = np.arange(
-                self.min + 0.5 * self.stepsize, self.max, self.stepsize
-            )
-
-    def __str__(self):
-        return f"HistData([{self.min}:{self.max}:{self.stepsize}])"
-
-
 class Timeseries:
     def __init__(
         self, filename: Union[str, Path], axis=None, abs: bool = True
@@ -15941,7 +16238,7 @@ if __name__ == "__main__":
     )
     p.add_argument("-bins", type=float, required=True)
     p.add_argument(
-        "-use_abs", action="store_false", dest="use_rel", default=True
+        "--use_abs", action="store_false", dest="use_rel", default=True
     )
     p.add_argument("-namestem", type=str)
     p.add_argument("-analysis", type=str)
@@ -15952,6 +16249,7 @@ if __name__ == "__main__":
     p.add_argument("-other", nargs="+", type=str, default=False)
     p.add_argument("--grouped", action="store_true", default=False)
     p.add_argument("--table", action="store_true", default=False)
+    p.add_argument("--only_table", action="store_true", default=False)
     p.add_argument("--edges", action="store_true", default=False)
     p.add_argument("--add_bulk", action="store_true", default=False)
     p.add_argument("-x")
@@ -15960,6 +16258,7 @@ if __name__ == "__main__":
     p.add_argument(
         "-colours", nargs="+", type=str, default=None, dest="colours"
     )
+    p.add_argument("-colour_sel", type=str, default="atoms", dest="colour_sel")
     p.add_argument(
         "--no_atomname", action="store_false", default=True, dest="atomname"
     )
@@ -15974,6 +16273,7 @@ if __name__ == "__main__":
         required=False,
     )
     p.add_argument("-zdata", type=Path, required=False, dest="zdir")
+    p.add_argument("-format", type=str, default="png", required=False)
     atype_parser = p.add_subparsers(  # 'atom_type arguments',
         dest="atypes"
     )  # 'atom type plots')
@@ -16137,6 +16437,8 @@ if __name__ == "__main__":
                     odir=args.odir,  # "/storage/plots/aadist_u/",
                     ylim=args.ymax,
                     plot_table=args.table,
+                    format=args.format,
+                    only_table=args.only_table,
                 )
         elif args.lines:
             plot = LinePlot(data)
@@ -16155,6 +16457,8 @@ if __name__ == "__main__":
                     edges=args.edges,
                     figsize=args.figsize,
                     colours=args.colours,
+                    colour_sel=args.colour_sel,
+                    format=args.format,
                 )
         elif args.bars:
             plot = HistPlot(data)  # , add_missing_bulk=args.add_missing_bulk)
@@ -16171,6 +16475,7 @@ if __name__ == "__main__":
                     odir=args.odir,  # "/storage/plots/aadist_u/",
                     ylim=args.ymax,
                     plot_table=args.table,
+                    only_table=args.only_table,
                 )
     else:
         plot = HistPlot2D(data, col_sel=["rdens"], select="ions")

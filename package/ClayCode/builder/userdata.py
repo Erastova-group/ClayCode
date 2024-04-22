@@ -66,8 +66,7 @@ class UserData:
         except KeyError:
             logger.error(f"Invalid data category {dtype!r}")
             sys.exit(3)
-        filelists = {}
-        filelists["itp"] = datapath.itp_filelist
+        filelists = {"itp": datapath.itp_filelist}
         if dtype == "UCS":
             filelists["gro"] = datapath.gro_filelits
         for list_id, filelist in filelists.items():

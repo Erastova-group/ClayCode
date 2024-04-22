@@ -55,7 +55,7 @@ from ClayCode.core.utils import (
     get_search_str,
     select_named_file,
 )
-from ClayCode.data.consts import FF, ITP_KWDS
+from ClayCode.data.consts import CLAYFF_AT_TYPES, FF, ITP_KWDS
 from ClayCode.data.consts import KWD_DICT as _KWD_DICT
 from ClayCode.data.consts import MDP_DEFAULTS
 from MDAnalysis import AtomGroup, ResidueGroup, Universe
@@ -123,7 +123,7 @@ def match_str(
     searchstr: str,
     pattern: Union[StrNum, Sequence[StrNum], Tuple[str], Mapping[str, Any]],
 ) -> Union[None, str]:
-    """Match a string agains a string of list of search patterns.
+    """Match a string against a string of list of search patterns.
     Return matching string or None if no match is found."""
     check = None
     if type(pattern) == str:
@@ -195,6 +195,48 @@ def _(pattern: dict) -> str:
 # Kwd = NewType("Kwd", str)
 
 # MDPFile decorators
+
+# @singledispatch
+# def get_match_pattern(pattern: Union[AnyStr, List[AnyStr]]):
+#     """Generate search pattern from list, str, dict, int or float"""
+#     raise TypeError(f"Unexpected type {type(pattern)!r}!")
+#
+#
+# @get_match_pattern.register
+# def _(pattern: list) -> str:
+#     """Get match pattern from list items.
+#     ['a', 'b'] -> 'a|b'
+#     """
+#     pattern_list = pattern
+#     pattern_list = [get_match_pattern(item) for item in pattern_list]
+#     return "|".join(pattern_list)
+#
+#
+# @get_match_pattern.register
+# def _(pattern: str) -> str:
+#     """Get str match pattern.
+#     'ab' -> 'ab'
+#     """
+#     return pattern
+#
+#
+# @get_match_pattern.register(float)
+# @get_match_pattern.register(int)
+# def _(pattern) -> str:
+#     """Get match pattern from float or int
+#     12 -> '12'
+#     """
+#     return f"{pattern}"
+#
+#
+# @get_match_pattern.register
+# def _(pattern: dict) -> str:
+#     """Get match pattern from dict keys.
+#     {'a': 'x', 'b': 'y' -> 'a|b'}
+#     """
+#     pattern_dict = pattern
+#     pattern_list = [get_match_pattern(item) for item in pattern_dict.keys()]
+#     return "|".join(pattern_list)
 
 
 def key_match_decorator(parameter_dict: Dict[str, Any]):
@@ -621,6 +663,65 @@ class ParametersBase:
                         return True
         return False
 
+    # def update_df(self):
+    #     try:
+    #         df = pd.read_csv(
+    #             StringIO(self.__string), sep="\s+", comment=";", header=None
+    #         )
+    #         column_names = list(_KWD_DICT[self.suffix][self.kwd].keys())
+    #         # print(len(column_names), len(df.columns))
+    #         if len(column_names) > len(df.columns):
+    #             max_len = len(df.columns)
+    #         else:
+    #             max_len = len(column_names)
+    #         df = df.iloc[:, :max_len]
+    #         df.columns = column_names[:max_len]
+    #         # print(max_len, len(column_names))
+    #         self._df = pd.concat([self._df, df])
+    #         # print(self._df)
+    #         self._df.drop_duplicates(inplace=True)
+    #     except EmptyDataError:
+    #         pass
+    #
+    # @property
+    # def df(self):
+    #     return self._df.dropna(axis=1)
+    #
+    # def init_df(self):
+    #     try:
+    #         df = pd.DataFrame(
+    #             columns=list(_KWD_DICT[self.suffix][self.__kwd].keys())
+    #         )
+    #         df = df.astype(dtype=_KWD_DICT[self.suffix][self.kwd])
+    #         self._df = df
+    #     except KeyError:
+    #         pass
+    #
+    # @property
+    # def ff(self):
+    #     if self.__path != None and self.__path.parent == ".ff":
+    #         return self.__path.parent
+    #     else:
+    #         return None
+    #
+    # def itp(self):
+    #     if self.__path != None:
+    #         return self.__path.name
+    #     else:
+    #         return None
+    #
+    # @property
+    # def kwd(self):
+    #     return self.__kwd
+    #
+    # @property
+    # def string(self):
+    #     return self.__string
+    #
+    # @cached_property
+    # def ptype(self):
+    #     return self.__class__
+
 
 class SystemParameters(ParametersBase):
     """GROMACS topology parameter collection class for system"""
@@ -843,9 +944,13 @@ class MoleculeParameter(ParameterBase):
     ]
     collection = MoleculeParameters
 
-    # def __init__(self, name: Optional[str]=None, **kwargs):  #     self._data = {}  #     if name is not None:  #         self._data[name] = {**kwargs}
+    # def __init__(self, name: Optional[str]=None, **kwargs):
+    #     self.data = {}
+    #     if name is not None:
+    #         self.data[name] = {**kwargs}
 
-    # def append(self, name, _data):  #     self._data[name] = _data
+    # def append(self, name, data):
+    #     self.data[name] = data
 
 
 class SystemParameter(ParameterBase):
@@ -854,7 +959,8 @@ class SystemParameter(ParameterBase):
     kwd_list = ["system", "molecules"]
     collection = SystemParameters
 
-    # def __repr__(self):  #     return method'{self.__class__.__name__}({self.name})'
+    # def __repr__(self):
+    #     return method'{self.__class__.__name__}({self.name})'
 
 
 class ParameterFactory:
@@ -2516,3 +2622,31 @@ def dict_to_mdp(
     ]
     prm_str = "\n".join(prm_list)
     return prm_str
+
+
+class ClayFFData:
+    @cached_property
+    def clayff_at_types(self):
+        """Get dictionary of clayff atom types and corresponding elements.
+        :return: dictionary of clayff atom types and corresponding elements
+        :rtype: Dict[str, str]"""
+        clayff_at_types = YAMLFile(CLAYFF_AT_TYPES)
+        return clayff_at_types.data
+
+    @cached_property
+    def clayff_elements(self) -> Dict[str, str]:
+        """Get dictionary of elements and corresponding clayff atom types.
+        :return: dictionary of elements and corresponding clayff atom types
+        :rtype: Dict[str, str]"""
+        reverse_at_types = {}
+        for k1, v1 in self.clayff_at_types.items():
+            reverse_at_types[k1] = {v: k for (k, v) in v1.items()}
+        return reverse_at_types
+
+    def clayff_to_element(self, at_type: str) -> str:
+        """Get element from clayff atom type
+        :param at_type: clayff atom type
+        :type at_type: str
+        :return: element
+        :rtype: str"""
+        return self.clayff_elements[at_type]

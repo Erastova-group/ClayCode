@@ -8,65 +8,36 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import sys
 import tempfile
 from abc import ABC, abstractmethod
-from collections import UserDict, UserString
+from collections import UserDict
 from functools import cached_property, wraps
 from pathlib import Path
-from typing import (
-    Any,
-    Dict,
-    List,
-    Literal,
-    NewType,
-    Optional,
-    Type,
-    TypeVar,
-    Union,
-    get_origin,
-)
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 from caseless_dictionary import CaselessDict
-from ClayCode.core.cctypes import AnyDir, PathOrStr
+from ClayCode.core.cctypes import PathOrStr
 from ClayCode.core.classes import (
     Dir,
     File,
     FileFactory,
-    ForceField,
     GROFile,
     MDPFile,
     TOPFile,
     dict_to_mdp,
     get_mdp_data_dict_function_decorator,
-    get_mdp_data_dict_method_decorator,
     init_path,
-    mdp_to_dict,
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
 from ClayCode.core.consts import exec_date, exec_time
 from ClayCode.core.lib import add_resnum, generate_restraints, select_clay
-from ClayCode.core.utils import (
-    get_file_or_str,
-    get_search_str,
-    property_exists_checker,
-    substitute_kwds,
-)
-from ClayCode.data.consts import (
-    CLAYFF_AT_CHARGES,
-    FF,
-    MDP,
-    MDP_DEFAULTS,
-    USER_MDP,
-)
+from ClayCode.core.utils import get_search_str, substitute_kwds
+from ClayCode.data.consts import CLAYFF_AT_CHARGES, MDP, MDP_DEFAULTS, USER_MDP
 from ClayCode.siminp.consts import DSPACE_RUN_SCRIPT, REMOVE_WATERS_SCRIPT
-from ClayCode.siminp.sitypes import (
-    DefaultGMXRunType,
-    GMXRunType,
-    NondefaultGMXRun,
-)
-from MDAnalysis import AtomGroup
+from ClayCode.siminp.sitypes import GMXRunType, NondefaultGMXRun
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +50,12 @@ def add_kwargs(
         "EQRun",
         "DSpaceRun",
         "EQRunFixed",
+        "EQRunDistanceConstrained",
         "EQRunRestrained",
         "OtherRun",
     ], f"Wrong instance type: {instance.__class__.__name__}, expected {NondefaultGMXRun}"
+    if "compressed" not in kwargs.keys() and "compressed" in instance._options:
+        kwargs["compressed"] = False
     if n_args is None:
         n_args = len(instance._options)
     found_args = 0
@@ -91,13 +65,16 @@ def add_kwargs(
             found_args += 1
     if not n_args == found_args:
         raise ValueError(
-            f"Expected {n_args} arguments for initialising {instance.__class__.__name__!r}, found {found_args}"
+            f"Expected {n_args} arguments: "
+            + ", ".join([f"{k!r}" for k in instance._options])
+            + " for initialising {instance.__class__.__name__!r}, found {found_args}: "
+            + ", ".join([f"{k!r}" for k in kwargs.keys()])
         )
 
 
 class GMXRun(UserDict, ABC):
     _default_mdp_key = ""
-    _options = ["nsteps"]
+    _options = ["nsteps", "compressed"]
 
     def __init__(
         self,
@@ -111,6 +88,11 @@ class GMXRun(UserDict, ABC):
         run_dir: Optional[PathOrStr] = None,
         **kwargs,
     ):
+        if "compressed" not in kwargs.keys():
+            self.compressed = False
+        else:
+            self.compressed = True
+            kwargs.pop("compressed")
         self._top = itop
         self._gro = None
         self._cpt = icpt
@@ -221,10 +203,9 @@ class GMXRun(UserDict, ABC):
     @property
     def run_path(self):
         # if self._run_dir.name not in [self.odir.parent.name, self.odir.name]:
-        return self._run_dir
-        # else:
-        #     self.run_path = self._run_dir
-        #     return self._run_dir
+        return (
+            self._run_dir
+        )  # else:  #     self.run_path = self._run_dir  #     return self._run_dir
 
     @run_path.setter
     def run_path(self, run_dir):
@@ -266,8 +247,7 @@ class GMXRun(UserDict, ABC):
 
     def get_run_command(self, gmx_alias="gmx"):
         if self.cpt is not None:
-            cpt_str_1 = f" -t {self.get_run_path(self.cpt)}"
-            # cpt_str_2 = f" -cpi {self.cpt}"
+            cpt_str_1 = f" -t {self.get_run_path(self.cpt)}"  # cpt_str_2 = f" -cpi {self.cpt}"
         else:
             cpt_str_1 = ""
         cpt_str_2 = ""
@@ -281,8 +261,38 @@ class GMXRun(UserDict, ABC):
             f"{gmx_alias} mdrun -s {self.get_run_path(self.outname.with_suffix('.tpr'))} -v -deffnm {self.get_run_path(self.outname)}{cpt_str_2}\n"
         )
 
+    def add_compressed(self):
+        if self.compressed is not False:
+            for out in ["nstxout-compressed", "nstxout"]:
+                try:
+                    out_steps = self.mdp.parameters[out]
+                except KeyError:
+                    pass
+                else:
+                    self.mdp.add(
+                        {
+                            "nstxout-compressed": out_steps,
+                            "nstfout": 0,
+                            "nstvout": 0,
+                            "nstxout": 0,
+                        },
+                        replace=True,
+                    )
+                    break
+
+    def add_constrain(self):
+        constrain_str = ""
+        for constraint in self.constrain:
+            constrain_str += f"-D{constraint} "
+        self.mdp.add({"define": constrain_str}, replace=True)
+
     def add_nsteps(self):
-        self.mdp.add({"nsteps": self.nsteps}, replace=True)
+        if self.nsteps is not None:
+            self.mdp.add({"nsteps": self.nsteps}, replace=True)
+        else:
+            logger.error(f"No number of steps specified for {self.name}")
+            shutil.rmtree(self.odir)
+            sys.exit(1)
 
     def add_restraints(self):
         outfile = self.top.with_name(f"{self.top.stem}_posres" + ".itp")
@@ -532,12 +542,13 @@ class EMRun(GMXRun):
             deffnm=deffnm,
             odir=odir,
             run_dir=run_dir,
+            **kwargs,
         )
         add_kwargs(self, **kwargs)
 
 
 class EQRunFixed(GMXRun):
-    _options = ["nsteps", "freeze"]
+    _options = ["nsteps", "freeze", "compressed"]
     _default_mdp_key = "EQ"
 
     def __init__(
@@ -559,32 +570,15 @@ class EQRunFixed(GMXRun):
             deffnm=deffnm,
             odir=odir,
             run_dir=run_dir,
+            **kwargs,
         )
         add_kwargs(self, **kwargs)
 
-    # def process_mdp(self):
-    #     fix_list = []
-    #     if isinstance(self.fix, str):
-    #         fix_list.append(self.fix)
-    #     else:
-    #         fix_list = self.fix
-    #     for fixed_group in fix_list:
-    #         if fixed_group == 'clay':
-    #             fixed_atoms = select_clay(universe=self.gro.universe)
-    #         else:
-    #             fixed_atoms = self.gro.universe.select_atoms(f'residue {fixed_group}')
-    #     self.mdp.add(
-    #         {
-    #             "freezegrps": np.unique(fixed_atoms.residues.resnames).tolist(),
-    #             "freezedim": ["Y", "Y", "Y"],
-    #         },
-    #         replace=True,
-    #     )
-    #     self.mdp.add({'nsteps': self.nsteps}, replace=True)
+    # def process_mdp(self):  #     fix_list = []  #     if isinstance(self.fix, str):  #         fix_list.append(self.fix)  #     else:  #         fix_list = self.fix  #     for fixed_group in fix_list:  #         if fixed_group == 'clay':  #             fixed_atoms = select_clay(universe=self.gro.universe)  #         else:  #             fixed_atoms = self.gro.universe.select_atoms(f'residue {fixed_group}')  #     self.mdp.add(  #         {  #             "freezegrps": np.unique(fixed_atoms.residues.resnames).tolist(),  #             "freezedim": ["Y", "Y", "Y"],  #         },  #         replace=True,  #     )  #     self.mdp.add({'nsteps': self.nsteps}, replace=True)
 
 
-class EQRunRestrained(GMXRun):
-    _options = ["nsteps", "restraints"]
+class EQRunDistanceConstrained(GMXRun):
+    _options = ["nsteps", "constrain", "compressed"]
     _default_mdp_key = "EQ"
 
     def __init__(
@@ -606,12 +600,41 @@ class EQRunRestrained(GMXRun):
             deffnm=deffnm,
             odir=odir,
             run_dir=run_dir,
+            **kwargs,
+        )
+        add_kwargs(self, **kwargs)
+
+
+class EQRunRestrained(GMXRun):
+    _options = ["nsteps", "restraints", "compressed"]
+    _default_mdp_key = "EQ"
+
+    def __init__(
+        self,
+        run_id: int,
+        name: str,
+        igro=None,
+        itop=None,
+        deffnm=None,
+        odir=None,
+        run_dir: Optional[PathOrStr] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            run_id=run_id,
+            name=name,
+            igro=igro,
+            itop=itop,
+            deffnm=deffnm,
+            odir=odir,
+            run_dir=run_dir,
+            **kwargs,
         )
         add_kwargs(self, **kwargs)
 
 
 class EQRun(GMXRun):
-    _options = ["nsteps"]
+    _options = ["nsteps", "compressed"]
     _default_mdp_key = "EQ"
 
     def __init__(
@@ -633,12 +656,13 @@ class EQRun(GMXRun):
             deffnm=deffnm,
             odir=odir,
             run_dir=run_dir,
+            **kwargs,
         )
         add_kwargs(self, **kwargs)
 
 
 class OtherRun(GMXRun):
-    _options = ["nsteps"]
+    _options = ["nsteps", "compressed"]
     _default_mdp_key = None
 
     def __init__(
@@ -660,13 +684,14 @@ class OtherRun(GMXRun):
             deffnm=deffnm,
             odir=odir,
             run_dir=run_dir,
+            **kwargs,
         )
         add_kwargs(self, **kwargs)
 
 
 class DSpaceRun(GMXRun):
-    _options = ["d_space", "nsteps", "sheet_wat", "uc_wat"]
-    _default_mdp_key = "D-SPACE"
+    _options = ["d_space", "nsteps", "sheet_wat", "uc_wat", "compressed"]
+    _default_mdp_key = "_SPACE"
 
     def __init__(
         self,
@@ -687,8 +712,9 @@ class DSpaceRun(GMXRun):
             deffnm=deffnm,
             odir=odir,
             run_dir=run_dir,
+            **kwargs,
         )
-        add_kwargs(self, n_args=3, **kwargs)
+        add_kwargs(self, n_args=4, **kwargs)
 
     def process_kwargs(self, gro: GROFile):
         wat_options = 0
@@ -780,8 +806,9 @@ class GMXRunFactory:
         ("EM", EMRun),
         ("EQ_(NVT|NpT)", EQRun),
         ("EQ_(NVT|NpT)_F", EQRunFixed),
+        ("EQ_(NVT|NpT)_DC", EQRunDistanceConstrained),
         ("EQ_(NVT|NpT)_R", EQRunRestrained),
-        ("D-SPACE", DSpaceRun),
+        ("D_SPACE", DSpaceRun),
     )
     _default = OtherRun
 
@@ -1080,7 +1107,18 @@ class MDPRunGenerator:
                     prev_cpt = None
                 else:
                     prev_cpt = None
-                run.mdp.write_prms(run.mdp.string, all=True)
+                if (
+                    run.__class__.__name__
+                    in ["EQRunRestrained", "EQRunDistanceConstrained"]
+                    and self._ensemble_mdp == "NpT"
+                ):
+                    run.add({"refcoord-scaling": "all", "comm-mode": "Linear"})
+                elif (
+                    run.__class__.__name__ == "EQRunFixed"
+                    and self._ensemble_mdp == "NpT"
+                ):
+                    run.add({"comm-mode": "none", "comm-grps": "System"})
+                run.mdp.write_prms(run.mdp.string, all=False)
                 scriptfile.write(run.get_run_command(self._gmx_alias))
                 prev_gro = run.outname.with_suffix(".gro")
                 prev_top = run.outname.with_suffix(".top")
@@ -1089,66 +1127,7 @@ class MDPRunGenerator:
             initial_linebreak=True,
         )
 
-        #
-        #
-        #         # relpath = run.odir.parts
-        #         # new_rdir = []
-        #         # for rd in run_dir.parts:
-        #         #     if rd not in run.odir.parts:
-        #         #         new_rdir.append()
-        #         #         relpath.remove(rd)
-        #         # new_rdir = Path(*new_rdir)
-        #         # relpath = Path(*relpath)
-        #         # run.run_path = new_rdir
-        #         # run.relpath = relpath
-        #         if run_id == 0:
-        #             init_gro = run.gro
-        #             init_top = run.top
-        #
-        #
-        #
-        #         if prev_em: #not init_data_copied:
-        #             # run.copy_inputfiles()
-        #             # run.cpt = None
-        #             init_top = run.top
-        #             init_gro = run.gro
-        #         else:
-        #             new_top = run.odir / init_top.name
-        #             shutil.copy2(init_top, new_top)
-        #             run.top = new_top
-        #             run.cpt = prev_cpt
-        #             run.gro = init_gro
-        #         if run.__class__.__name__ == "DSpaceRun":
-        #             run_name = f"{run.name}_NpT"
-        #         else:
-        #             run_name = run.name
-        #         run.mdp: MDPFile = self.write_mdp_options(
-        #             run_name, outpath=run.odir
-        #         )
-        #         run.process_mdp(gro=init_gro)
-        #         if init_data_copied:
-        #             run.gro = prev_outname.with_suffix(".gro")
-        #         else:
-        #             init_data_copied = True
-        #         prev_cpt = None
-        #         if re.fullmatch(
-        #             f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
-        #         ) or run.cpt is None:
-        #             pass
-        #         else:
-        #             prev_cpt = run.outname.with_suffix(".cpt")
-        #             if prev_em:
-        #                 run.mdp.add({"gen-vel": "yes"}, replace=True)
-        #             else:
-        #                 # prev_cpt = self.outname.with_suffix(".cpt")
-        #                 run.mdp.add({"gen-vel": "no"}, replace=True)
-        #         run.mdp.write_prms(run.mdp.string, all=True)
-        #         scriptfile.write(run.get_run_command(self._gmx_alias))
-        #         prev_outname = run.outname
-        #         prev_em = re.fullmatch(
-        #             f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name
-        #         )
-        # print("done")
+        #  #  #         # relpath = run.odir.parts  #         # new_rdir = []  #         # for rd in run_dir.parts:  #         #     if rd not in run.odir.parts:  #         #         new_rdir.append()  #         #         relpath.remove(rd)  #         # new_rdir = Path(*new_rdir)  #         # relpath = Path(*relpath)  #         # run.run_path = new_rdir  #         # run.relpath = relpath  #         if run_id == 0:  #             init_gro = run.gro  #             init_top = run.top  #  #  #  #         if prev_em: #not init_data_copied:  #             # run.copy_inputfiles()  #             # run.cpt = None  #             init_top = run.top  #             init_gro = run.gro  #         else:  #             new_top = run.odir / init_top.name  #             shutil.copy2(init_top, new_top)  #             run.top = new_top  #             run.cpt = prev_cpt  #             run.gro = init_gro  #         if run.__class__.__name__ == "DSpaceRun":  #             run_name = f"{run.name}_NpT"  #         else:  #             run_name = run.name  #         run.mdp: MDPFile = self.write_mdp_options(  #             run_name, outpath=run.odir  #         )  #         run.process_mdp(gro=init_gro)  #         if init_data_copied:  #             run.gro = prev_outname.with_suffix(".gro")  #         else:  #             init_data_copied = True  #         prev_cpt = None  #         if re.fullmatch(  #             f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name  #         ) or run.cpt is None:  #             pass  #         else:  #             prev_cpt = run.outname.with_suffix(".cpt")  #             if prev_em:  #                 run.mdp.add({"gen-vel": "yes"}, replace=True)  #             else:  #                 # prev_cpt = self.outname.with_suffix(".cpt")  #                 run.mdp.add({"gen-vel": "no"}, replace=True)  #         run.mdp.write_prms(run.mdp.string, all=True)  #         scriptfile.write(run.get_run_command(self._gmx_alias))  #         prev_outname = run.outname  #         prev_em = re.fullmatch(  #             f"([A-Za-z0-9\-_]*_)*EM(_[A-Za-z0-9\-_]*)*", run.name  #         )  # print("done")
 
     def write_mdp_options(self, run_name: str, outpath: Dir) -> MDPFile:
         """Write the MDP options for the given run.
@@ -1208,9 +1187,9 @@ class MDPRunGenerator:
         """MDP parameters."""
         tmp_mdp = self._mdp_prms
         if tmp_mdp is None:
-            tmp_mdp = self._mdp_template
-            # if self.gmx_version is not None:
-            #     tmp_mdp.add(MDP_DEFAULTS[self.gmx_version], replace=False)
+            tmp_mdp = (
+                self._mdp_template
+            )  # if self.gmx_version is not None:  #     tmp_mdp.add(MDP_DEFAULTS[self.gmx_version], replace=False)
         else:
             tmp_mdp = self._mdp_prms
         return tmp_mdp
@@ -1231,8 +1210,4 @@ class MDPRunGenerator:
                 else:
                     self._mdp_template.add(prms_or_file, replace=True)
 
-    # def write_new_mdp(self, new_name: Union[str, MDPFile]) -> None:
-    #     shutil.copy2(self.mdp_prms, new_name)
-    #     new_mdp = MDPFile(new_name, gmx_version=self.mdp_prms.gmx_version)
-    #     new_mdp.string = dict_to_mdp(new_mdp.parameters)
-    #     self.mdp_prms = new_mdp
+    # def write_new_mdp(self, new_name: Union[str, MDPFile]) -> None:  #     shutil.copy2(self.mdp_prms, new_name)  #     new_mdp = MDPFile(new_name, gmx_version=self.mdp_prms.gmx_version)  #     new_mdp.string = dict_to_mdp(new_mdp.parameters)  #     self.mdp_prms = new_mdp

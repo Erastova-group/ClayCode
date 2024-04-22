@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 r""":mod:`ClayCode.core.utils` --- Utility functions
 ===================================================
+This module provides utility functions for ClayCode.
 """
 from __future__ import annotations
 
@@ -13,7 +14,6 @@ import pickle
 import re
 import shutil
 import subprocess as sp
-import sys
 import threading
 import time
 import warnings
@@ -23,14 +23,13 @@ from itertools import chain
 from pathlib import Path
 from typing import Any, List, Literal, Optional, Tuple, Union
 
-import MDAnalysis as mda
 import numpy as np
 import pandas as pd
 import yaml.loader
 from caseless_dictionary import CaselessDict
 from ClayCode.core.consts import LINE_LENGTH as line_length
 from ClayCode.core.consts import TABSIZE, exec_date, exec_time
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import NDArray
 
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -99,7 +98,7 @@ def load_progress(instance, key):
             return None
 
 
-def save_progress(instance, key):
+def save_progress(instance, key, debug=False):
     if instance._progress.exists():
         with open(instance._progress, "rb") as file:
             progress_dict = pickle.load(file)
@@ -108,19 +107,19 @@ def save_progress(instance, key):
     progress_dict[key] = instance
     with open(instance._progress, "wb") as file:
         pickle.dump(progress_dict, file, protocol=pickle.HIGHEST_PROTOCOL)
-    logger.fdebug(f"Saved progress to {instance._progress.name!r}.")
+    logger.fdebug(debug, f"Saved progress to {instance._progress.name!r}.")
 
 
-def remove_files(path, searchstr):
+def remove_files(path, searchstr, debug=False):
     backupfiles = list(path.glob(rf"{searchstr}"))
     removing = False
     for fname in backupfiles:
         if fname.exists():
             removing = True
             os.remove(fname)
-            logger.fdebug(f"Removing {fname.name}.")
+            logger.fdebug(debug, f"Removing {fname.name}.")
         else:
-            logger.fdebug(f"No backups to remove {fname.name}.")
+            logger.fdebug(debug, f"No backups to remove {fname.name}.")
     return removing
 
 
@@ -141,16 +140,16 @@ def convert_num_to_int(f):
 
 
 def get_sequence_element(f):
-    def wrapper(seq, element_id=0):
+    def wrapper(seq, element_id=0, debug=False):
         try:
             if len(list(seq)) < 2:
                 pass
             else:
-                logger.fdebug(1, seq)
+                logger.fdebug(debug, 1, seq)
         except TypeError:
-            logger.fdebug(2, seq)
+            logger.fdebug(debug, 2, seq)
             seq = [seq]
-        logger.fdebug(3, seq)
+        logger.fdebug(debug, 3, seq)
         # if type(seq) == str:
         #     try:
         #         seq = int(seq)
@@ -162,7 +161,7 @@ def get_sequence_element(f):
             raise TypeError(f"Expected int index, found {type(element_id)}")
         else:
             result = f(seq[element_id])
-            logger.fdebug(4, result)
+            logger.fdebug(debug, 4, result)
             return result
 
     return wrapper
@@ -210,8 +209,10 @@ def execute_shell_command(command):
         ).stdout.strip()
         try:
             output = sp.run(
-                [shell, "-c", "-i", command],
+                [command],
                 capture_output=True,
+                executable=shell,
+                shell=True,
                 text=True,
                 check=True,
             )
@@ -304,16 +305,16 @@ def _(match_obj: List[str]):
 
 
 def convert_str_list_to_arr(
-    str_list: Union[List[str], List[List[str]]]
+    str_list: Union[List[str], List[List[str]]], debug=False
 ) -> np.array:
     array = np.array(list(map(lambda x: x.split(), str_list)), dtype=str)
     arr_strip = np.vectorize(lambda x: x.strip())
     try:
         array = arr_strip(array)
     except TypeError:
-        logger.fdebug("Could not convert list to array")
+        logger.fdebug(debug, "Could not convert list to array")
     except IndexError:
-        logger.fdebug("Could not convert list to array")
+        logger.fdebug(debug, "Could not convert list to array")
     return array
 
 
@@ -461,6 +462,7 @@ def select_file(
     searchstr: Optional[str] = None,
     suffix=None,
     how: Literal["latest", "largest"] = "latest",
+    debug=False,
 ) -> Union[None, Path]:
     """Select latest or largest file in `path` directory.
     Must contain `searchstr` in filename and suffix `suffix`.
@@ -474,7 +476,7 @@ def select_file(
         "largest": lambda x: x.st_size,
     }
     check_func = check_func_dict[how]
-    logger.fdebug(f"Getting {how} file:")
+    logger.fdebug(debug, f"Getting {how} file:")
     if type(path) != Path:
         path = Path(path)
     if searchstr is None and suffix is None:
@@ -504,9 +506,9 @@ def select_file(
                 prev_file_stat = last_file_stat
                 last_file = file
     if last_file is None:
-        logger.fdebug(f"No matching files found in {path.resolve()}!")
+        logger.fdebug(debug, f"No matching files found in {path.resolve()}!")
     else:
-        logger.fdebug(f"{last_file.name} matches")
+        logger.finfo(f"Selected {last_file.name}.", indent="\t\t")
     return last_file
 
 

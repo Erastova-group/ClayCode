@@ -40,7 +40,14 @@ import yaml
 import zarr
 from ClayCode.builder.consts import BUILDER_DATA
 from ClayCode.builder.utils import get_checked_input, select_input_option
-from ClayCode.core.classes import Dir, File, ITPFile, PathFactory, YAMLFile
+from ClayCode.core.classes import (
+    ClayFFData,
+    Dir,
+    File,
+    ITPFile,
+    PathFactory,
+    YAMLFile,
+)
 from ClayCode.core.consts import LINE_LENGTH
 from ClayCode.core.lib import get_ion_charges
 from ClayCode.core.utils import (
@@ -889,31 +896,30 @@ class TargetClayComposition:
         df.loc["C"].update(charges)
         return df
 
-    @cached_property
-    def clayff_at_types(self):
-        """Get dictionary of clayff atom types and corresponding elements.
-        :return: dictionary of clayff atom types and corresponding elements
-        :rtype: Dict[str, str]"""
-        clayff_at_types = YAMLFile(CLAYFF_AT_TYPES)
-        return clayff_at_types.data
-
-    @cached_property
-    def clayff_elements(self) -> Dict[str, str]:
-        """Get dictionary of elements and corresponding clayff atom types.
-        :return: dictionary of elements and corresponding clayff atom types
-        :rtype: Dict[str, str]"""
-        reverse_at_types = {}
-        for k1, v1 in self.clayff_at_types.items():
-            reverse_at_types[k1] = {v: k for (k, v) in v1.items()}
-        return reverse_at_types
-
-    def clayff_to_element(self, at_type: str) -> str:
-        """Get element from clayff atom type
-        :param at_type: clayff atom type
-        :type at_type: str
-        :return: element
-        :rtype: str"""
-        return self.clayff_elements[at_type]
+    # @cached_property
+    # def clayff_at_types(self):
+    #     """Get dictionary of clayff atom types and corresponding elements.
+    #     :return: dictionary of clayff atom types and corresponding elements
+    #     :rtype: Dict[str, str]"""
+    #     return self.
+    #
+    # @cached_property
+    # def clayff_elements(self) -> Dict[str, str]:
+    #     """Get dictionary of elements and corresponding clayff atom types.
+    #     :return: dictionary of elements and corresponding clayff atom types
+    #     :rtype: Dict[str, str]"""
+    #     reverse_at_types = {}
+    #     for k1, v1 in self.clayff_at_types.items():
+    #         reverse_at_types[k1] = {v: k for (k, v) in v1.items()}
+    #     return reverse_at_types
+    #
+    # def clayff_to_element(self, at_type: str) -> str:
+    #     """Get element from clayff atom type
+    #     :param at_type: clayff atom type
+    #     :type at_type: str
+    #     :return: element
+    #     :rtype: str"""
+    #     return self.clayff_elements[at_type]
 
     def __get_match_df(self, csv_file: Union[str, File]) -> pd.DataFrame:
         """Get `pd.Dataframe` that matches a target clay composition specified in a csv file.
@@ -930,7 +936,7 @@ class TargetClayComposition:
         match_df.loc[self.idx_sel, "new-at-type"] = (
             match_df.loc[self.idx_sel, "new-at-type"]
             .groupby("sheet", group_keys=True)
-            .apply(lambda x: self.clayff_at_types[x.name])
+            .apply(lambda x: self.clayff_data.clayff_at_types[x.name])
         )
         nan_at_types = match_df["new-at-type"][match_df["new-at-type"].isna()]
         if nan_at_types.tolist():
@@ -1047,6 +1053,10 @@ class TargetClayComposition:
         match_df.index = match_df.index.rename(self.uc_df.index.names)
         match_idx = self.__get_match_idx(match_df)
         return match_df, match_idx
+
+    @cached_property
+    def clayff_data(self):
+        return ClayFFData()
 
     @property
     def df(self):
