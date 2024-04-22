@@ -241,7 +241,15 @@ def get_selections(
 #         return sel, clay
 
 
-def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
+def get_selections(
+    infiles,
+    sel,
+    clay_type,
+    other=None,
+    separate_ob_oh_surfaces=True,
+    only_surface=False,
+    in_memory=False,
+):
     """Get MDAnalysis atom groups for clay, first and optional second selection.
     :param in_memory: store trajectory to memory
     :type in_memory: bool
@@ -253,6 +261,10 @@ def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
     :type sel: Sequence[str]
     :param other: selection keywords as [resname] or [resname, atom type], defaults to None
     :type other: Sequence[str], optional
+    :param separate_ob_oh_surfaces: separate OB and OH surfaces for asymmetrical clays
+    :type separate_ob_oh_surfaces: bool
+    :param only_surface: only select atoms on the surface of the clay
+    :type only_surface: bool
     # :raises ValueError: lengths of sel or other != in [1, 2]
     # :return sel: atom group for sel
     # :rtype sel: MDAnalysis.core.groups.AtomGroup
@@ -296,15 +308,53 @@ def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
         other = u.select_atoms(f"resname {other[0]}* and name {other[1]}")
     else:
         raise ValueError('Expected 1 or 2 arguments for "other"')
-    clay = u.select_atoms(f"resname {clay_type}* and name OB* o*")
+    clay = u.select_atoms(f"resname {clay_type}* and name OB* ob* O* o*")
     # logger.finfo(
     #     f"'clay': Selected {clay.n_atoms} atoms of "
     #     f"{clay.n_residues}  unit cells"
     # )
-    log_atomgroup_info(
-        ag=clay, ag_name=clay_type, kwd_str="Clay unit cell type"
-    )
-
+    if separate_ob_oh_surfaces:
+        clay_metal_atoms = u.select_atoms(
+            f"resname {clay_type}* and name FEO* AO* MGO* FE2* FET* AT* ST*"
+        )
+        clay_o_z_min = np.min(clay_metal_atoms.positions[:, 2])
+        clay_o_z_max = np.max(clay_metal_atoms.positions[:, 2])
+        clay_ob_surface = clay.select_atoms(
+            f"name OB* ob* OX* ox* and (prop z > {clay_o_z_max} or prop z < {clay_o_z_min})"
+        )
+        clay_oh_surface = clay.select_atoms(
+            f"name OH* oh* and (prop z > {max(clay_o_z_max, np.max(clay_ob_surface.positions[:, 2]))} or prop z < {min(clay_o_z_min, np.min(clay_ob_surface.positions[:, 2]))})"
+        )
+        clay_ag = (clay_ob_surface, clay_oh_surface)
+        log_atomgroup_info(
+            ag=clay_ob_surface,
+            ag_name=f"{clay_type}: OB surface",
+            kwd_str="Clay unit cell surface type",
+        )
+        log_atomgroup_info(
+            ag=clay_oh_surface,
+            ag_name=f"{clay_type}: OH surface",
+            kwd_str="Clay unit cell surface type",
+        )
+    elif only_surface:
+        clay_metal_atoms = u.select_atoms(
+            f"resname {clay_type}* and name FEO* AO* MGO* FE2* FET* AT* ST*"
+        )
+        clay_o_z_min = np.min(clay_metal_atoms.positions[:, 2])
+        clay_o_z_max = np.max(clay_metal_atoms.positions[:, 2])
+        clay_ag = clay.select_atoms(
+            f"prop z > {clay_o_z_max} or prop z < {clay_o_z_min}"
+        )
+        log_atomgroup_info(
+            ag=clay_ag,
+            ag_name=f"{clay_type} surface",
+            kwd_str="Clay unit cell surface",
+        )
+    else:
+        log_atomgroup_info(
+            ag=clay, ag_name=clay_type, kwd_str="Clay unit cell type"
+        )
+        clay_ag = clay
     sel = select_outside_clay_stack(sel, clay)
     # Clay + two other atom groups selected
     log_atomgroup_info(ag=sel, ag_name=sel_str, kwd_str="Atom selection")
@@ -314,11 +364,11 @@ def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
         log_atomgroup_info(
             ag=other, ag_name=other_str, kwd_str="Second atom selection"
         )
-        return sel, clay, other
+        return sel, clay_ag, other
 
     # Only clay + one other atom group selected
     else:
-        return sel, clay
+        return sel, clay_ag
 
 
 def get_ag_numbers_info(ag: AtomGroup) -> Tuple[int, int]:

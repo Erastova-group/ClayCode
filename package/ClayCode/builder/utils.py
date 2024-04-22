@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# *-* coding: utf-8 *-*
+r""":mod:`ClayCode.builder.utils` --- Utility functions for ClayCode builder
+===============================================================================
+This module provides utility functions for the ClayCode builder.
+"""
 from __future__ import annotations
 
 import logging

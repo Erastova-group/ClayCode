@@ -4,7 +4,6 @@ r""":mod:`ClayCode.builder.assembly` --- Assembly of clay models
 ==============================================================="""
 from __future__ import annotations
 
-import copy
 import itertools
 import logging
 import math
@@ -23,6 +22,7 @@ import pandas as pd
 import unicodeit
 from ClayCode.builder.claycomp import InterlayerIons, UCData
 from ClayCode.builder.topology import TopologyConstructor
+from ClayCode.builder.utils import get_checked_input, select_input_option
 from ClayCode.core.classes import (
     Dir,
     FileFactory,
@@ -31,7 +31,7 @@ from ClayCode.core.classes import (
     set_mdp_freeze_groups,
     set_mdp_parameter,
 )
-from ClayCode.core.consts import ANGSTROM, LINE_LENGTH
+from ClayCode.core.consts import ANGSTROM
 from ClayCode.core.gmx import (
     GMXCommands,
     add_gmx_args,
@@ -90,7 +90,13 @@ class Builder:
             outpath=self.args.outpath,
             debug=self.args.debug_run,
         )
-        self.top = TopologyConstructor(self.args._uc_data, self.args.ff)
+        self.gmx_commands: GMXCommands = GMXCommands(
+            gmx_alias=self.args.gmx_alias
+        )
+        self.top = TopologyConstructor(
+            self.args._uc_data, self.args.ff, gmx_commands=self.gmx_commands
+        )
+        self.top._uc_head
         self.__il_solv: Union[None, GROFile] = None
         self.__il: Union[None, GROFile] = None
         self.__stack: Union[None, GROFile] = None
@@ -111,9 +117,6 @@ class Builder:
             )
         else:
             logger.finfo("Will set box height to clay height")
-        self.gmx_commands: GMXCommands = GMXCommands(
-            gmx_alias=self.args.gmx_alias
-        )
         self.em_prms = self.gmx_commands.mdp_defaults.copy()
         self.em_prms.update(self.args.mdp_parameters["EM"])
         check_box_lengths(
@@ -205,6 +208,8 @@ class Builder:
         logger.info(get_subheader("2. Generating interlayer solvent."))
         if self.args.il_ions.clay_charge != 0:
             extra_waters = abs(self.args.il_ions.clay_charge) // 3
+        else:
+            extra_waters = 0
         solvent: Solvent = Solvent(
             x_dim=self.sheet.dimensions[0],
             y_dim=self.sheet.dimensions[1],
@@ -306,8 +311,9 @@ class Builder:
         freeze_clay: Optional[
             Union[List[Union[Literal["Y"], Literal["N"]]], bool]
         ] = False,
-        # ["Y", "Y", "Y"],
         backup=False,
+        constrain_distances=False,
+        n_runs: Literal[1, 2] = 1,
     ) -> None:
         """Run energy minimisation.
         :param freeze_clay: Whether to freeze the clay stack during energy minimisation. If a list of three booleans is provided, the corresponding dimensions will be frozen. If True, all three dimensions will be frozen. If False, no dimensions will be frozen.
@@ -316,16 +322,73 @@ class Builder:
         :type backup: bool
         :return: None"""
         logger.info(get_subheader("Minimising energy"))
-        # outgro = None
+        # if np.unique(self.stack.universe.residues.resnums).size == 1:
+        #     add_resnum(crdin=self.stack, crdout=self.stack)
+        # restraint_dict = {'TSheets': [], 'ClaySheets': [], 'ClayNoOHSheets': []}
+        # for sheet_id, sheet in self.sheets.items():
+        #     t_sheet = self.stack.universe.atoms.select_atoms(f"resname {' '.join(sheet.resnames)} and name {'*|'.join(map(lambda x: x.upper(), self.args.clayff_elements['T']))}* O[XB]*")
+        #     restr_file = self.generate_restraints(f"T_sheet_{sheet_id}", t_sheet, disre='')
+        #     restraint_dict['TSheets'].append(restr_file)
+        #     restr_file = self.generate_restraints(f"clay_sheet_{sheet_id}", sheet.atoms, disre='')
+        #     restraint_dict['ClaySheets'].append(restr_file)
+        #     not_oh = sheet.atoms.select_atoms("not name OH* HO*")
+        #     restr_file = self.generate_restraints(f"clay_no_OH_sheet_{sheet_id}", not_oh, disre='')
+        #     restraint_dict['ClayNoOHSheets'].append(restr_file)
+        # for restraint_def, restraint_files in self.restraint_dict.values():
+        #     self.top.add_definition(restraint_def, restraint_files)
+        self.top.write(self.stack.top)
         outname_list = [f"{self.stack.stem.strip('_pre_em').strip('_em')}_em"]
-        ndx_list = [None]
+        # ndx_list = [None]
+        # freeze_grps_list = [None]
+        # freeze_dims_list = [None]
+        # dist_constraint_list = [False]
+        ndx_list = []
+        freeze_grps_list = []
+        freeze_dims_list = []
+        dist_constraint_list = []
         if freeze_clay:
             if isinstance(freeze_clay, bool):
-                freeze_dims_list = [["Y", "Y", "Y"]]
+                freeze_dims_list.append(["Y", "Y", "Y"])
             else:
-                freeze_dims_list = [freeze_clay]
-            freeze_grps_list = [np.unique(self.clay.residues.resnames)]
-        else:
+                freeze_dims_list.append(freeze_clay)
+            freeze_grps_list.append(np.unique(self.clay.residues.resnames))
+            dist_constraint_list.append(False)
+            ndx_list.append(None)
+        if constrain_distances:
+            if constrain_distances in [
+                "TSheets",
+                "ClaySheets",
+                "ClayNoOHSheets",
+            ]:
+                pass
+            elif type(constrain_distances) == bool:
+                constrain_distances = "ClaySheet"
+            else:
+                logger.error(
+                    f"Unknown distance constraint option {constrain_distances}.\n"
+                    f"Options are 'TSheets', 'ClaySheets', 'ClayNoOHSheets', or True."
+                )
+                constrain_distances = select_input_option(
+                    instance_or_manual_setup=True,
+                    query="Apply distance constraint on:\n"
+                    "0 - all 'T' sheet UC atoms\n"
+                    "1 - all clay UC atoms\n"
+                    "2 - all clay UC atoms excluding 'OH'-groups\n"
+                    "3 - Don't apply distance constraints\n",
+                    options=["0", "1", "2", "3"],
+                    result=None,
+                    result_map={
+                        "0": "TSheets",
+                        "1": "ClaySheets",
+                        "2": "ClayNoOHSheets",
+                        "3": False,
+                    },
+                )
+            dist_constraint_list.append(constrain_distances)
+            freeze_grps_list.append(None)
+            freeze_dims_list.append(None)
+            ndx_list.append(None)
+        if not freeze_clay and not constrain_distances:
             logger.finfo(
                 f"1. Energy minimisation with frozen clay hydroxyl atom positions."
             )
@@ -339,14 +402,44 @@ class Builder:
                 + " & ! a OH* HO*",
                 sel_name=freeze_grps,
             )
-            freeze_grps_list = [freeze_grps, None]
-            freeze_dims_list = [freeze_dims, None]
+            freeze_grps_list.append(freeze_grps)  # = [freeze_grps, None]
+            freeze_dims_list.append(freeze_grps)  # = [freeze_dims, None]
+            # outname_list.append(f"{self.stack.stem.strip('_pre_em').strip('_em')}_pre_em") # .insert(
+            #     0, f"{self.stack.stem.strip('_pre_em').strip('_em')}_pre_em"
+            # )
+            ndx_list.append(
+                self.stack.with_suffix(".ndx")
+            )  # .insert(0, self.stack.with_suffix(".ndx"))
+
+        while len(freeze_grps_list) < n_runs:
+            freeze_grps_list.append(None)
+            freeze_dims_list.append(None)
+            dist_constraint_list.append(False)
+            ndx_list.append(None)
+
+        if len(outname_list) < n_runs:
             outname_list.insert(
                 0, f"{self.stack.stem.strip('_pre_em').strip('_em')}_pre_em"
             )
-            ndx_list.insert(0, self.stack.with_suffix(".ndx"))
-        for freeze_grps, freeze_dims, outname, ndx in zip(
-            freeze_grps_list, freeze_dims_list, outname_list, ndx_list
+
+        if not (
+            len(outname_list)
+            == len(freeze_grps_list)
+            == len(freeze_dims_list)
+            == len(ndx_list)
+            == n_runs
+        ):
+            logger.error(
+                "Lengths of lists for energy minimisation runs are not equal."
+            )
+            sys.exit(1)
+
+        for freeze_grps, freeze_dims, constraint, outname, ndx in zip(
+            freeze_grps_list,
+            freeze_dims_list,
+            dist_constraint_list,
+            outname_list,
+            ndx_list,
         ):
             result = run_em(
                 crdin=self.stack,
@@ -358,6 +451,7 @@ class Builder:
                 freeze_grps=freeze_grps,
                 freeze_dims=freeze_dims,
                 ndx=ndx,
+                constraints=constraint,
             )
             outgro = GROFile(self.args.outpath / f"{outname}.gro")
             if result is not None and outgro.exists():
@@ -399,7 +493,9 @@ class Builder:
             ]
             em_files = []
             backups = []
-            for file in sorted(outpath.iterdir()):
+            for file in sorted(
+                outpath.iterdir(), key=lambda f: f.suffix, reverse=True
+            ):
                 if file not in crd_top_files and not file.is_dir():
                     file.unlink(missing_ok=True)
                 else:
@@ -413,23 +509,40 @@ class Builder:
                                         new_filename=em_path / file.name
                                     )
                                 )
-                            new_file = em_path / file.name  #
-                            if (
-                                file.suffix == ".gro"
-                                and file.stem == self.stack.stem
-                            ):
-                                self.stack = file
-                                logger.finfo(
-                                    f"Writing final output from energy minimisation to {str(file.parent)!r}:"
-                                )
+                            new_file = em_path / file.name
+
+                            # try:
+                            #     shutil.copy2(file, new_file)
+                            # except shutil.SameFileError:
+                            #     pass
+                            # else:
+                            #     self.stack = new_file
+                            #     logger.finfo(
+                            #     f"Writing final output from energy minimisation to {str(file.parent)!r}:"
+                            #     )
+                            #     file.unlink(missing_ok=True)
+
+                            # else:
+                            try:
+                                shutil.copy2(file, new_file)
+                            except shutil.SameFileError:
+                                pass
                             else:
-                                try:
-                                    shutil.copy2(file, new_file)
-                                except shutil.SameFileError:
-                                    pass
+                                if (
+                                    file.suffix == ".gro"
+                                    and file.stem.split("_")[-2] != "pre"
+                                    # and file.stem == self.stack.stem
+                                ):
+                                    self.stack = new_file
+                                    logger.finfo(
+                                        f"Writing final output from energy minimisation to {str(file.parent)!r}:"
+                                    )
+
+                                    file.unlink(missing_ok=True)
                                 else:
                                     file.unlink(missing_ok=True)
                                     file = new_file
+
                         em_files.append(file.name)
             if backups:
                 logger.finfo(
@@ -446,7 +559,7 @@ class Builder:
         Copy final files to output directory.
         :return: None"""
         logger.info(get_subheader("Finishing up"))
-        self.stack: GROFile = self.args.outpath / self.stack.name
+        # self.stack: GROFile = self.args.outpath / self.stack.name
         add_resnum(crdin=self.stack, crdout=self.stack)
         self.__tmp_outpath.cleanup()
         logger.debug(
@@ -583,6 +696,24 @@ class Builder:
         return self.stack.universe.select_atoms(
             f"resname {self.args.uc_stem}*"
         )
+
+    @property
+    def sheets(self):
+        sheets = {}
+        sheet_id = 0
+        prev = None
+        for residue in self.clay.residues:
+            if prev is None:
+                sheets[sheet_id] = residue
+                prev = residue.resid
+            elif residue.resid == prev + 1:
+                sheets[sheet_id] += residue
+                prev = residue.resid
+            else:
+                sheet_id += 1
+                sheets[sheet_id] = residue
+                prev = residue.resid
+        return sheets
 
     def select_molecules_outside_clay(
         self, atomgroup: AtomGroup, extra: Union[int, float] = 0
@@ -1013,9 +1144,16 @@ class Builder:
                 path = file
         # path already set, copy to new path
         if path is not None:
-            new_path = GROFile(
-                self.args.outpath / file.with_suffix(".gro").name
-            )
+            if (
+                file.parent.is_relative_to(path.parent)
+                and not file.parent == path.parent
+            ):
+                outpath = self.args.outpath / file.parent.relative_to(
+                    path.parent
+                )
+            else:
+                outpath = self.args.outpath
+            new_path = GROFile(outpath / file.with_suffix(".gro").name)
             try:
                 shutil.copy(path, new_path)
                 logger.debug(
@@ -1144,7 +1282,9 @@ class Builder:
 
     @staticmethod
     def remove_extra_waters(
-        grofile: GROFile, target_n_SOL: int, top: Optional[Topology] = None
+        grofile: GROFile,
+        target_n_SOL: int,
+        top: Optional[Type["Topology"]] = None,
     ):
         u = grofile.universe
         if target_n_SOL != u.select_atoms("resname iSL SOL").n_residues:
@@ -1155,6 +1295,8 @@ class Builder:
             grofile.universe = u
             if top is not None:
                 grofile.write(topology=top)
+            else:
+                grofile.write()
         return grofile
 
     def center_clay_in_box(self) -> None:

@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+r""":mod:`ClayCode.__main__` --- Main module for ClayCode
+===========================================================
+This module provides the main entry point for ClayCode.
+"""
+
 from __future__ import annotations
 
 import logging
 import sys
 
 from ClayCode import ArgsFactory, BuildArgs, ClayCodeLogger, SiminpArgs, parser
-from ClayCode.analysis.dataclasses import Data, Data2D
 from ClayCode.builder.utils import select_input_option
 from ClayCode.core.parsing import AnalysisArgs, DataArgs, PlotArgs
 from ClayCode.data.ucgen import UCWriter
+from ClayCode.plot.plots import AtomTypeData2D, Data, Data2D
 
 __all__ = ["run"]
 
-from ClayCode.plot.plots import HistPlot, HistPlot2D, LinePlot
+from ClayCode.plot.plots import GaussHistPlot, HistPlot, HistPlot2D, LinePlot
 
 logging.setLoggerClass(ClayCodeLogger)
 
@@ -56,6 +62,8 @@ def run_builder(args: BuildArgs):
         completed = clay_builder.run_em(
             backup=clay_builder.args.backup,
             freeze_clay=clay_builder.args.em_freeze_clay,
+            constrain_distances=clay_builder.args.em_constrain_clay_dist,
+            n_runs=clay_builder.args.em_n_runs,
         )
         if completed is None:
             if clay_builder.extended_box and (

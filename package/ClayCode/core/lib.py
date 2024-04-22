@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 r""":mod:`ClayCode.core.lib` --- Clay-specific utilities
 ======================================================
+This module provides utility functions for the ClayCode package.
 """
 from __future__ import annotations
 
@@ -133,123 +134,10 @@ def temp_file_wrapper(f: Callable):
     return wrapper
 
 
-@overload
-def get_selections(
-    infiles: Sequence[Union[str, Path, PosixPath]],
-    sel: Sequence[str],
-    clay_type: str,
-    other: Sequence[str],
-    in_memory: bool,
-) -> Tuple[AtomGroup, AtomGroup, AtomGroup]:
-    ...
-
-
-@overload
-def get_selections(
-    infiles: Sequence[Union[str, Path, PosixPath]],
-    sel: Sequence[str],
-    clay_type: str,
-    other: None,
-    in_memory: bool,
-) -> Tuple[AtomGroup, AtomGroup]:
-    ...
-
-
-def get_selections(infiles, sel, clay_type, other=None, in_memory=False):
-    """Get MDAnalysis atom groups for clay, first and optional second selection.
-    :param in_memory: store trajectory to memory
-    :type in_memory: bool
-    :param clay_type: Unit cell type
-    :type clay_type: str
-    :param infiles: Coordinate and trajectory files
-    :type infiles: Sequence[Union[str, Path, PosixPath]]
-    :param sel: selection keywords as [resname] or [resname, atom type] or 'not SOL'
-    :type sel: Sequence[str]
-    :param other: selection keywords as [resname] or [resname, atom type], defaults to None
-    :type other: Sequence[str], optional
-    # :raises ValueError: lengths of sel or other != in [1, 2]
-    # :return sel: atom group for sel
-    # :rtype sel: MDAnalysis.core.groups.AtomGroup
-    # :return clay: atom group for clay
-    # :rtype clay: MDAnalysis.core.groups.AtomGroup
-    # :return other: atom group for other, optional
-    # :rtype other: MDAnalysis.core.groups.AtomGroup
-    """
-    infiles = [str(Path(infile).absolute()) for infile in infiles]
-    for file in infiles:
-        logger.debug(f"Reading: {file!r}")
-    u = MDAnalysis.Universe(*infiles, in_memory=in_memory)
-    # only resname specified
-    if len(sel) == 1:
-        sel_str = sel[0]
-        sel = u.select_atoms(f"resname {sel[0]}")
-
-    # rename and atom type specified
-    elif len(sel) == 2:
-        # expand search string for terminal O atom types
-        if sel[1] == "OT*":
-            sel[1] = "OT* O OXT"
-        sel_str = "{}: {}".format(*sel)
-        sel = u.select_atoms(f"resname {sel[0]}* and name {sel[1]}")
-
-    else:
-        raise ValueError('Expected 1 or 2 arguments for "sel"')
-
-    if other is None:
-        pass
-    elif len(other) == 1:
-        logger.debug(f"other: {other}")
-        other_str = other[0]
-        other = u.select_atoms(f"resname {other[0]}")
-
-    elif len(other) == 2:
-        logger.debug(f"other: {other}")
-        if other[1] == "OT*":
-            other[1] = "OT* O OXT"
-        other_str = "{}: {}".format(*other)
-        other = u.select_atoms(f"resname {other[0]}* and name {other[1]}")
-    else:
-        raise ValueError('Expected 1 or 2 arguments for "other"')
-    clay = u.select_atoms(f"resname {clay_type}* and name OB* o*")
-    # logger.finfo(
-    #     f"'clay': Selected {clay.n_atoms} atoms of "
-    #     f"{clay.n_residues}  unit cells"
-    # )
-    log_atomgroup_info(
-        ag=clay, ag_name=clay_type, kwd_str="Clay unit cell type"
-    )
-
-    sel = select_outside_clay_stack(sel, clay)
-    # Clay + two other atom groups selected
-    log_atomgroup_info(ag=sel, ag_name=sel_str, kwd_str="Atom selection")
-
-    if other is not None:
-        other = select_outside_clay_stack(other, clay)
-        log_atomgroup_info(
-            ag=other, ag_name=other_str, kwd_str="Second atom selection"
-        )
-        return sel, clay, other
-
-    # Only clay + one other atom group selected
-    else:
-        return sel, clay
-
-
 def get_ag_numbers_info(ag: AtomGroup) -> Tuple[int, int]:
     return "Selected {} atoms in {} residues.".format(
         ag.n_atoms, ag.n_residues
     )
-
-
-def log_atomgroup_info(ag: AtomGroup, kwd_str: str, ag_name: str):
-    if ag.n_atoms > 0:
-        logger.finfo(f"{ag_name!r}", kwd_str=f"{kwd_str}: ")
-        logger.finfo(get_ag_numbers_info(ag))
-    else:
-        logger.ferror(
-            f"{ag_name} contains 0 atoms. Check atom selection parameters."
-        )
-        sys.exit(4)
 
 
 def select_clay(
@@ -546,17 +434,17 @@ def save_selection(
 
 # def select_cyzone(
 #     distances: MaskedArray,
-#     z_dist: float,
+#     max_z_dist: float,
 #     xy_rad: float,
 #     mask_array: MaskedArray,
 # ) -> None:
 #     """
 #     Select all distances corresponding to atoms within a cylindrical volume
-#     of dimensions +- z_dist and radius xy_rad
+#     of dimensions +- max_z_dist and radius xy_rad
 #     :param distances: masked interatomic distance array of shape (n, m, 3)
 #     :type distances: MaskedArray[np.float64]
-#     :param z_dist: absolute value for cutoff in z direction
-#     :type z_dist: float
+#     :param max_z_dist: absolute value for cutoff in z direction
+#     :type max_z_dist: float
 #     :param xy_rad: absolute value for radius in xy plane
 #     :type xy_rad: float
 #     :param mask_array: array for temporary mask storage of shape (n, m)
@@ -565,7 +453,7 @@ def save_selection(
 #     :rtype: NoReturn
 #     """
 #     z_col = distances[:, :, 2]
-#     z_col.mask = np.abs(z_col) > z_dist
+#     z_col.mask = np.abs(z_col) > max_z_dist
 #     distances.mask = np.broadcast_to(
 #         z_col.mask[:, :, np.newaxis], distances.shape
 #     )
@@ -1757,6 +1645,7 @@ def run_em(  # mdp: str,
     ] = ["Y", "Y", "Y"],
     ndx=None,
     debug_mode=False,
+    constraints=False,
 ) -> Union[str, None]:
     """
     Run an energy minimisation using gmx and
@@ -1813,6 +1702,7 @@ def run_em(  # mdp: str,
         freeze_dims=freeze_dims,
         renum="",
         n=ndx,
+        define=constraints,
     )
     error, em, out = gmx_commands.run_gmx_mdrun(s=tpr, deffnm=outname, v="")
     if error is None:

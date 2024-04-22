@@ -15,8 +15,8 @@ import MDAnalysis as mda
 import numpy as np
 import zarr
 from ClayCode.analysis.analysisbase import AnalysisData, ClayAnalysisBase
+from ClayCode.analysis.classes import get_edge_fname, read_edge_file
 from ClayCode.analysis.consts import PE_DATA
-from ClayCode.analysis.dataclasses import get_edge_fname, read_edge_file
 from ClayCode.analysis.lib import (
     check_traj,
     exclude_xyz_cutoff,
@@ -482,6 +482,12 @@ class CrdDist(ClayAnalysisBase):
         # :return: numpy array with group indices
         # :rtype: numpy array
         # """
+        if type(distance_timeseries) == zarr.core.Array:
+            dask_timeseries = dask.array.from_zarr(distance_timeseries)
+        else:
+            dask_timeseries = dask.array.from_array(
+                np.array(distance_timeseries)
+            )
         if dest is None:
             if type(distance_timeseries) == zarr.core.Array:
                 store = zarr.storage.TempStore(
@@ -495,13 +501,14 @@ class CrdDist(ClayAnalysisBase):
                 )
             else:
                 dest = np.empty_like(distance_timeseries, dtype=np.int32)
-        if type(dest) == zarr.core.Array:
-            dest = dask.array.from_zarr(dest)
-            dest = dask.array.digitize(distance_timeseries, edges)
-            dest = dest.compute()
-        else:
-            dest[:] = np.digitize(distance_timeseries[:], edges)
-            dest[:] = np.where(dest[:] != len(edges), dest, np.NaN)
+        # if type(dest) == zarr.core.Array:
+        # dest = dask.array.from_zarr(dest)
+        result = dask.array.digitize(dask_timeseries, edges)
+        result = dask.array.where(result != len(edges), result, np.NaN)
+        dest[:] = result.compute()
+        # else:
+        #     dest[:] = np.digitize(distance_timeseries[:], edges)
+        #     dest[:] = np.where(dest[:] != len(edges), dest, np.NaN)
         return dest
 
     def _single_frame(self) -> NoReturn:
@@ -591,7 +598,13 @@ class CrdDist(ClayAnalysisBase):
             dtype=np.float32,
             chunks=(True, -1, -1),
         )
-        timeseries[:] = self.data["rdf"].timeseries
+        timeseries = dask.array.from_zarr(timeseries)
+        timeseries_data = dask.delayed(
+            self.data["rdf"].timeseries, nout=1, pure=True, traverse=False
+        )
+        timeseries[:] = dask.array.from_delayed(
+            timeseries_data, dtype=timeseries.dtype, shape=timeseries.shape
+        )
         self.data["rdf"].timeseries = timeseries
         save = zarr.storage.TempStore(
             dir=self._temp_store_path.name, prefix="crd_numbers"
@@ -618,12 +631,15 @@ class CrdDist(ClayAnalysisBase):
                 chunks=(True, -1, -1),
                 dtype=np.float32,
             )
-            timeseries[:] = np.where(
-                np.array(self.data["z_groups"].timeseries)[:, :, np.newaxis]
+            result = dask.array.where(
+                dask.array.from_array(self.data["z_groups"].timeseries)[
+                    :, :, np.newaxis
+                ]
                 == i,
-                np.array(self.data["rdf"].timeseries),
+                dask.array.from_zarr(self.data["rdf"].timeseries),
                 np.NaN,
             )
+            timeseries[:] = result.compute()
             self.data[f"z_group_{i}"].timeseries = timeseries
             logger.finfo(
                 f'"z_group_{i}"',
@@ -646,11 +662,12 @@ class CrdDist(ClayAnalysisBase):
                 chunks=(True, -1, -1),
                 dtype=np.float32,
             )
-            r_timeseries[:] = np.where(
-                timeseries[:] >= 0,
-                self.data["crd_numbers"].timeseries[:],
+            result = dask.array.where(
+                dask.array.from_zarr(timeseries) >= 0,
+                dask.array.from_zarr(self.data["crd_numbers"].timeseries),
                 np.NaN,
             )
+            r_timeseries[:] = result.compute()
             r_group = AnalysisData(
                 name=f"z_group_{i}_crd_numbers",
                 min=0,
