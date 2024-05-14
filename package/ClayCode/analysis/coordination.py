@@ -2,25 +2,22 @@
 from __future__ import annotations
 
 import logging
-import pickle as pkl
 import sys
 import tempfile
 import warnings
 from argparse import ArgumentParser
 from pathlib import Path
-from typing import Any, List, Literal, NoReturn, Optional, Union
+from typing import Any, Literal, NoReturn, Optional, Union
 
 import dask
-import MDAnalysis as mda
 import numpy as np
+import pandas as pd
 import zarr
 from ClayCode.analysis.analysisbase import AnalysisData, ClayAnalysisBase
 from ClayCode.analysis.classes import get_edge_fname, read_edge_file
 from ClayCode.analysis.consts import PE_DATA
 from ClayCode.analysis.lib import (
     check_traj,
-    exclude_xyz_cutoff,
-    exclude_z_cutoff,
     get_dist,
     get_selections,
     process_box,
@@ -29,14 +26,11 @@ from ClayCode.analysis.lib import (
 from ClayCode.analysis.utils import get_paths
 from ClayCode.analysis.zdist import ZDens
 from ClayCode.builder.utils import get_checked_input, select_input_option
+from ClayCode.core.consts import ANGSTROM
 from ClayCode.core.utils import get_ls_files, get_subheader
 from MDAnalysis import Universe
 from MDAnalysis.core.groups import AtomGroup
-from MDAnalysis.lib.distances import (
-    apply_PBC,
-    distance_array,
-    self_distance_array,
-)
+from MDAnalysis.lib.distances import apply_PBC
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -47,7 +41,7 @@ logger = logging.getLogger(Path(__file__).stem)
 
 class CrdDist(ClayAnalysisBase):
     _attrs = ["rdf", "z_groups", "crd_numbers"]
-    _abs = [True, True]
+    _abs = [True, True, True]
     _name = "coordination number and distance analysis"
 
     def __init__(
@@ -123,6 +117,11 @@ class CrdDist(ClayAnalysisBase):
                 logger.finfo(
                     f"Using edge file {str(edge_file.name)!r}", indent="\t"
                 )
+            # elif (PE_DATA / edge_file).is_file():
+            #     logger.finfo(
+            #         f"Using edge file {str(edge_file.name)!r}", indent="\t"
+            #     )
+            #     edge_file = PE_DATA / edge_file
             else:
                 edge_file = PE_DATA / edge_file.with_suffix(".p").name
                 if edge_file.is_file():
@@ -230,17 +229,36 @@ class CrdDist(ClayAnalysisBase):
                     cutoff = z_cutoff = np.rint(edges[-1])
                 else:
                     cutoff = r_cutoff = edges[-2]
+            elif edge_type == "r" and r_cutoff > edges[-2]:
+                cutoff = r_cutoff = edges[-2]
             edges = edges[edges > 0]
             while edges[-1] > cutoff:
                 edges = edges[:-1]
             if edges[-1] < cutoff:
                 edges = np.append(edges, cutoff)
             setattr(self, f"_{edge_type}_edges", edges)
+            logger.finfo(
+                f"Will use the following {edge_type}-cutoff and {edge_type}-edges:"
+            )
+            logger.finfo(
+                f"{cutoff:2.2f} {ANGSTROM}",
+                kwd_str=f"Cutoff: ",
+                indent="\t",
+            )
+            logger.finfo(
+                "["
+                + ", ".join(list(map(lambda x: f"{x:2.2f}", edges)))
+                + "] "
+                + f"{ANGSTROM}",
+                kwd_str=f"Edges: ",
+                indent="\t",
+            )
             # self._attrs.extend([f"{edge_type}_group_{edge}" for edge in range(len(edges))])
             setattr(self, f"_{edge_type}_n_bins", n_bins)
             setattr(self, f"_{edge_type}_bin_step", bin_step)
             setattr(self, f"_{edge_type}_cutoff", cutoff)
         self._attrs.extend(["crd_numbers", "rdf"])
+
         # if z_edges is None:
         #     z_edge_file = get_edge_fname(atom_type=self.sel.resnames[0], cutoff=z_cutoff, bins=z_bin_step, name="edges")
         # if type(z_edges) == str:
@@ -341,6 +359,18 @@ class CrdDist(ClayAnalysisBase):
                     f"{self.__class__.__name__.lower()}_"
                     f"{self.sysname}_{self.sel.resnames[0]}_{self.other.resnames[0]}"
                 )
+        if type(self.save) in [bool, None]:
+            savename = f"{self.sysname}_{self.sel.resnames[0]}_{self.other.atoms.names[0]}"
+        else:
+            savename = self.save
+        # self._temp_store_path = Path(savename).parent
+        self._temp_store_path = tempfile.TemporaryDirectory(
+            prefix=Path(f".{savename}_temp").name,
+            dir=Path(savename).parent,
+        )
+        self._temp_file = tempfile.NamedTemporaryFile(
+            dir=self._temp_store_path.name, prefix="temp_file", delete=False
+        )
         check_traj(self, check_traj_len)
         self._guess_steps = guess_steps  # print(datargs.files, data['edge_file'].shape)  # cutoff = np.ravel(self.edge_file),  # cutoff = np.rint(np.max(np.ravel(self.edge_file)))  # if r_cutoff is None:  #     self.r_cutoff = np.array([*np.max(self.sel.universe.dimensions[:2]), 5.0])  # elif type(r_cutoff) in [int, float]:  #     self.r_cutoff = np.array([float(r_cutoff) for c in range(3)])  # elif type(r_cutoff) == list and len(r_cutoff) == 3:  #     self.r_cutoff = np.array(r_cutoff)  # else:  #     raise ValueError('Wrong type or length for cutoff!')  # self.r_cutoff = self.r_cutoff.astype(np.float64)  # print('r cutoff', self.r_cutoff)  # self.save = save  # if self.save is False:  #     pass  # else:  #     if type(self.save) == bool:  #         self.save = (  #             f"{self.__class__.__name__.lower()}_"  #             f"{self.sysname}_{self.sel.resnames[0]}"  #         )  # self._other_dist_f = distance_array  # self._provide_args = lambda: self.sel.positions, self.other.positions
 
@@ -360,15 +390,17 @@ class CrdDist(ClayAnalysisBase):
             if type(zdist) == str:
                 zdist = Path(zdist)
             if zdist is None or not Path(zdist).is_file():
+                if zdist is None:
+                    zdist = Path(self.sysname)
                 zdist = ZDens(
-                    sysname=sysname,
+                    sysname=zdist.name,
                     sel=sel,
                     clay=clay,
                     n_bins=self._z_n_bins,
                     bin_step=self._z_bin_step,
                     cutoff=self._z_cutoff,
-                    save=False,
-                    write=self.zdist,
+                    save=True,
+                    write=True,
                     overwrite=overwrite,
                 )
                 run_analysis(
@@ -467,8 +499,8 @@ class CrdDist(ClayAnalysisBase):
             )
             self.diag_mask = np.bitwise_or.accumulate(diag_mask, axis=2).copy()
 
-    @staticmethod
     def get_ads_groups(
+        self,
         distance_timeseries: Union[zarr.core.Array, np.ndarray],
         edges: Union[list, np.ndarray],
         dest: Optional[Union[zarr.core.Array, np.ndarray]] = None,
@@ -482,34 +514,34 @@ class CrdDist(ClayAnalysisBase):
         # :return: numpy array with group indices
         # :rtype: numpy array
         # """
-        if type(distance_timeseries) == zarr.core.Array:
+        try:
             dask_timeseries = dask.array.from_zarr(distance_timeseries)
-        else:
+        except ValueError:
             dask_timeseries = dask.array.from_array(
                 np.array(distance_timeseries)
             )
+        else:
+            if dest is None:
+                dest = Path(distance_timeseries).with_stem(
+                    f"ads_groups_{distance_timeseries.stem}"
+                )
+
+        # if type(distance_timeseries) == zarr.core.Array:
+        #     dask_timeseries = dask.array.from_zarr(distance_timeseries)
+        # else:
+        #     dask_timeseries = dask.array.from_array(
+        #         np.array(distance_timeseries)
+        #     )
         if dest is None:
-            if type(distance_timeseries) == zarr.core.Array:
-                store = zarr.storage.TempStore(
-                    dir=distance_timeseries.store.path, prefix="ads_groups"
-                )
-                dest = zarr.empty(
-                    distance_timeseries.shape,
-                    store=store,
-                    chunks=distance_timeseries.chunks,
-                    dtype=np.int32,
-                )
-            else:
-                dest = np.empty_like(distance_timeseries, dtype=np.int32)
+            dest = (
+                Path(self._temp_store_path.name) / "ads_groups.zarr"
+            )  # if type(distance_timeseries) == zarr.core.Array:  #     store = zarr.storage.TempStore(  #         dir=distance_timeseries.store.path, prefix="ads_groups"  #     )  #     dest = zarr.empty(  #         distance_timeseries.shape,  #         store=store,  #         chunks=distance_timeseries.chunks,  #         dtype=np.int32,  #     )  # else:  #     dest = np.empty_like(distance_timeseries, dtype=np.int32)
         # if type(dest) == zarr.core.Array:
         # dest = dask.array.from_zarr(dest)
         result = dask.array.digitize(dask_timeseries, edges)
         result = dask.array.where(result != len(edges), result, np.NaN)
-        dest[:] = result.compute()
-        # else:
-        #     dest[:] = np.digitize(distance_timeseries[:], edges)
-        #     dest[:] = np.where(dest[:] != len(edges), dest, np.NaN)
-        return dest
+        result.to_zarr(dest, overwrite=True, compute=True)
+        return dest  # else:  #     dest[:] = np.digitize(distance_timeseries[:], edges)  #     dest[:] = np.where(dest[:] != len(edges), dest, np.NaN)  # return dest
 
     def _single_frame(self) -> NoReturn:
         # self._edge_numbers = np.digitize(self.zdata[self._frame_index], self._z_edges)
@@ -578,96 +610,134 @@ class CrdDist(ClayAnalysisBase):
             f"Grouping RDF data by adsorption shell on clay surface.",
             initial_linebreak=True,
         )
-        if type(self.save) in [bool, None]:
-            savename = f"{self.sysname}_{self.sel.resnames[0]}_{self.other.atoms.names[0]}"
-        else:
-            savename = self.save
-        self._temp_store_path = tempfile.TemporaryDirectory(
-            prefix=Path(f".{savename}_temp").name,
-            dir=Path(savename).parent,
-        )
-        self._temp_file = tempfile.NamedTemporaryFile(
-            dir=self._temp_store_path.name, prefix="temp_file", delete=False
-        )
-        rdf_save = zarr.storage.TempStore(
-            dir=self._temp_store_path.name, prefix="rdf"
-        )
-        timeseries = zarr.empty(
-            (self.n_frames, self.sel_n_atoms, self.other_n_atoms),
-            store=rdf_save,
-            dtype=np.float32,
-            chunks=(True, -1, -1),
-        )
-        timeseries = dask.array.from_zarr(timeseries)
-        timeseries_data = dask.delayed(
-            self.data["rdf"].timeseries, nout=1, pure=True, traverse=False
-        )
-        timeseries[:] = dask.array.from_delayed(
-            timeseries_data, dtype=timeseries.dtype, shape=timeseries.shape
-        )
-        self.data["rdf"].timeseries = timeseries
-        save = zarr.storage.TempStore(
-            dir=self._temp_store_path.name, prefix="crd_numbers"
-        )
-        timeseries = zarr.empty(
-            (self.n_frames, self.sel_n_atoms, self.other_n_atoms),
-            store=save,
-            dtype=np.float32,
-            chunks=(True, -1, -1),
-        )
+
+        rdf_save = Path(self._temp_file.name).with_name("rdf_save.zarr")
+        # rdf_save = zarr.storage.TempStore(
+        #     dir=self._temp_store_path.name, prefix="rdf"
+        # )
+        chunks = (True, -1, -1)
+        timeseries = dask.array.stack(self.data["rdf"].timeseries)
+        # timeseries = zarr.empty(
+        #     (self.n_frames, self.sel_n_atoms, self.other_n_atoms),
+        #     store=rdf_save,
+        #     dtype=np.float32,
+        #     chunks=(True, -1, -1),
+        # )
+        # timeseries_data = dask.array.from_zarr(timeseries)
+        # timeseries_data = dask.bag.from_sequence(
+        #     self.data["rdf"].timeseries, n_partitions=self.n_frames
+        # )
+        # timeseries_data = dask.array.from_np(
+        #     timeseries_data,
+        #     dtype=timeseries.dtype,
+        #     shape=timeseries.shape,
+        # ).compute()
+        timeseries.to_zarr(rdf_save, overwrite=True, compute=True)
+        self.data["rdf"].timeseries = rdf_save  # timeseries_data.to_zarr(
+        #     self.data["rdf"].timeseries.store,
+        #     overwrite=True,
+        #     return_stored=True,
+        #     compute=True,
+        #     url=rdf_save.path,
+        # )
+        # save = zarr.storage.TempStore(
+        #     dir=self._temp_store_path.name, prefix="crd_numbers"
+        # )
+        # timeseries = zarr.empty(
+        #     (self.n_frames, self.sel_n_atoms, self.other_n_atoms),
+        #     store=save,
+        #     dtype=np.float32,
+        #     chunks=(True, -1, -1),
+        # )
         timeseries = self.get_ads_groups(
-            self.data["rdf"].timeseries, self._r_edges, timeseries
+            self.data["rdf"].timeseries,
+            self._r_edges,  # timeseries
         )
         self._manual_conclude("crd_numbers", timeseries, use_abs=True)
+        self.data["crd_numbers"].df["labels"] = [
+            pd.Interval([0, *self._r_edges][i], x)
+            for (i, x) in enumerate(np.round(self._r_edges, 2))
+        ]
+        if self.save is not False:
+            self.data["crd_numbers"].save(
+                self.save,
+                sel_names=np.unique(self.sel.names),
+                n_atoms=self.sel.n_atoms,
+                n_frames=self.n_frames,
+                other=np.unique(self.other.names),
+                n_other_atoms=self.other.n_atoms,
+                rdf_edges=self._r_edges,
+            )
         prev = 0
         for i, edge in enumerate([*self._z_edges]):
-            save = zarr.storage.TempStore(
-                dir=self._temp_store_path.name, prefix=f"z_group_{i}"
-            )
-            timeseries = zarr.full_like(
-                np.array(self.data["rdf"].timeseries),
-                store=save,
-                fill_value=np.NaN,
-                chunks=(True, -1, -1),
-                dtype=np.float32,
-            )
+            save = Path(self._temp_store_path.name) / f"z_group_{i}.zarr"
+            # print(save)
+            # save = zarr.storage.TempStore(
+            #     dir=self._temp_store_path.name, prefix=f"z_group_{i}"
+            # )
+            # timeseries = zarr.full_like(
+            #     np.array(self.data["rdf"].timeseries),
+            #     store=save,
+            #     fill_value=np.NaN,
+            #     chunks=(True, -1, -1),
+            #     dtype=np.float32,
+            # )
+            ts_data = dask.array.from_zarr(self.data["z_groups"].timeseries)
             result = dask.array.where(
-                dask.array.from_array(self.data["z_groups"].timeseries)[
-                    :, :, np.newaxis
-                ]
-                == i,
+                ts_data[:, :, np.newaxis] == i,
                 dask.array.from_zarr(self.data["rdf"].timeseries),
                 np.NaN,
             )
-            timeseries[:] = result.compute()
-            self.data[f"z_group_{i}"].timeseries = timeseries
+            # timeseries[:] = result.compute()
+            result.to_zarr(save, overwrite=True, compute=True)
+            # self.data[f"z_group_{i}"].timeseries = save
+            self._manual_conclude(f"z_group_{i}", save, use_abs=True)
             logger.finfo(
                 f'"z_group_{i}"',
                 kwd_str=f"{prev:.1f} <= z < {edge:.2f}: ",
                 indent="\t",
+                initial_linebreak=True,
             )
+            if self.save is not False:
+                self.data[f"z_group_{i}"].save(
+                    self.save,
+                    sel_names=np.unique(self.sel.names),
+                    n_atoms=self.sel.n_atoms,
+                    n_frames=self.n_frames,
+                    other=np.unique(self.other.names),
+                    n_other_atoms=self.other.n_atoms,
+                    z_range=f"{prev:.1f} <= z < {edge:.2f}",
+                )
             # self.data[f"z_group_{i}"].sel_counts = self.get_counts(timeseries[:])
             # self.data[f"z_group_{i}"].crd_counts = self.get_crd_numbers(timeseries[:])
             # r_groups = {}
             prev_r = 0
             # z_group_r_groups = self.get_ads_groups(timeseries[:], self._r_edges)
-            r_save = zarr.storage.TempStore(
-                dir=self._temp_store_path.name,
-                prefix=f"z_group_{i}_crd_numbers",
+            # r_save = zarr.storage.TempStore(
+            #     dir=self._temp_store_path.name,
+            #     prefix=f"z_group_{i}_crd_numbers",
+            # )
+            r_save = (
+                Path(self._temp_store_path.name) / f"z_group_{i}_crd_numbers"
             )
-            r_timeseries = zarr.full_like(
-                np.array(self.data["rdf"].timeseries),
-                store=r_save,
-                fill_value=np.NaN,
-                chunks=(True, -1, -1),
-                dtype=np.float32,
+            # r_timeseries = zarr.full_like(
+            #     np.array(self.data["rdf"].timeseries),
+            #     store=r_save,
+            #     fill_value=np.NaN,
+            #     chunks=(True, -1, -1),
+            #     dtype=np.float32,
+            # )
+            r_ts_data = dask.array.from_zarr(
+                self.data["crd_numbers"].timeseries
             )
             result = dask.array.where(
-                dask.array.from_zarr(timeseries) >= 0,
-                dask.array.from_zarr(self.data["crd_numbers"].timeseries),
+                dask.array.from_zarr(save) >= 0,
+                r_ts_data,
                 np.NaN,
             )
-            r_timeseries[:] = result.compute()
+            # r_timeseries[:] = result.compute()
+            # print(r_save)
+            result.to_zarr(r_save, overwrite=True, compute=True)
             r_group = AnalysisData(
                 name=f"z_group_{i}_crd_numbers",
                 min=0,
@@ -676,7 +746,25 @@ class CrdDist(ClayAnalysisBase):
                 verbose=False,
             )
             self.data[r_group.name] = r_group
-            self._manual_conclude(r_group.name, r_timeseries, use_abs=True)
+            # self._manual_conclude(r_group.name, r_timeseries, use_abs=True)
+            self._manual_conclude(r_group.name, r_save, use_abs=True)
+            self.data[r_group.name].df["labels"] = [
+                pd.Interval([0, *self._r_edges][i], x)
+                for (i, x) in enumerate(np.round(self._r_edges, 2))
+            ]
+            if self.save is not False:
+                self.data[r_group.name].save(
+                    self.save,
+                    sel_names=np.unique(self.sel.names),
+                    n_atoms=self.sel.n_atoms,
+                    n_frames=self.n_frames,
+                    other=np.unique(self.other.names),
+                    n_other_atoms=self.other.n_atoms,
+                    z_range=f"{prev:.1f} <= z < {edge:.2f}",
+                    rdf_edges=self._r_edges,
+                )
+            self.data.pop(f"z_group_{i}")
+            self.data.pop(r_group.name)
             # for j, r_edge in enumerate([*self._r_edges[:-1]]):
             #     r_save = zarr.storage.TempStore(dir=self._temp_store_path.name, prefix=f"r_group_{i}")
             #     r_timeseries = zarr.full_like(np.array(self.data["rdf"].timeseries), store=r_save, fill_value=np.NaN, chunks=(True, -1, -1), dtype=np.float32,)
@@ -696,6 +784,8 @@ class CrdDist(ClayAnalysisBase):
         # self.data['rdf'].sel_counts = self.get_counts(self.data['rdf'].timeseries[:])
         # self.data['rdf'].crd_counts = self.get_crd_numbers(self.data['rdf'].timeseries)
 
+        self.data.pop("crd_numbers")  # self.data.pop('z_groups')
+
     def _manual_conclude(self, data_name, timeseries, use_abs=True):
         self.data[data_name].timeseries = timeseries
         self.data[data_name].get_hist_data(use_abs=use_abs)
@@ -714,8 +804,9 @@ class CrdDist(ClayAnalysisBase):
         for i, edge in enumerate(self._r_edges):
             ts = np.where(edge_groups == i, timeseries, np.NaN)
             ts = np.where(np.isnan(ts), 0, 1)
-            counts = np.any(ts > 0, axis=1)
-            print(f"r_group_{i}", np.nanmean(ts, axis=0))
+            counts = np.any(
+                ts > 0, axis=1
+            )  # print(f"r_group_{i}", np.nanmean(ts, axis=0))
         counts = np.count_nonzero(ts, axis=2)
         return counts  # nan_fill = np.where(np.isnan(timeseries), 0, timeseries)  # counts = np.count_nonzero(nan_fill, axis=2)  # coordination_numbers = np.apply_along_axis(lambda x: np.extract(x > 0, x).size, axis=0, arr=timeseries  # coordination_numbers = np.nansum(timeseries > 0, axis=0)  # has_coordination = np.any(timeseries > 0, axis=0)  # coordination_numbers = np.apply_along_axis(lambda x: np.extract(x > 0, x).size, axis=0, arr=has_coordination)  # return coordination_numbers
 
@@ -917,7 +1008,10 @@ if __name__ == "__main__":
     sysname = args.sysname
 
     gro, trr, path = get_paths(
-        infiles=args.infiles, inpname=args.inpname, path=args.path
+        infiles=args.infiles,
+        inpname=args.inpname,
+        path=args.path,
+        traj_suffix="xtc",
     )
 
     logger.finfo(f"{sysname!r}", kwd_str=f"System name: ")
@@ -976,6 +1070,8 @@ if __name__ == "__main__":
         clay_type=args.clay_type,
         other=args.other,
         in_memory=args.in_mem,
+        separate_ob_oh_surfaces=False,
+        only_surface=True,
     )
 
     if args.save == "True":
@@ -1002,5 +1098,6 @@ if __name__ == "__main__":
         r_bin_step=args.r_bin_step,
         r_cutoff=args.r_cutoff,
         check_traj_len=args.check_traj_len,
+        r_edges=args.r_edges,
     )
     run_analysis(dist, start=args.start, stop=args.stop, step=args.step)

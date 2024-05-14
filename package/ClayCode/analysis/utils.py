@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess as sp
+import sys
 from functools import singledispatch
 from itertools import chain
 from pathlib import Path
@@ -16,7 +17,7 @@ import numpy as np
 import pandas as pd
 from ClayCode.core.classes import Dir, File, GROFile, PathType
 from ClayCode.core.consts import exec_date, exec_time
-from ClayCode.core.utils import get_header
+from ClayCode.core.utils import convert_num_to_int, get_header
 from numpy._typing import NDArray
 from tqdm.contrib.logging import logging_redirect_tqdm
 
@@ -37,7 +38,6 @@ __all__ = [
     "get_search_str",
     "convert_str_list_to_arr",
     "select_file",
-    "select_named_file",
     "redirect_tqdm",
 ]
 
@@ -261,18 +261,6 @@ def change_suffix(path: Path, new_suffix: str):
     return path.parent / f'{path.stem}.{new_suffix.strip(".")}'
 
 
-def convert_num_to_int(f):
-    def wrapper(number: Union[int, float]):
-        if type(number) not in [float, int, np.int_, np.float_]:
-            raise TypeError(
-                f"Expected float or int type, found {type(number)}!"
-            )
-        else:
-            return f(int(np.round(number, 0)))
-
-    return wrapper
-
-
 def get_sequence_element(f):
     def wrapper(seq, id=0):
         try:
@@ -393,66 +381,6 @@ def copy_final_setup(outpath: Path, tmpdir: Path, rm_tempfiles: bool = True):
     if rm_tempfiles:
         shutil.rmtree(tmpdir)
     return tuple(new_files)
-
-
-def select_named_file(
-    path: Union[Path, str],
-    searchstr: Optional[str] = None,
-    suffix=None,
-    searchlist: List[str] = ["*"],
-    how: Literal["latest", "largest"] = "latest",
-):
-    path = Path(path)
-    if suffix is None:
-        suffix = ""
-    if searchstr is None:
-        searchstr = ""
-    f_iter = list(
-        path.glob(rf"*{searchstr.strip('*')}[.]*{suffix.strip('.')}")
-    )
-    searchlist = list(
-        map(
-            lambda x: rf'.*{searchstr}{x.strip("*")}[.]*{suffix.strip(".")}',
-            searchlist,
-        )
-    )
-    searchstr = "|".join(searchlist)
-    pattern = re.compile(rf"{searchstr}", flags=re.DOTALL)
-    f_list = [
-        path / pattern.search(f.name).group(0)
-        for f in f_iter
-        if pattern.search(f.name) is not None
-    ]
-    if len(f_list) == 1:
-        match = f_list[0]
-    elif len(f_list) == 0:
-        match = None
-    else:
-        logger.error(
-            f"Found {len(f_list)} matches: "
-            + ", ".join([f.name for f in f_list])
-        )
-        check_func_dict = {
-            "latest": lambda x: x.st_mtime,
-            "largest": lambda x: x.st_size,
-        }
-        check_func = check_func_dict[how]
-        prev_file_stat = 0
-        last_file = None
-        for file in f_list:
-            if file.is_dir():
-                pass
-            else:
-                if last_file is None:
-                    last_file = file
-                filestat = os.stat(file)
-                last_file_stat = check_func(filestat)
-                if last_file_stat > prev_file_stat:
-                    prev_file_stat = last_file_stat
-                    last_file = file
-        match = last_file
-        logger.info(f"{how} file: {match.name!r}")
-    return match
 
 
 def select_file(
@@ -602,6 +530,7 @@ def get_paths(
     path: Union[str, PathType] = None,
     infiles: List[Union[PathType, str]] = None,
     inpname: str = None,
+    traj_suffix="trr",
 ):
     logger.info(get_header(f"Getting run files"))
     if path is not None:
@@ -609,7 +538,7 @@ def get_paths(
         if infiles is None:
             gro = select_file(path=path, suffix="gro", searchstr=inpname)
             trr = select_file(
-                path=path, suffix="trr", how="largest", searchstr=inpname
+                path=path, suffix=traj_suffix, how="largest", searchstr=inpname
             )
         else:
             gro = select_file(
@@ -617,7 +546,7 @@ def get_paths(
             )
             trr = select_file(
                 path=path,
-                suffix="trr",
+                suffix=traj_suffix,
                 how="largest",
                 searchstr=infiles[1].strip(".gro"),
             )
@@ -625,8 +554,14 @@ def get_paths(
         gro, trr = infiles
         gro, trr = GROFile(gro), File(trr)
         path = Dir(gro.parent)
-    logger.finfo(f"{str(gro.resolve())!r}", kwd_str="Found coordinates: ")
-    logger.finfo(f"{str(trr.resolve())!r}", kwd_str="Found trajectory: ")
+    for file_type, file in zip(["coordinate", "trajectory"], [gro, trr]):
+        try:
+            logger.finfo(
+                f"{str(file.resolve())!r}", kwd_str=f"Found {file_type} file: "
+            )
+        except AttributeError:
+            logger.finfo(f"No file {str(file.resolve())!r} found.")
+            sys.exit(1)
     return gro, trr, path
 
 

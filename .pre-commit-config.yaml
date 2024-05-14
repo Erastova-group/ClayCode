@@ -1,7 +1,7 @@
 stages: [pre-commit, pre-push, pre-merge-commit, manual]
 repos:
   - repo: https://github.com/psf/black
-    rev: 23.3.0
+    rev: 23.9.1
     hooks:
       - id: black
   - repo: https://github.com/PyCQA/isort
