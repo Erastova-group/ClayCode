@@ -91,7 +91,7 @@ test = ["pytest>=6.0",
     "pytest-cov>=3.0",
 ]
 [tool.dev-dependencies]
-    black = ">=21.4b2"
+    black = ">=23.9.1"
     flake8 = ">=3.9.2"
     isort = ">=5.9.3"
     mypy = ">=0.910"
