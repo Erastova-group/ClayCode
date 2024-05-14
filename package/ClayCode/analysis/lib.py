@@ -241,6 +241,58 @@ def get_selections(
 #         return sel, clay
 
 
+@overload
+def get_selections(
+    infiles: Sequence[Union[str, Path, PosixPath]],
+    sel: Sequence[str],
+    clay_type: str,
+    other: Sequence[str],
+    separate_ob_oh_surfaces: Literal[True],
+    only_surface: bool,
+    in_memory: bool,
+) -> Tuple[AtomGroup, Tuple[AtomGroup, AtomGroup], AtomGroup]:
+    ...
+
+
+@overload
+def get_selections(
+    infiles: Sequence[Union[str, Path, PosixPath]],
+    sel: Sequence[str],
+    clay_type: str,
+    other: Sequence[str],
+    separate_ob_oh_surfaces: Literal[False],
+    only_surface: bool,
+    in_memory: bool,
+) -> Tuple[AtomGroup, AtomGroup, AtomGroup]:
+    ...
+
+
+@overload
+def get_selections(
+    infiles: Sequence[Union[str, Path, PosixPath]],
+    sel: Sequence[str],
+    clay_type: str,
+    other: None,
+    separate_ob_oh_surfaces: Literal[False],
+    only_surface: bool,
+    in_memory: bool,
+) -> Tuple[AtomGroup, AtomGroup]:
+    ...
+
+
+@overload
+def get_selections(
+    infiles: Sequence[Union[str, Path, PosixPath]],
+    sel: Sequence[str],
+    clay_type: str,
+    other: None,
+    separate_ob_oh_surfaces: Literal[True],
+    only_surface: bool,
+    in_memory: bool,
+) -> Tuple[AtomGroup, Tuple[AtomGroup, AtomGroup]]:
+    ...
+
+
 def get_selections(
     infiles,
     sel,
@@ -248,6 +300,7 @@ def get_selections(
     other=None,
     separate_ob_oh_surfaces=True,
     only_surface=False,
+    lt_zero=False,
     in_memory=False,
 ):
     """Get MDAnalysis atom groups for clay, first and optional second selection.
@@ -308,11 +361,17 @@ def get_selections(
         other = u.select_atoms(f"resname {other[0]}* and name {other[1]}")
     else:
         raise ValueError('Expected 1 or 2 arguments for "other"')
-    clay = u.select_atoms(f"resname {clay_type}* and name OB* ob* O* o*")
+    if not lt_zero:
+        clay = u.select_atoms(f"resname {clay_type}* and name OB* ob* O* o*")
+    else:
+        clay = u.select_atoms(
+            f"resname {clay_type}* and name OB* ob* O* o* FEO* AO* MGO* FE2* FET* AT* ST*"
+        )
     # logger.finfo(
     #     f"'clay': Selected {clay.n_atoms} atoms of "
     #     f"{clay.n_residues}  unit cells"
     # )
+
     if separate_ob_oh_surfaces:
         clay_metal_atoms = u.select_atoms(
             f"resname {clay_type}* and name FEO* AO* MGO* FE2* FET* AT* ST*"
@@ -323,7 +382,7 @@ def get_selections(
             f"name OB* ob* OX* ox* and (prop z > {clay_o_z_max} or prop z < {clay_o_z_min})"
         )
         clay_oh_surface = clay.select_atoms(
-            f"name OH* oh* and (prop z > {max(clay_o_z_max, np.max(clay_ob_surface.positions[:, 2]))} or prop z < {min(clay_o_z_min, np.min(clay_ob_surface.positions[:, 2]))})"
+            f"name OH* oh* and (prop z >= {max(clay_o_z_max, np.max(clay_ob_surface.positions[:, 2])) - 0.2} or prop z < {min(clay_o_z_min, np.min(clay_ob_surface.positions[:, 2]))  + 0.2})"
         )
         clay_ag = (clay_ob_surface, clay_oh_surface)
         log_atomgroup_info(
@@ -336,31 +395,56 @@ def get_selections(
             ag_name=f"{clay_type}: OH surface",
             kwd_str="Clay unit cell surface type",
         )
-    elif only_surface:
+    elif only_surface or lt_zero:
         clay_metal_atoms = u.select_atoms(
-            f"resname {clay_type}* and name FEO* AO* MGO* FE2* FET* AT* ST*"
+            f"resname {clay_type}* and name FEO* AO* MGO* FE2* AT* ST*"
         )
         clay_o_z_min = np.min(clay_metal_atoms.positions[:, 2])
         clay_o_z_max = np.max(clay_metal_atoms.positions[:, 2])
-        clay_ag = clay.select_atoms(
-            f"prop z > {clay_o_z_max} or prop z < {clay_o_z_min}"
-        )
-        log_atomgroup_info(
-            ag=clay_ag,
-            ag_name=f"{clay_type} surface",
-            kwd_str="Clay unit cell surface",
-        )
+        if not lt_zero:
+            clay_ag = clay.select_atoms(
+                f"prop z >= {clay_o_z_max - 0.2} or prop z <= {clay_o_z_min + 0.2}"
+            )
+            log_atomgroup_info(
+                ag=clay_ag,
+                ag_name=f"{clay_type} surface",
+                kwd_str="Clay unit cell surface",
+            )
+        else:
+            ag_top = clay.select_atoms(
+                f"name o* O* and prop z >= {clay_o_z_max - 0.2}"
+            )
+            ag_bottom = clay.select_atoms(
+                f"name o* O* and prop z <= {clay_o_z_min + 0.2}"
+            )
+            clay_ag = (ag_top, ag_bottom)
+            log_atomgroup_info(
+                ag=ag_top,
+                ag_name=f"{clay_type} top surface",
+                kwd_str="Clay unit cell surface",
+            )
+            log_atomgroup_info(
+                ag=ag_bottom,
+                ag_name=f"{clay_type} bottom surface",
+                kwd_str="Clay unit cell surface",
+            )
     else:
         log_atomgroup_info(
             ag=clay, ag_name=clay_type, kwd_str="Clay unit cell type"
         )
         clay_ag = clay
-    sel = select_outside_clay_stack(sel, clay)
+    if not lt_zero:
+        sel = select_outside_clay_stack(sel, clay)
+    else:
+        sel = select_outside_octahedral_sheets(sel, clay)
     # Clay + two other atom groups selected
     log_atomgroup_info(ag=sel, ag_name=sel_str, kwd_str="Atom selection")
 
     if other is not None:
-        other = select_outside_clay_stack(other, clay)
+        if not lt_zero:
+            other = select_outside_clay_stack(other, clay)
+        else:
+            other = select_outside_octahedral_sheets(other, clay)
         log_atomgroup_info(
             ag=other, ag_name=other_str, kwd_str="Second atom selection"
         )
@@ -409,6 +493,19 @@ def select_outside_clay_stack(atom_group: AtomGroup, clay: AtomGroup):
     atom_group = atom_group.select_atoms(
         f" prop z >= {np.max(clay.positions[:, 2] - 1)} or"
         f" prop z <= {np.min(clay.positions[:, 2] + 1)}"
+    )
+    logger.info(
+        f"'atom_group': Selected {atom_group.n_atoms} atoms of names: {np.unique(atom_group.names)} "
+        f"(residues: {np.unique(atom_group.resnames)})"
+    )
+    return atom_group
+
+
+def select_outside_octahedral_sheets(atom_group: AtomGroup, clay: AtomGroup):
+    octahedral_sheet = clay.select_atoms("name FEO* AO* MGO* FE2*")
+    atom_group = atom_group.select_atoms(
+        f" prop z >= {np.max(octahedral_sheet.positions[:, 2] - 1)} or"
+        f" prop z <= {np.min(octahedral_sheet.positions[:, 2] + 1)}"
     )
     logger.info(
         f"'atom_group': Selected {atom_group.n_atoms} atoms of names: {np.unique(atom_group.names)} "
@@ -626,17 +723,19 @@ def process_triclinic(
 
 def select_cyzone(
     distances: MaskedArray,
-    z_dist: float,
+    max_z_dist: float,
     xy_rad: float,
     mask_array: MaskedArray,
+    min_z_dist: float = 0.0,
+    absolute: bool = False,
 ) -> None:
     """
     Select all distances corresponding to atoms within a cylindrical volume
     of dimensions +- z_dist and radius xy_rad
     :param distances: masked interatomic distance array of shape (n, m, 3)
     :type distances: MaskedArray[np.float64]
-    :param z_dist: absolute value for cutoff in z direction
-    :type z_dist: float
+    :param max_z_dist: absolute value for cutoff in z direction
+    :type max_z_dist: float
     :param xy_rad: absolute value for radius in xy plane
     :type xy_rad: float
     :param mask_array: array for temporary mask storage of shape (n, m)
@@ -645,7 +744,12 @@ def select_cyzone(
     :rtype: NoReturn
     """
     z_col = distances[:, :, 2]
-    z_col.mask = np.abs(distances[:, :, 2]) > z_dist
+    if absolute:
+        z_col.mask = np.abs(distances[:, :, 2]) > max_z_dist
+    else:
+        z_col.mask = np.logical_or(
+            distances[:, :, 2] > max_z_dist, distances[:, :, 2] < min_z_dist
+        )
     distances.mask = np.broadcast_to(
         z_col.mask[:, :, np.newaxis], distances.shape
     )
@@ -808,27 +912,6 @@ def update_universe(f):
         return u
 
     return wrapper
-
-
-def get_n_mols(
-    conc: Union[float, int],
-    u: Universe,
-    solvent: str = SOL,
-    density: float = SOL_DENSITY,  # g/dm^3
-):
-    sol = u.select_atoms(f"resname {solvent}")
-    m = np.sum(sol.masses)  # g
-    V = m / density  # L
-    n_mols = conc * V
-    n_mols = np.round(n_mols).astype(int)
-    logger.info(
-        "Calculating molecule numbers:\n"
-        f"Target concentration = {conc:.3f} mol L-1\n"
-        f"Bulk volume = {V:.2f} A3\n"
-        f"Density = {density:.2f} g L-1\n"
-        f"Molecules to add = {n_mols}\n"
-    )
-    return n_mols
 
 
 def write_insert_dat(

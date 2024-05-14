@@ -297,7 +297,7 @@ class AnalysisData(UserDict):
         cutoff=None,
         bin_step=None,
         n_bins=None,
-        min=0.0,
+        min=0,
         verbose=True,
         n_frames=None,
     ):
@@ -320,12 +320,15 @@ class AnalysisData(UserDict):
             self.bin_step = self.__class__._default_bin_step
         elif self.bin_step is None:
             # print('bin_step None')
-            self.bin_step = self.cutoff / (self.n_bins)
+            self.bin_step = (self.cutoff + np.abs(self._min)) / (self.n_bins)
         elif self.n_bins is None:
             # print('n_bins None')
-            self.n_bins = np.rint(self.cutoff / self.bin_step)
+            self.n_bins = np.rint(
+                (self.cutoff + np.abs(self._min)) / self.bin_step
+            )
         if verbose:
             logger.info(get_subheader(f" Initialising {name!r} analysis"))
+            logger.finfo(f"{self._min:3.1f} {ANGSTROM}", kwd_str=f"min: ")
             logger.finfo(f"{self.cutoff:3.1f} {ANGSTROM}", kwd_str=f"cutoff: ")
             logger.finfo(f"{self.n_bins}", kwd_str=f"n_bins: ")
             logger.finfo(
@@ -356,8 +359,10 @@ class AnalysisData(UserDict):
         """Number of bins in data histogram"""
         if n_bins is not None:
             self._n_bins = int(n_bins)
-            if self.cutoff / self.n_bins != self.bin_step:
-                self.bin_step = self.cutoff / self.n_bins
+            if (
+                self.cutoff + np.abs(self._min)
+            ) / self.n_bins != self.bin_step:
+                self.bin_step = (self.cutoff + np.abs(self._min)) / self.n_bins
 
     @property
     def cutoff(self) -> float:
@@ -393,20 +398,32 @@ class AnalysisData(UserDict):
         :param use_abs: use absolute values of timeseries
         :type use_abs: bool
         """
+
+        if isinstance(self.timeseries, list):
+            data = dask.array.stack(self.timeseries)
+        elif isinstance(self.timeseries, np.ndarray):
+            data = dask.array.from_array(
+                self.timeseries, chunks=(True, -1, -1)
+            )
+        elif isinstance(self.timeseries, Path) or isinstance(
+            self.timeseries, str
+        ):
+            data = dask.array.from_zarr(self.timeseries)
         if n_frames is None:
-            n_frames = len(self.timeseries)
+            n_frames = len(data)
         else:
             n_frames = int(n_frames)
-        if type(self.timeseries) == zarr.core.Array:
-            chunks = self.timeseries.chunks
-        else:
-            chunks = (True,)
-        data = zarr.array(
-            np.ravel(self.timeseries),
-            chunks=True,
-            write_empty_chunks=False,
-        )
-        data = dask.array.from_zarr(data)
+
+        #
+        #     chunks = self.timeseries.chunks
+        # else:
+        #     chunks = (True,)
+        # data = zarr.array(
+        #     np.ravel(self.timeseries),
+        #     chunks=True,
+        #     write_empty_chunks=False,
+        # )
+        # data = dask.array.from_zarr(data)
         if use_abs == True:
             dask.array.abs(data, out=data)
         # if guess_min == True:
@@ -419,9 +436,11 @@ class AnalysisData(UserDict):
         # hist, _ = np.histogram(
         #     data[:], self.edges, range=(self._min, self.cutoff)
         # )
-        dask.array.divide(hist, n_frames, out=hist)
+        hist = hist.compute()
+        np.divide(hist, n_frames, out=hist, casting="unsafe")
+        # dask.array.divide(hist, n_frames, out=hist)
         # hist = hist / len(self.timeseries)
-        self.hist[:] = hist.compute()
+        self.hist[:] = hist
 
     def get_rel_data(
         self, other: analysis_data, use_abs=True, **kwargs
@@ -559,11 +578,18 @@ class AnalysisData(UserDict):
             self.df[self.name] = self.df[f"{self.name}_rel"]
             df_str = self.df[self.name].reset_index().to_string(index=False)
         else:
-            df_str = (
-                self.df.loc[:, [self.name, f"{self.name}_rel"]]
-                .reset_index()
-                .to_string(index=False)
-            )
+            if "labels" in self.df.columns:
+                df_str = (
+                    self.df.loc[:, [self.name, f"{self.name}_rel", "labels"]]
+                    .reset_index()
+                    .to_string(index=False)
+                )
+            else:
+                df_str = (
+                    self.df.loc[:, [self.name, f"{self.name}_rel"]]
+                    .reset_index()
+                    .to_string(index=False)
+                )
         outname = f"{savename}_{self.name}"
         with open(f"{outname}.dat", "w") as outfile:
             outfile.write(
@@ -816,8 +842,10 @@ class ClayAnalysisBase(object):
             v.get_df()
 
     def get_self_n_atoms(self, timeseries, data=None):
-        if type(timeseries) == list:
-            timeseries = zarr.array(timeseries, chunks=True)
+        if isinstance(timeseries, list):
+            timeseries = dask.array.stack(timeseries)
+        elif isinstance(timeseries, Path) or isinstance(timeseries, str):
+            timeseries = dask.array.from_zarr(timeseries)
         if timeseries.ndim == 2:
             sel_n_atoms = self.sel_n_atoms
         elif timeseries.ndim == 3:
@@ -831,12 +859,14 @@ class ClayAnalysisBase(object):
 
     @staticmethod
     def get_counts(timeseries: np.ndarray) -> np.ndarray:
-        if type(timeseries) == zarr.core.Array:
+        if isinstance(timeseries, list):
+            timeseries = dask.array.stack(timeseries)
+        elif isinstance(timeseries, str) or isinstance(timeseries, Path):
+            timeseries = dask.array.from_zarr(timeseries)
+        if isinstance(timeseries, dask.array.Array):
             # coordinated_n_atoms = zarr.empty_like(timeseries)
             # coordinated_n_atoms = dask.array.from_zarr(coordinated_n_atoms)
-            coordination_counts = dask.array.where(
-                dask.array.from_array(timeseries) >= 0, 1, 0
-            )
+            coordination_counts = dask.array.where(timeseries >= 0, 1, 0)
             coordination_counts = dask.array.sum(coordination_counts, axis=2)
             coordination_counts = dask.array.count_nonzero(
                 coordination_counts, axis=1
@@ -872,8 +902,8 @@ class ClayAnalysisBase(object):
             if not outdir.is_dir():
                 os.makedirs(outdir, exist_ok=True)
                 logger.finfo(f"Created {str(outdir.absolute())!r}")
-            with open(Path(self.save).with_suffix(".p"), "wb") as outfile:
-                pkl.dump(self.results, outfile)
+            # with open(Path(self.save).with_suffix(".p"), "wb") as outfile:
+            #     pkl.dump(self.results, outfile)
 
     def run(self, start=None, stop=None, step=None, frames=None, verbose=True):
         """Perform the calculation

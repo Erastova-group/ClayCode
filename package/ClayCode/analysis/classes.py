@@ -15,7 +15,8 @@ from ClayCode.analysis.analysisbase import AnalysisData
 from ClayCode.analysis.consts import PE_DATA
 from ClayCode.analysis.utils import get_atom_type_group, make_1d, redirect_tqdm
 from ClayCode.core.classes import Dir, File, PathType
-from ClayCode.plots.dataclasses import Bins, Cutoff
+from ClayCode.core.consts import LINE_LENGTH
+from ClayCode.plots.classes import Bins, Cutoff
 from matplotlib import colormaps
 from matplotlib import colors as mpc
 from matplotlib import pyplot as plt
@@ -68,6 +69,12 @@ class Data:
     defaults to `None`
     :type analysis: str, optional
     :param df: :class: `pandas.DataFrame`
+    :param atomname: atom names included in filename
+    :type atomname: bool, defaults to True
+    :param use_rel_data: use relative data
+    :type use_rel_data: bool, defaults to False
+    :param group_all: group all atoms into one category
+    :type group_all: bool, defaults to False
     """
 
     aas = [
@@ -94,16 +101,38 @@ class Data:
         "val",
     ]
 
-    ions = ["Na", "K", "Ca", "Mg"]
-    atoms = ["ions", "OT", "N", "CA"]
-    clays = ["NAu-1", "NAu-2"]  # , 'L31']
+    ions = ["Na", "K", "Ca", "Mg", "Ba"]
+    atoms = [
+        "ions",
+        "OT",
+        "N",
+        "CA",
+        "NH",
+        "OH",
+        "CR",
+        "SR",
+        "C",
+        "NR",
+        "OR",
+        "O",
+        "S",
+    ]
+    clays = [
+        "NAu-1",
+        "NAu-2",
+        "SWy-123",
+        "SWy-1-simplified",
+        "KGa-1",
+        "IMt-1",
+    ]  # , 'LDH31']
 
+    @redirect_tqdm
     def __init__(
         self,
         indir: Union[str, Path],
         cutoff: Union[int, float],
         bins: float,
-        ions: List[Literal["Na", "K", "Ca", "Mg"]] = None,
+        ions: List[Literal["Na", "K", "Ca", "Mg", "Ba"]] = None,
         atoms: List[Literal["ions", "OT", "N", "CA", "OW"]] = None,
         other: List[Literal["ions", "OT", "N", "CA", "OW"]] = None,
         clays: List[Literal["NAu-1", "NAu-2"]] = None,
@@ -137,13 +166,21 @@ class Data:
         nameparts: int = 1,
         namestem: str = "",
         analysis: Optional[str] = None,
+        atomname=True,
+        use_rel_data=False,
+        group_all=False,
+        max_line_width=LINE_LENGTH,
     ):
         """Constructor method"""
         logger.info(f"Initialising {self.__class__.__name__}")
-        self.filelist: list = []
+        self.infilelist: list = []
         self.bins: Bins = Bins(bins)
         self.cutoff: float = Cutoff(cutoff)
         self.analysis: Union[str, None] = analysis
+        if use_rel_data is True:
+            self._arr_col = 2
+        else:
+            self._arr_col = 1
 
         if type(indir) != Path:
             indir = Path(indir)
@@ -182,33 +219,39 @@ class Data:
             )
         logger.info(f"Found {len(self.filelist)} files.")
 
-        if load != False:
+        if load is not False:
             load = Path(load.resolve())
             self.df: pd.DataFrame = pkl.load(load)
             logger.info(f"Using data from {load!r}")
         else:
-            if ions == None:
+            if ions is None:
                 ions = self.__class__.ions
                 logger.info(
                     f"ions not specified, using default {self.__class__.ions}"
                 )
             else:
                 logger.info(f"Using custom {ions} for ions")
-            if atoms == None:
+            if atoms is None:
                 atoms = self.__class__.atoms
                 logger.info(
                     f"atoms not specified, using default {self.__class__.atoms}"
                 )
             else:
                 logger.info(f"Using custom {atoms} for atoms")
-            if aas == None:
+            if atomname is False:
+                assert len(atoms) == 1, "Expected one atom category"
+                self.atomnames = atoms
+                logger.finfo(f"Setting atomnames to {self.atomnames}")
+            else:
+                self.atomnames = None
+            if aas is None:
                 aas = self.__class__.aas
                 logger.info(
                     f"aas not specified, using default {self.__class__.aas}"
                 )
             else:
                 logger.info(f"Using custom {aas} for aas")
-            if clays == None:
+            if clays is None:
                 clays = self.__class__.clays
                 logger.info(
                     f"clays not specified, using default {self.__class__.clays}"
@@ -216,15 +259,32 @@ class Data:
             else:
                 logger.info(f"Using custom {clays} for clays")
 
-            f = self.filelist[0]
+            # f = self.filelist[0]
             # print(f)
+            x = None
+            for fi, f in enumerate(self.filelist):
+                new_x = pd.read_csv(
+                    f, delimiter="\s+", comment="#", header=None
+                ).to_numpy()
+                new_x = new_x[:, 0]
+                if not np.isclose(
+                    np.ceil(new_x[-1]), self.cutoff.num
+                ) or not np.any(np.isclose(np.diff(new_x), self.bins.num)):
+                    self.filelist.pop(fi)
+                    logger.info(
+                        f"Bins ({np.unique(np.diff(new_x).round(2))}) and cutoff {np.ceil(new_x[-1])} do not match requirements!\n"
+                        f"Removing {f.name!r} from filelist"
+                    )
+                    continue
+                if x is not None:
+                    if np.min(new_x) < np.min(x) or np.max(new_x) > np.max(x):
+                        x = np.union1d(x, new_x)
+                else:
+                    x = new_x
 
-            x = pd.read_csv(f, delimiter="\s+", comment="#").to_numpy()
-            x = x[:, 0]
+            cols = pd.Index(clays, name="clays")
 
-            cols = pd.Index(["NAu-1", "NAu-2"], name="clays")
-
-            if other != None:
+            if other is not None:
                 if other is True:
                     other = atoms
                     other.append("OW")
@@ -244,9 +304,67 @@ class Data:
             self._get_data(nameparts)
 
         self.df.dropna(inplace=True, how="all", axis=0)
+        self.df.dropna(inplace=True, how="all", axis=1)
+        # self.not_ions = [atom for atom in self.df.index.get_level_values('atoms').unique() if (atom != 'ions' and atom not in self.df.index.get_level_values('ions').unique())]
+        if group_all is True:
+            mod_at = self.df.reset_index("atoms")["atoms"]
+            mod_at.update(
+                mod_at[mod_at != "ions"].apply(
+                    lambda x: x if type(x) == str else x[0]
+                )
+            )  # groupby(self.df.index.drop('atoms').names)['atoms'].
+            self.df.reset_index("atoms", inplace=True)
+            self.df["atoms"].update(mod_at)
+            self.df.set_index("atoms", append=True, inplace=True)
+            self.df = self.df.reorder_levels(idx.names)
+            self.df = self.df.groupby(self.df.index.names).sum()
+            self.name += "_grouped"
+            self.group_all = "_grouped"
+        else:
+            self.group_all = ""
+        self.df = self.df.groupby(self.df.index.names).sum()
+        self.not_ions = [
+            atom
+            for atom in self.df.index.get_level_values("atoms").unique()
+            if (
+                atom != "ions"
+                and atom
+                not in self.df.index.get_level_values("ions")
+                .unique()
+                .to_numpy()
+            )
+        ]
 
         setattr(self, self.df.columns.name, list(self.df.columns))
+        self._process_atom_type_idx(idx)
+        self._init_xbin_idx()
 
+        for iid, i in enumerate(self.df.index.names):
+            value: List[Union[str, float]] = (
+                self.df.index._get_level_values(level=iid).unique().tolist()
+            )
+            logger.info(
+                f"Setting {i} to {np.array2string(np.array(value), precision=2, separator=', ', suppress_small=True)}"
+            )
+            setattr(self, i, value)
+
+        if odir is not None:
+            self.odir: Path = Path(odir)
+        else:
+            self.odir: Path = Path(".").cwd()
+
+        logger.info(f"Output directory set to {str(self.odir.resolve())!r}\n")
+        self._bin_df = pd.DataFrame(columns=self.df.columns)
+
+        self._edges = {}
+        self._peaks = {}
+
+    @redirect_tqdm
+    def _process_atom_type_idx(self, idx: pd.MultiIndex) -> None:
+        """Process atom type index. Replaces 'ions' with ion type and
+        adds '_atoms' level.
+        :param idx: index
+        :type idx: pd.MultiIndex"""
         self.df.reset_index(level=["ions", "atoms"], inplace=True)
         self.df["_atoms"] = self.df["atoms"].where(
             self.df["atoms"] != "ions", self.df["ions"], axis=0
@@ -256,30 +374,20 @@ class Data:
         )
         self.df.index = self.df.index.reorder_levels([*idx.names, "_atoms"])
         self._atoms = self.df.index.get_level_values("_atoms").tolist()
+
+    @redirect_tqdm
+    def _init_xbin_idx(self) -> None:
+        """Initialise x_bins index."""
         self.df["x_bins"] = np.NaN
         self.df.set_index(["x_bins"], inplace=True, append=True)
 
-        for iid, i in enumerate(self.df.index.names):
-            value: List[Union[str, float]] = (
-                self.df.index._get_level_values(level=iid).unique().tolist()
-            )
-            logger.info(f"Setting {i} to {value}")
-            setattr(self, i, value)
-
-        if odir != None:
-            self.odir: Path = Path(odir)
-        else:
-            self.odir: Path = Path(".").cwd()
-
-        logger.info(f"Output directory set to {str(self.odir.resolve())!r}\n")
-        self.__bin_df = pd.DataFrame(columns=self.df.columns)
-
-        self.__edges = {}
-        self.__peaks = {}
-
-    def _get_data(self, nameparts):
+    @redirect_tqdm
+    def _get_data(self, nameparts: int) -> None:
+        """Get data from files in `filelist` and store in :class:`pandas.DataFrame`
+        :param nameparts: number of `_`-separated parts in filename stem
+        :type nameparts: int"""
         idsl = pd.IndexSlice
-        for f in self.filelist:
+        for f in tqdm(self.filelist, desc="filelist"):
             namesplit = f.stem.split("_")
             if self.analysis is not None:
                 namesplit.pop(-1)
@@ -287,35 +395,53 @@ class Data:
                 self.analysis = "zdist"
             name = namesplit[:nameparts]
             namesplit = namesplit[nameparts:]
-            if self.other != None:
+            if self.other is not None:
                 # other = namesplit[5]
                 other = namesplit.pop(5)
                 if other in self.ions:
                     other = "ions"
             try:
-                clay, ion, aa, pH, atom, cutoff, bins = namesplit
+                if self.atomnames is None:
+                    clay, ion, aa, pH, atom, cutoff, bins = namesplit
+                else:
+                    clay, ion, aa, pH, cutoff, bins = namesplit
+                    atom = self.atomnames
                 assert cutoff == self.cutoff
                 assert bins == self.bins
-                array = pd.read_csv(f, delimiter="\s+", comment="#").to_numpy()
+                array = pd.read_csv(
+                    f, delimiter="\s+", comment="#", header=None, index_col=0
+                )
                 try:
-                    self.df.loc[idsl[ion, aa, atom, :], clay] = array[:, 2]
+                    self.df.loc[
+                        idsl[ion, aa, atom, array.index.values], clay
+                    ] = array.values[
+                        :, self._arr_col
+                    ]  # print(array[:, self._arr_col].sum(), clay, ion)
                 except ValueError:
-                    self.df.loc[idsl[ion, aa, atom, other, :], clay] = array[
-                        :, 2
-                    ]
+                    try:
+                        self.df.loc[
+                            idsl[ion, aa, atom, other, array.index.values],
+                            clay,
+                        ] = array.values[:, self._arr_col]
+                    except NameError:
+                        pass
                 except IndexError:
                     try:
-                        self.df.loc[idsl[ion, aa, atom, :], clay] = array[:, 1]
+                        self.df.loc[
+                            idsl[ion, aa, atom, array.index.values], clay
+                        ] = array.values[:, 1]
                     except ValueError:
                         self.df.loc[
-                            idsl[ion, aa, atom, other, :], clay
-                        ] = array[:, 1]
+                            idsl[ion, aa, atom, other, array.index.values],
+                            clay,
+                        ] = array.values[:, 1]
                 except KeyError:
                     pass
-            except IndexError:
+            except IndexError as e:
+                logger.info(e)
                 logger.info(f"Encountered IndexError while getting data")
-            except ValueError:
-                print(namesplit)
+            except ValueError as e:
+                logger.info(e)
                 logger.info(f"Encountered ValueError while getting data")
         self.name = "_".join(name)
 
@@ -323,14 +449,18 @@ class Data:
         return self.df[self.clays].dropna().__repr__()
 
     @property
-    def densdiff(self):
+    def densdiff(self) -> pd.DataFrame:
+        """Density difference between different clay types.
+        :return: density difference
+        :rtype: pd.DataFrame"""
         try:
             return self.df["diff"].dropna()
         except KeyError:
             self._get_densdiff()
             return self.df["diff"].dropna()
 
-    def _get_densdiff(self):
+    def _get_densdiff(self) -> None:
+        """Calculate density difference between different clay types."""
         self.df["diff"] = -self.df.diff(axis=1)[self.df.columns[-1]]
 
     def plot(
@@ -512,102 +642,22 @@ class Data:
                 constrained_layout=True,
             )
 
-            fig.suptitle(
-                (
-                    ", ".join([title_dict[s].upper() for s in separate])
-                    + f": {label_mod(list(tuple(zip(pl, separate))))}"
-                ),
-                size=16,
-                weight="bold",
-            )
-            pi = 0
-            for col in vx:
-                try:
-                    view = sepview.xs(col, axis=1)
-                    pi = 1
-                except ValueError:
-                    view = sepview
-                    col = vx
-                    pi += 1
-                for it in iters:
-                    try:
-                        values = view.xs(
-                            tuple(it), level=idx.tolist()
-                        ).reset_index(drop=False)
-                        values = values.values
-                        if np.all(values) >= 0:
-                            try:
-                                x_id, y_id = x_dict[col], y_dict[it[yid]]
-                                ax[y_id, x_id].plot(
-                                    values[:, 0],
-                                    values[:, 1],
-                                    label=it[label_id],
-                                )
-                            except:
-                                x_id, y_id = 0, y_dict[it[yid]]
-                                ax[y_id].plot(
-                                    values[:, 0],
-                                    values[:, 1],
-                                    label=it[label_id],
-                                )
-                            if pi == 1:
-                                legends[y_id, x_id].append(it[label_id])
-                        else:
-                            logger.info("NaN values")
-                    except KeyError:
-                        logger.info(f"No data for {pl}, {vx}, {it}")
-            for i in range(ly):
-                try:
-                    ax[i, 0].set_ylabel(
-                        f"{label_mod([(vy[i], y)])}\n" + rowlabel
-                    )
-                    for j in range(lx):
-                        ax[i, j].legend(
-                            [
-                                label_mod([(leg, label_key)])
-                                for leg in legends[i, j]
-                            ],
-                            ncol=3,
-                        )
-                        if xlim != None:
-                            ax[i, j].set_xlim((0.0, float(xlim)))
-                        if ylim != None:
-                            ax[i, j].set_ylim((0.0, float(ylim)))
-                        ax[ly - 1, j].set_xlabel(
-                            columnlabel + f"\n{label_mod([(vx[j], x)])}"
-                        )
-                except IndexError:
-                    ax[i].set_ylabel(f"{label_mod([(vy[i], y)])}\n" + rowlabel)
-                    ax[i].legend(
-                        [
-                            label_mod([(leg, label_key)])
-                            for leg in legends[i, 0]
-                        ],
-                        ncol=3,
-                    )
-                    ax[ly - 1].set_xlabel(
-                        columnlabel + f"\n{label_mod([(vx[0], x)])}"
-                    )
-
-            fig.supxlabel(f"{title_dict[x]}s", size=14)
-            fig.supylabel(f"{title_dict[y]}s", size=14)
-            if save != False:
-                odir = Path(odir)
-                if not odir.is_dir():
-                    os.makedirs(odir)
-                if type(save) == str:
-                    fig.savefig(odir / f"{save}.png")
-                else:
-                    logger.info(
-                        f"Saving to {self.name}_{diffstr}_{x}_{y}_{plsave}_{self.cutoff}_{self.bins}.png"
-                    )
-                    fig.savefig(
-                        odir
-                        / f"{self.name}_{diffstr}_{x}_{y}_{plsave}_{self.cutoff}_{self.bins}.png"
-                    )
-            else:
-                plt.show()
-            self.fig.clear()
+    # def _get_edge_fname(
+    #     self,
+    #     atom_type: str,
+    #     other: Optional[str],
+    #     name: Union[Literal["pe"], Literal["edge"]] = "pe",
+    # ):
+    #     if other is not None:
+    #         other = f"{other}_"
+    #     else:
+    #         other = ""
+    # # fname = Path.cwd() / f"edge_data/edges_{atom_type}_{self.cutoff}_{self.bins}.p"
+    #                 / f"{self.name}_{diffstr}_{x}_{y}_{plsave}_{self.cutoff}_{self.bins}.png"
+    #             )
+    #     else:
+    #         plt.show()
+    #     self.fig.clear()
 
     def _get_edge_fname(
         self,
@@ -641,9 +691,9 @@ class Data:
         :param wlen: A window length in samples that optionally limits the evaluated area
         for each peak to a subset of the evaluated sequence.
         :type wlen: int
-        :return: list of peak ads_edges
+        :return: list of peak edges
         :rtype: List[float]"""
-        from ClayCode.analysis.peaks import Peaks
+        from ClayAnalysis.peaks import Peaks
         from sklearn.neighbors import KernelDensity
 
         p = Peaks(self)
@@ -671,7 +721,7 @@ class Data:
             edge_df.index = edge_df.index.droplevel(["ions", "atoms"])
             edge_df = edge_df.groupby(["other", "_atoms", "x"]).sum()
 
-        logger.info(f"Getting peaks ads_edges for {atom_types}")
+        logger.info(f"Getting peaks edges for {atom_types}")
         for atom_type in atom_types:
             outname = self._get_edge_fname(
                 atom_type=atom_type, other=other, name="pe"
@@ -802,7 +852,7 @@ class Data:
                         verticalalignment="bottom",
                     )
                 logger.info(edge_dict)
-                for ei, edge in enumerate(edge_dict["ads_edges"]):
+                for ei, edge in enumerate(edge_dict["edges"]):
                     plt.axvline(
                         edge, 0, 2, color="orange"
                     )  # , label = f'edge {ei}: {edge:2.1f}')
@@ -819,18 +869,35 @@ class Data:
                 # plt.close()
                 with open(outname, "wb") as edge_file:
                     pkl.dump(edge_dict, edge_file)
-                logger.info(f"Wrote {atom_type} ads_edges to {outname}.")
-                # plt.show()
-            # p.get_peaks(atom_type=atom_type)
-            # ads_edges = self._read_edge_file(atom_type=atom_type, skip=False)
-            # self.__edges[atom_type] = ads_edges
-            # self.__peaks[atom_type] = x_vals[peaks]
-        #
+                logger.info(
+                    f"Wrote {atom_type} edges to {outname}."
+                )  # plt.show()  # p.get_peaks(atom_type=atom_type)  # edges = self._read_edge_file(atom_type=atom_type, skip=False)  # self._edges[atom_type] = edges  # self._peaks[atom_type] = x_vals[peaks]  #
 
     def _read_edge_file(self, atom_type: str, skip=True, other=None):
-        fname = self._get_edge_fname(atom_type, name="ads_edges", other=other)
-        return read_edge_file(fname, self.cutoff, skip)
+        fname = self._get_edge_fname(atom_type, name="edges", other=other)
+        if not fname.exists():
+            logger.debug(f"No {atom_type} edge file found.")
+            os.makedirs(fname.parent, exist_ok=True)
+            logger.info(f"{fname.parent}")
+            if skip is True:
+                logger.info(f"Continuing without {atom_type} edges")
+                p = [self._min, self.cutoff.num]
+            else:
+                # self._get_edges(atom_type=atom_type)
+                raise FileNotFoundError(
+                    f"No {atom_type} edge file found {fname!r}."
+                )
 
+        else:
+            with open(fname, "rb") as edges_file:
+                logger.info(f"Reading {atom_type} edges {edges_file.name!r}")
+                p = list(
+                    map(lambda e: e.round(5), pkl.load(edges_file)["edges"])
+                )
+        logger.debug(f"edges: {p}")
+        return p
+
+    #
     # # def _read_peak_file(self, atom_type):
     # #     fname = self._get_edge_fname(atom_type)
     # #     if not fname.exists():
@@ -862,47 +929,49 @@ class Data:
 
     @property
     def edges(self):
-        if len(self.__edges) == len(self._atoms):
+        if len(self._edges) == len(self._atoms):
             pass
         else:
             for atom_type in self._atoms:
                 # try:
-                self.__edges[atom_type] = self._read_edge_file(atom_type)
-                #     logger.info(f"Reading peaks")
-                # except FileNotFoundError:
-                #     logger.info(f"Getting new ads_edges")
-                #     self._get_edges(atom_type)
-        return self.__edges
+                self._edges[atom_type] = self._read_edge_file(
+                    atom_type
+                )  # logger.info(f"Reading peaks")  # except FileNotFoundError:  #     logger.info(f"Getting new edges")  #     self._get_edges(atom_type)
+        return self._edges
 
     def get_bin_df(self):
         idx = self.df.index.names
         bin_df = self.df.copy()
         atom_types = bin_df.index.get_level_values("_atoms").unique().tolist()
         bin_df.reset_index(["x_bins", "x", "_atoms"], drop=False, inplace=True)
-        for atom_type in atom_types:
+        bin_df = bin_df.convert_dtypes(
+            infer_objects=True, convert_integer=True, convert_floating=True
+        )
+        for col in ["x", "x_bins"]:
+            bin_df[col] = bin_df[col].astype(float)
+        for atom_type in tqdm(
+            atom_types, position=0, desc="atom types", leave=False
+        ):
             # logger.info(f"{atom_type}")
             try:
-                edges = self.__edges[atom_type]
+                edges = self._edges[atom_type]
             except KeyError:
                 # edge_fname = self._get_edge_fname(atom_type)
                 edges = self._read_edge_file(
                     atom_type=atom_type, other=self.other
-                )
-                # if edge_fname.is_file():
-                #     self.__edges[atom_type] = self._read_edge_file(atom_type)
-                # else:
-                #     raise
-                #     self._get_edges(atom_type=atom_type)
-                # ads_edges = self.__edges[atom_type]
-            # print(ads_edges, bin_df['x_bins'].where(bin_df['_atoms'] == atom_type))
+                )  # if edge_fname.is_file():  #     self._edges[atom_type] = self._read_edge_file(atom_type)  # else:  #     raise  #     self._get_edges(atom_type=atom_type)  # edges = self._edges[atom_type]
+            # print(edges, bin_df['x_bins'].where(bin_df['_atoms'] == atom_type))
             bin_df["x_bins"].where(
                 bin_df["_atoms"] != atom_type,
                 pd.cut(bin_df["x"], [*edges]),
                 inplace=True,
             )
-        bin_df.reset_index(drop=False, inplace=True)
+        bin_df = bin_df.reset_index(drop=False).set_index(idx)
 
-        bin_df.set_index(idx, inplace=True)
+        # bin_df.set_index(
+        #     idx,
+        #     inplace=True,
+        # )
         self.df = bin_df.copy()
 
     @property
@@ -1477,7 +1546,7 @@ class Data:
         plot_df = plot_df.stack()
 
         # get values for atom types (including separate ions)
-        atoms = plot_df.index.get_level_values("_atoms")
+        atoms = plot_df.index.get_level_values("_atoms").to_numpy()
 
         # make new DataFrame from atom_type index level and values
         plot_df.index = plot_df.index.droplevel(["x"])

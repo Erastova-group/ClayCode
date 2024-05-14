@@ -5,7 +5,7 @@ description = "A python package for building clay models and analysing MD simula
 authors = [{ name = "Hannah Pollak", email = "h.pollak@sms.ed.ac.uk" }]
 license = { file = "LICENSE" }
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ['matplotlib>=3.6.2',
     'mdanalysis>=2.6',
     'numpy>=1.23.5',
@@ -22,7 +22,8 @@ dependencies = ['matplotlib>=3.6.2',
     'numba>=0.57',
     'nglview>=3.0',
     'unicodeit',
-    'seaborn']
+    'seaborn',
+    'scikit-learn',]
 classifiers = ["Programming Language :: Python :: 3",
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent"]
