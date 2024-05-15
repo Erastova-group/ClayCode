@@ -608,13 +608,16 @@ def read_yaml_path_decorator(*path_args):
                                 else:
                                     if self.data[key].suffix != "":
                                         self.data[key] = self.data[key].parent
-                                    path_list.extend(
-                                        [
-                                            self.data[key]
-                                            / path.relative_to(path.cwd()),
-                                            self.data[key] / v,
-                                        ]
-                                    )
+                                    try:
+                                        path_list.extend(
+                                            [
+                                                self.data[key]
+                                                / path.relative_to(path.cwd()),
+                                                self.data[key] / v,
+                                            ]
+                                        )
+                                    except ValueError:
+                                        path_list.extend([self.data[key] / v])
                             for path_option in path_list:
                                 try:
                                     path_option = File(path_option, check=True)
