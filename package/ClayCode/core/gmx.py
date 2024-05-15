@@ -259,7 +259,7 @@ class GMXCommands:
                 file_or_str=mdp_str,
                 freeze_dims=freeze_dims,
             )
-        if define is not None:
+        if define is not None and not isinstance(define, bool):
             if isinstance(define, str):
                 define_str = f"-D{define}"
             else:
@@ -267,6 +267,7 @@ class GMXCommands:
                     define_str = " ".join(
                         list(map(lambda d: f"-D{d}", definition))
                     )
+                pass
             mdp_str = set_mdp_parameter("define", define_str, mdp_str)
         mdp_str = re.sub(
             "(^|\n)[^\n]*?\s*?=\s*?\n",
