@@ -629,32 +629,7 @@ def read_yaml_path_decorator(*path_args):
                                 raise FileNotFoundError(
                                     f"File {v!r} not found!"
                                 )
-                            #
-                            # try:
-                            #     path = File(path, check=True)
-                            # except FileNotFoundError:
-                            #     try:
-                            #         path = File(
-                            #             self.data["yaml_file"].parent / v,
-                            #             check=True,
-                            #         )
-                            #     except FileNotFoundError:
-                            #         try:
-                            #             path = File(
-                            #                 self.data["INPATH"]
-                            #                 / path.relative_to(path.cwd()),
-                            #                 check=True,
-                            #             )
-                            #             found = True
-                            #         except KeyError:
-                            #             found = False
-                            #         except FileNotFoundError:
-                            #             found = False
-                            #         finally:
-                            #             if not found:
-                            #                 raise FileNotFoundError(
-                            #                     f"File {v!r} not found!"
-                            #                 )
+                                #  # try:  #     path = File(path, check=True)  # except FileNotFoundError:  #     try:  #         path = File(  #             self.data["yaml_file"].parent / v,  #             check=True,  #         )  #     except FileNotFoundError:  #         try:  #             path = File(  #                 self.data["INPATH"]  #                 / path.relative_to(path.cwd()),  #                 check=True,  #             )  #             found = True  #         except KeyError:  #             found = False  #         except FileNotFoundError:  #             found = False  #         finally:  #             if not found:  #                 raise FileNotFoundError(  #                     f"File {v!r} not found!"  #                 )
                         else:
                             path = Dir(path)
                         v = str(path)
@@ -1504,6 +1479,9 @@ class SiminpArgs(_Args):
         "GMX_VERSION",
         "FF",
         "RUN_PATH",
+        "MDRUN_PRMS",
+        "SHELL",
+        "HEADER",
     ]
     _arg_defaults = _siminp_defaults
 
@@ -1591,6 +1569,10 @@ class SiminpArgs(_Args):
             "FF",
             "SCRIPT_TEMPLATE",
             "RUN_PATH",
+            "MDRUN_PRMS",
+            "SHELL",
+            "HEADER",
+            "RUN_SCRIPT_NAME",
         ]
         paths = ["OUTPATH", "INPATH", "INGRO"]
         if [k in self.data.keys() for k in paths].count(True) == 0:
@@ -1629,7 +1611,14 @@ class SiminpArgs(_Args):
         if "RUN_PATH" not in self.data.keys():
             self.data["RUN_PATH"] = self.data["OUTPATH"]
         self._set_attributes(
-            data_keys=data_keys, optional=["INTOP", "SCRIPT_TEMPLATE"]
+            data_keys=data_keys,
+            optional=[
+                "INTOP",
+                "SCRIPT_TEMPLATE",
+                "MDRUN_PRMS",
+                "HEADER",
+                "RUN_SCRIPT_NAME",
+            ],
         )
 
     def process(self):
@@ -1653,9 +1642,15 @@ class SiminpArgs(_Args):
             )
         self._get_run_specs()  # if "dspace" in self.data:  #     logger.info(get_subheader("d-spacing equilibration parameters"))  #     self.d_spacing = self.data[  #         "D_SPACE"  #     ]  # convert d-spacing from A to nm  #     self.n_wat = self.data["n_wat"]  #     self.n_steps = self.data["n_steps"]  #     self.data["runs"].append("D_SPACE")  #     logger.finfo(f"Target spacing: {self.d_spacing:2.2f} {ANGSTROM}")  #     logger.finfo(  #         f"Removal interval: {self.n_wat:2.2f} water molecules per unit cell every {self.n_steps} steps"  #     )  # if len(self.mdp_generator._runs) != 0:  #     prms_dict = {"mdp_prms": None, "run_prms": None}  #     for k in prms_dict:  #         try:  #             prms_dict[k] = self.data[k.upper()]  #         except KeyError:  #             pass  #     self.run_sequence = self.data["runs"]  #     assigned_id = 1  #     logger.info(get_subheader("Selected the following run types:"))  #     for run_id, run_dict in sorted(self.run_sequence.items()):  #         for run_name, run_prms in run_dict.items():  #             try:  #                 run_type, assigned_id = run_name.split("_")  #             except ValueError:  #                 run_type = run_name  #                 assigned_id = run_id  #             finally:  #                 # if run_id != 1:  #         if prev == run_type:  #             if assigned_id == 1:  #                 self.run_sequence[run_id - 1] = {  #                     f"{prev}_{assigned_id}": run_prms  #                 }  #             assigned_id += 1  #             self.run_sequence[run_id] = {  #                 f"{run_type}_{assigned_id}": run_prms  #             }  #         else:  #             assigned_id = 1  # prev = run_type  #  # # for run_id, run_name in enumerate(self.run_sequence):  # logger.finfo(  #     f"\t{run_id}: {next(iter(self.run_sequence[run_id].keys()))}"  # )
 
-    def write_runs(self):
+    def write_runs(self, shell, header, script_name):
         self.mdp_generator.write_runs(
-            self.outpath, ff=self.ff_data, run_dir=self.run_path
+            self.outpath,
+            ff=self.ff_data,
+            run_dir=self.run_path,
+            mdrun_prms=self.mdrun_prms,
+            run_script_template=header,
+            shell=shell,
+            run_script_name=script_name,
         )
 
 

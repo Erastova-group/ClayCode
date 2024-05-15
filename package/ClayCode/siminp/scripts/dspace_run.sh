@@ -6,8 +6,8 @@ numstr=$1
 fi
 }
 run_count=0
-max_run_count=MAX_RUN
-remove_waters=REMOVE_WATERS
+max_run_count=MAXRUN
+remove_waters=REMOVEWATERS
 ingro=INGRO
 intop=INTOP
 odir=ODIR
@@ -23,7 +23,7 @@ do
   mkdir "${odir}/${outpname}"
   outgro="${odir}/${outpname}/${outpname}.gro"
   outtop="${odir}/${outpname}/${outpname}.top"
-  dspace_check=$(DSPACE_SCRIPT ${ingro} ${outgro} DSPACE REMOVE_WATERS ${intop} "${outtop}")
+  dspace_check=$(DSPACESCRIPT ${ingro} ${outgro} TARGETSPACING ${remove_waters} ${intop} "${outtop}")
   if [[ ${dspace_check} -eq 1 ]]; then
     echo "d-space equilibration finished"
   elif [[ ${dspace_check} -eq 2 ]]; then
