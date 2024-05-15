@@ -34,7 +34,11 @@ from ClayCode.core.classes import (
 )
 from ClayCode.core.consts import exec_date, exec_time
 from ClayCode.core.lib import add_resnum, generate_restraints, select_clay
-from ClayCode.core.utils import get_search_str, substitute_kwds
+from ClayCode.core.utils import (
+    execute_shell_command,
+    get_search_str,
+    substitute_kwds,
+)
 from ClayCode.data.consts import CLAYFF_AT_CHARGES, MDP, MDP_DEFAULTS, USER_MDP
 from ClayCode.siminp.consts import DSPACE_RUN_SCRIPT, REMOVE_WATERS_SCRIPT
 from ClayCode.siminp.sitypes import GMXRunType, NondefaultGMXRun
@@ -245,7 +249,7 @@ class GMXRun(UserDict, ABC):
         ), f"Unexpected type {type(mdp)} given for MDP options file"
         self._mdp = mdp
 
-    def get_run_command(self, gmx_alias="gmx"):
+    def get_run_command(self, gmx_alias="gmx", mdrun_prms=None):
         if self.cpt is not None:
             cpt_str_1 = f" -t {self.get_run_path(self.cpt)}"  # cpt_str_2 = f" -cpi {self.cpt}"
         else:
@@ -255,10 +259,14 @@ class GMXRun(UserDict, ABC):
         #     restraints_str = f" -r {self.gro}"
         # else:
         restraints_str = ""
+        if mdrun_prms is not None:
+            mdrun_prms = "".join([f" -{k} {v}" for k, v in mdrun_prms.items()])
+        else:
+            mdrun_prms = ""
         return (
             f"\n# {self.run_id}: {self._name}:\n"
             f'{gmx_alias} grompp -f {self.get_run_path(self.mdp)} -c {self.get_run_path(self.gro)} -p {self.get_run_path(self.top)} -o {self.get_run_path(self.outname.with_suffix(".tpr"))}{cpt_str_1}{restraints_str}\n'
-            f"{gmx_alias} mdrun -s {self.get_run_path(self.outname.with_suffix('.tpr'))} -v -deffnm {self.get_run_path(self.outname)}{cpt_str_2}\n"
+            f"{gmx_alias} mdrun -s {self.get_run_path(self.outname.with_suffix('.tpr'))} -v -deffnm {self.get_run_path(self.outname)}{cpt_str_2}{mdrun_prms}\n"
         )
 
     def add_compressed(self):
@@ -690,8 +698,16 @@ class OtherRun(GMXRun):
 
 
 class DSpaceRun(GMXRun):
-    _options = ["d_space", "nsteps", "sheet_wat", "uc_wat", "compressed"]
-    _default_mdp_key = "_SPACE"
+    _options = [
+        "d_space",
+        "nsteps",
+        "sheet_wat",
+        "uc_wat",
+        "compressed",
+        "shell",
+        "conda_env",
+    ]
+    _default_mdp_key = "D_SPACE"
 
     def __init__(
         self,
@@ -704,6 +720,9 @@ class DSpaceRun(GMXRun):
         run_dir: Optional[PathOrStr] = None,
         **kwargs,
     ):
+        for arg in ["SHELL", "CONDA_ENV"]:
+            if arg not in kwargs.keys():
+                kwargs[arg] = None
         super().__init__(
             run_id=run_id,
             name=name,
@@ -714,7 +733,13 @@ class DSpaceRun(GMXRun):
             run_dir=run_dir,
             **kwargs,
         )
-        add_kwargs(self, n_args=4, **kwargs)
+        add_kwargs(self, n_args=6, **kwargs)
+
+    def add_shell(self, shell: str):
+        self.shell = shell
+
+    def add_conda_env(self, conda_env: str):
+        self.conda_env = conda_env
 
     def process_kwargs(self, gro: GROFile):
         wat_options = 0
@@ -751,13 +776,20 @@ class DSpaceRun(GMXRun):
         if odir is not None:
             self._odir = Dir(odir)
 
-    def get_run_command(self, gmx_alias="gmx", max_run=10):
+    def get_run_command(self, gmx_alias="gmx", max_run=10, mdrun_prms=None):
         shutil.copy2(REMOVE_WATERS_SCRIPT, self.odir)
         shutil.copy2(CLAYFF_AT_CHARGES, self.odir)
         remove_waters_script = self.get_run_path(
             self.odir / REMOVE_WATERS_SCRIPT.name
         )
         at_charges_file = self.get_run_path(self.odir / CLAYFF_AT_CHARGES.name)
+        if mdrun_prms is None:
+            mdrun_prms_str = ""
+        else:
+            mdrun_prms_str = "".join(
+                [f" -{k} {v}" for k, v in mdrun_prms.items()]
+            )
+        mdrun_prms_str
         with open(DSPACE_RUN_SCRIPT, "r") as dspace_run_file:
             dspace_run_string = dspace_run_file.read()
         dspace_run_string = substitute_kwds(
@@ -769,15 +801,17 @@ class DSpaceRun(GMXRun):
                 "ODIR": self.run_path,
                 "TARGETSPACING": self.d_space,
                 "REMOVEWATERS": self.sheet_n_wat,
+                "SHEETUCS": None,
                 "GMX": gmx_alias,
                 "MDP": self.get_run_path(self.mdp),
                 "DSPACESCRIPT": self.get_run_path(remove_waters_script),
                 "MAXRUN": max_run,
                 "YAMLFILE": self.get_run_path(at_charges_file),
+                "MDRUNPRMS": mdrun_prms_str,
             },
             flags=re.MULTILINE | re.DOTALL,
         )
-        return dspace_run_string
+        return self.conda_header + dspace_run_string
 
     @property
     def sheet_n_wat(self) -> int:
@@ -799,6 +833,23 @@ class DSpaceRun(GMXRun):
         #     return np.rint(self.percent_wat * self.gro.n_atoms / 100)
         else:
             raise ValueError(f"No water removal option specified")
+
+    @property
+    def conda_header(self):
+        if self.conda_env is not None and self.shell is None:
+            logger.finfo(
+                f"Shell not specified for conda environment {self.conda_env}\n"
+            )
+            shell = execute_shell_command("echo $SHELL")
+        if self.conda_env is not None and self.shell is not None:
+            conda_str = (
+                f'eval "$(conda shell.{self.shell} hook)"\n'
+                f"conda init {self.shell}\n"
+                f"conda activate {self.conda_env}\n"
+            )
+        else:
+            conda_str = ""
+        return conda_str
 
 
 class GMXRunFactory:
@@ -1033,6 +1084,9 @@ class MDPRunGenerator:
         run_dir: Optional[PathOrStr] = None,
         run_script_name=None,
         run_script_template=None,
+        mdrun_prms: Optional[Union[MDPFile, File, str]] = None,
+        shell: Optional[str] = None,
+        header: Optional[str] = None,
         **kwargs,
     ):
         """Write the run script for the run sequence.
@@ -1047,8 +1101,10 @@ class MDPRunGenerator:
         if run_script_name is None:
             run_script_name = "run.sh"
         if run_script_template is None:
+            if shell is None:
+                shell = execute_shell_command("echo $SHELL")
             with open(odir / run_script_name, "w") as scriptfile:
-                scriptfile.write("#!/bin/bash\n")
+                scriptfile.write(f"#!/bin/{shell}\n")
         else:
             shutil.copy2(run_script_template, odir / run_script_name)
         # if self._runs[0].cpt is not None:
@@ -1119,7 +1175,9 @@ class MDPRunGenerator:
                 ):
                     run.add({"comm-mode": "none", "comm-grps": "System"})
                 run.mdp.write_prms(run.mdp.string, all=False)
-                scriptfile.write(run.get_run_command(self._gmx_alias))
+                scriptfile.write(
+                    run.get_run_command(self._gmx_alias, mdrun_prms)
+                )
                 prev_gro = run.outname.with_suffix(".gro")
                 prev_top = run.outname.with_suffix(".top")
         logger.finfo(

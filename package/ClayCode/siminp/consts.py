@@ -11,6 +11,8 @@ with open(defaults_file, "r") as file:
     SIMINP_DEFAULTS = yaml.safe_load(file)
 
 REMOVE_WATERS_SCRIPT = files("ClayCode.siminp.scripts").joinpath(
-    "remove_waters.sh"
+    "remove_waters.py"
 )
-DSPACE_RUN_SCRIPT = files("ClayCode.siminp.scripts").joinpath("dspace_run.sh")
+DSPACE_RUN_SCRIPT = files("ClayCode.siminp.scripts").joinpath(
+    "eq_d_spacing.sh"
+)

@@ -246,7 +246,11 @@ def run():
     args_factory = ArgsFactory()
     args = args_factory.init_subclass(args)
     if isinstance(args, SiminpArgs):
-        args.write_runs()
+        args.write_runs(
+            shell=args.shell,
+            header=args.header,
+            script_name=args.run_script_name,
+        )
     elif isinstance(args, DataArgs):
         add_new_uc_type(args)
     elif isinstance(args, BuildArgs):
