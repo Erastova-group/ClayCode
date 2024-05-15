@@ -931,7 +931,7 @@ NVT:
   tcoupl: "nose-hoover"
   constraints: "h-bonds"
   constraint-algorithm: "lincs"
-D-SPACE:
+D_SPACE:
   dt: "0.001"
   integrator: "md"
   tinit: "0"
@@ -948,7 +948,7 @@ D-SPACE:
   tau-p: "1.0"
   tau-t: "0.2"
   tc-grps: "system"
-  tcoupl: "nose-hoover"
+  tcoupl: "berendsen"
 EM:
   constraints: "none"
   emstep: "0.0005"
@@ -1149,3 +1149,4 @@ GENION:
   wall-ewald-zfac: ""
   wall-r-linpot: ""
   wall-type: ""
+  constraint_algorithm: ""

@@ -155,14 +155,14 @@ class GMXRun(UserDict, ABC):
                 out_part = self.odir
             relpath = list(out_part.parts)[-1]
             new_rdir = []
-            for rd in self.run_path.parts[1:]:
+            for rd in self.run_path.parts:
                 if rd not in out_part.parts:
                     new_rdir.append(rd)
                 else:
                     relpath = Path(*out_part.parts[out_part.parts.index(rd) :])
                     break
-            if len(new_rdir) != 0:
-                new_rdir.insert(0, "/")
+            # if len(new_rdir) != 0:
+            #     new_rdir.insert(0, "/")
             new_rdir = Path(*new_rdir, relpath)
             return new_rdir / rel_filename
         else:
@@ -794,7 +794,6 @@ class DSpaceRun(GMXRun):
             mdrun_prms_str = "".join(
                 [f" -{k} {v}" for k, v in mdrun_prms.items()]
             )
-        mdrun_prms_str
         with open(DSPACE_RUN_SCRIPT, "r") as dspace_run_file:
             dspace_run_string = dspace_run_file.read()
         dspace_run_string = substitute_kwds(
@@ -1092,6 +1091,7 @@ class MDPRunGenerator:
         mdrun_prms: Optional[Union[MDPFile, File, str]] = None,
         shell: Optional[str] = None,
         header: Optional[str] = None,
+        gmx_version: Optional[int] = None,
         **kwargs,
     ):
         """Write the run script for the run sequence.
