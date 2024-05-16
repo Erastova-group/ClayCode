@@ -410,7 +410,7 @@ class Builder:
             ndx_list.append(
                 self.stack.with_suffix(".ndx")
             )  # .insert(0, self.stack.with_suffix(".ndx"))
-
+        topfile = self.stack.top
         while len(freeze_grps_list) < n_runs:
             freeze_grps_list.append(None)
             freeze_dims_list.append(None)
@@ -443,7 +443,7 @@ class Builder:
         ):
             result = run_em(
                 crdin=self.stack,
-                topin=self.stack.top,
+                topin=topfile,
                 odir=self.args.outpath,
                 topout=self.args.outpath / f"{outname}.top",
                 outname=outname,
@@ -459,9 +459,7 @@ class Builder:
             else:
                 logger.ferror(f"Energy minimisation failed.")
                 outgro = None
-                break
-            # freeze_grps = None
-            # freeze_dims = None
+                break  # freeze_grps = None  # freeze_dims = None
         # if outgro is not False:
         #     result = run_em(
         #         crdin=self.stack,
@@ -481,10 +479,10 @@ class Builder:
         #             logger.ferror(f"Energy minimisation failed.")
         if outgro is not None:
             outpath = Dir(self.args.outpath)
+            top_files = outpath._get_filelist(ext=".top")
             crd_top_files = [
                 *outpath.gro_filelist,
-                *outpath.itp_filelist,
-                *outpath._get_filelist(ext=".top"),
+                *outpath.itp_filelist,  # *outpath._get_filelist(ext=".top"),
                 *outpath._get_filelist(ext=".csv"),
                 *outpath._get_filelist(ext=".mdp"),
                 *outpath._get_filelist(ext=".edr"),
@@ -493,10 +491,16 @@ class Builder:
             ]
             em_files = []
             backups = []
-            for file in sorted(
-                outpath.iterdir(), key=lambda f: f.suffix, reverse=True
-            ):
-                if file not in crd_top_files and not file.is_dir():
+            for file in [
+                *sorted(
+                    outpath.iterdir(), key=lambda f: f.suffix, reverse=True
+                ),
+                *top_files,
+            ]:
+                if (
+                    file not in [*crd_top_files, *top_files]
+                    and not file.is_dir()
+                ):
                     file.unlink(missing_ok=True)
                 else:
                     if file.stem.split("_")[-1] == "em":
@@ -526,6 +530,8 @@ class Builder:
                             try:
                                 shutil.copy2(file, new_file)
                             except shutil.SameFileError:
+                                pass
+                            except FileNotFoundError:
                                 pass
                             else:
                                 if (
