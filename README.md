@@ -41,4 +41,4 @@ Please see ClayCode website [claycode.readthedocs.io/en/latest](https://erastova
 
 
 ## Cite as:
-XXX coming soon... XXX
+Hannah Pollack, Matteo T. Degiacomi, Valentina Erastova. "ClayCode v.0.8.0" 10.5281/zenodo.11219451
