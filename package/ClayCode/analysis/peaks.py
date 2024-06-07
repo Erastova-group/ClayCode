@@ -287,7 +287,7 @@ class Peaks:
                                     elif accept_query == "y":
                                         cutoff = self.process_input(
                                             cutoff, "cutoff", False, float
-                                        ).strip(" ")
+                                        )
 
                                     if cutoff is not False:
                                         y_vals_sel = y_vals_sel[
