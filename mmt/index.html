@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Valentina Erastova" /><link rel="canonical" href="https://erastova-group.github.io/ClayCode/mmt/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Montmorillonite - ClayCode</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Montmorillonite";
+        var mkdocs_page_input_path = "mmt.md";
+        var mkdocs_page_url = "/ClayCode/mmt/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> ClayCode
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../start/">Quick Start</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Documentation</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../userguide/">User Guide</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Modules</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../builder/">ClayCode.builder</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../siminp/">ClayCode.simpinp</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >INPUT files</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../YAML/">YAML</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../CSV/">CSV</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../output/">OUTPUT files</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Tutorials</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../tutorials/">Tutorials</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" >Clays</a>
+    <ul class="current">
+                <li class="toctree-l2 current"><a class="reference internal current" href="#">Montmorillonite</a>
+    <ul class="current">
+    <li class="toctree-l3"><a class="reference internal" href="#clay-composition">Clay composition</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#construction-of-the-model">Construction of the model</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#required-parameters">Required parameters</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../imt/">Illite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../pyr/">Pyrophylite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../nont/">Nontronite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../swa/">Fe-smectite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../kao/">Kaolinite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../ldh/">LDH</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../developers/">Developers Guide</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">ClayCode</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">Tutorials</li>
+          <li class="breadcrumb-item">Clays</li>
+      <li class="breadcrumb-item active">Montmorillonite</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/Erastova-group/ClayCode/edit/master/docs/mmt.md">Edit on ClayCode</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="montmorillonite">Montmorillonite</h1>
+<h2 id="clay-composition">Clay composition</h2>
+<p>Wyoming montmorillonite is widely studied and used smectite. It is available for purchase from Source Clays of <a href="https://www.clays.org">The Clay Minerals Society</a>, and is identified as SWy-1, SWy-2 or SWy-3, depending on the batch. </p>
+<p>This is a well-characterised clay with the structure listed under "Physical and Chemical Data of Source Clays" at the <a href="https://www.clays.org/sourceclays_data/">clays.org</a>, as:</p>
+<p><strong>Swy-1:</strong>    <script type="math/tex">\mathrm {Ca_{0.12} Na_{0.32} K_{0.05} ~\left[ Si_{7.98} Al_{0.02}\right]^{-0.02} \left[ Al_{3.01} Fe^{III}_{0.41} Mn_{0.01} Mg_{0.54} Ti_{0.02}\right]^{-0.52} }</script>, <br/> with unbalanced charge of 0.05.</p>
+<p>Ti is often identified during clay analysis, but is attributed to the TiO inclusions, therefore, we will omit it in the input. Meanwhile, ClayFF force field does not have parameters for Mn, which is shown at the level of detection and so we will also omit this entry.</p>
+<p>The provided  <code>clay_comp.csv</code> file contains an entry <code>SWy-1</code> which corresponds to this Wyoming montmorillonite clay. </p>
+<h2 id="construction-of-the-model">Construction of the model</h2>
+<p>Let's examine the <code>Swy1.yaml</code>, which is provided in the <code>Tutorial</code> directory. This file contains all of the information necessary to build the clay model.</p>
+<p>Please consult <a href="../YAML/">YAML</a> for the parameter description</p>
+<h3 id="required-parameters">Required parameters</h3>
+<pre><code class="language-yaml">
+# =============================================================================
+# General specifications for clay model construction
+# =============================================================================
+
+# =============================================================================
+# Required Parameters
+# =============================================================================
+
+OUTPATH: .
+
+# name of system to call according to CLAY_COMP (exp_clay.csv)
+# compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
+SYSNAME: SWy-1
+
+# specify whether new clay model should be constructed:
+# new - a new clay model is constructed
+# load - sheet coordinates or unit cell sequences are loaded from existent .gro or .npy files
+# load: [X, Y]
+# with X - 'np' or 'gro', Y - '.npy' or '.gro' filename
+# False - no clay model is constructed
+BUILD: new
+
+# name of .csv file with target stoichiometry
+CLAY_COMP: exp_clay.csv
+
+# clay type available options in 'clay_units' directory:
+# Dioctahedral 2:1 - D21
+# Trioctahedral 2:1 - T21
+# Dioctahedral 1:1 - D11
+# Trioctahedral 1:1 - T11
+# layered double hydroxide 3:1 - L31
+# layered double hydroxide 2:1 - L21
+# Sepiolite - SEP
+
+CLAY_TYPE: D21
+
+
+# =============================================================================
+# Optional: Clay Sheet and Interlayer Specifications
+# =============================================================================
+
+# number of unit cells in x direction (Default 7)
+X_CELLS: 7
+
+# number of unit cells in y direction (Default 5)
+Y_CELLS: 5
+
+# number of unit cells in z direction (Default 3)
+N_SHEETS: 3
+
+# ----------------------------------------------------------------------------
+# Optional: Unit Cell Composition and Ratios input
+# if not given, these will be calculated from data in the CLAY_COMP .csv file
+# (Default UC_INDEX_LIST: [], UC_RATIOS_LIST: [])
+# -----------------------------------------------------------------------------
+
+# required UCs to builder system as list
+# UC_INDEX_LIST: [1]
+
+# probability list of unit cells in system
+# p(tot): 1.00
+# UC_RATIOS_LIST: [1]
+
+# -----------------------------------------------------------------------------
+
+# interlayer solvent present or not (Default True)
+IL_SOLV: True
+
+# -----------------------------------------------------------------------------
+# Optional: Interlayer Ion Specification Options (comment the other options!)
+# (Default UC_WATERS: 20)
+# -----------------------------------------------------------------------------
+
+# 1. Number of water molecules that should be added per ion (ION_WATERS)
+# a. as ion species dictionary for hydration number
+# ION_WATERS: {'Ca': 12,
+#               'Na': 12
+#               }
+
+# b. as ion species int for hydration number
+# ION_WATERS : 12
+
+# 3. OR per unit cell
+#UC_WATERS: 25
+
+# 4. OR for a target d-spacing value in A
+SPACING_WATERS: 20
+
+# =============================================================================
+# Optional: Simulation Box Specifications
+# =============================================================================
+
+# full simulation box height in A (Default 150.0)
+BOX_HEIGHT: 150.0
+
+# =============================================================================
+# Optional: Solvation and Bulk Ions Specifications
+# =============================================================================
+
+# Bulk solvent added or not (Default: True)
+BULK_SOLV: True
+
+# Ion species and concentration in mol/L name to add in bulk solvent
+# (Default: BULK_IONS:
+#  Na: 0.1)
+
+BULK_IONS:
+  Na: 0.1
+  Cl: 0.05
+
+# =============================================================================
+# Optional: Simulation Runs Specifications
+# =============================================================================
+
+# Generate scripts and '.mdp' files for simulation runs.
+# Available options:
+# EM - energy minimisation
+# EQ - equilibration
+# D-SPACE - d-spacing equilibration
+# P - production
+# SIMINP: [EM, D-SPACE]
+
+# select where EM and EQ should be run (Default: False)
+# MDRUNS_REMOTE: False
+
+# -----------------------------------------------------------------------------
+# d-spacing equilibration options
+# -----------------------------------------------------------------------------
+
+# Target d-spacing in A
+# D_SPACE: 19.5
+
+# Water molecules to be removed at a time during d-spacing equilibration runs
+# REMOVE_STEPS: 1000
+
+# Absolute number of water molecules per interlayer space
+# SHEET_WAT: 2
+
+# Number of water molecules per unit cell
+# UC_WAT: 0.1
+
+# Percentage of water molecules from interlayer
+# PERCENT_WAT: 5
+
+# -----------------------------------------------------------------------------
+# bash alias for used GROMACS version
+# -----------------------------------------------------------------------------
+
+GMX: gmx
+
+</code></pre>
+<p>run as</p>
+<pre><code class="language-shell">ClayCode builder -f path/to/input_Clay.yaml
+</code></pre>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../tutorials/" class="btn btn-neutral float-left" title="Tutorials"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../imt/" class="btn btn-neutral float-right" title="Illite">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/Erastova-group/ClayCode" class="fa fa-code-fork" style="color: #fcfcfc"> ClayCode</a>
+        </span>
+    
+    
+      <span><a href="../tutorials/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../imt/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

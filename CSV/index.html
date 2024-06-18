@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Valentina Erastova" /><link rel="canonical" href="https://erastova-group.github.io/ClayCode/CSV/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>CSV - ClayCode</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "CSV";
+        var mkdocs_page_input_path = "CSV.md";
+        var mkdocs_page_url = "/ClayCode/CSV/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> ClayCode
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../start/">Quick Start</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Documentation</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../userguide/">User Guide</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Modules</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../builder/">ClayCode.builder</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../siminp/">ClayCode.simpinp</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" >INPUT files</a>
+    <ul class="current">
+                <li class="toctree-l2"><a class="reference internal" href="../YAML/">YAML</a>
+                </li>
+                <li class="toctree-l2 current"><a class="reference internal current" href="#">CSV</a>
+    <ul class="current">
+    <li class="toctree-l3"><a class="reference internal" href="#including-into-input-parameter-file">Including into Input Parameter File</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#file-structure">File Structure</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#rules">Rules</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#occupancies">Occupancies:</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#interlayer-ions">Interlayer Ions:</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#iron-23">Iron 2+/3+:</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#supplied-csv-file">Supplied CSV file</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#example">Example</a>
+    </li>
+    </ul>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../output/">OUTPUT files</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Tutorials</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../tutorials/">Tutorials</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Clays</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../mmt/">Montmorillonite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../imt/">Illite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../pyr/">Pyrophylite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../nont/">Nontronite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../swa/">Fe-smectite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../kao/">Kaolinite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../ldh/">LDH</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../developers/">Developers Guide</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">ClayCode</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">Documentation</li>
+          <li class="breadcrumb-item">INPUT files</li>
+      <li class="breadcrumb-item active">CSV</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/Erastova-group/ClayCode/edit/master/docs/CSV.md">Edit on ClayCode</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="clay-stoicheometry-in-csv-format">Clay stoicheometry in CSV format</h1>
+<h2 id="including-into-input-parameter-file">Including into Input Parameter File</h2>
+<p>The .CSV file must be included into the <a href="../YAML/">INPUT .YAML file</a>:</p>
+<ul>
+<li>the path to the CSV file is specified under <code>CLAY_COMP</code>, </li>
+<li>target occupancies from the CSV file are given by <code>SYSNAME</code>, corresponding to the clay name.</li>
+</ul>
+<p>e.g.:</p>
+<pre><code class="language-yaml">CLAY_COMP: /path/to/clay_comp.csv
+SYSNAME: NAu-1-fe
+
+</code></pre>
+<p><br/></p>
+<h2 id="file-structure">File Structure</h2>
+<ul>
+<li>
+<p>First column: <code>sheet</code></p>
+<ul>
+<li>for tetrahedral (<code>T</code>) and octahedral (<code>O</code>) occupancies;</li>
+<li>interlayer ion  (<code>I</code>) ocupansies, if the total charge (<code>tot</code> second column) is non-zero;</li>
+<li><code>T</code>, <code>O</code> and total (<code>tot</code>) average unit cell charge (<code>C</code>).</li>
+</ul>
+</li>
+<li>
+<p>Second column with <code>element</code>:</p>
+<ul>
+<li>Atom names (if atom is not supported by ClayFF.FF, <code>ClayCode.builder</code> will try to assign it to the supported atom of same charge and re-assign the ocupansies);</li>
+<li>charges for the <code>T</code> layer, <code>O</code> layer and <code>tot</code> total;</li>
+<li>The oxidation state of clay atoms can be specified by adding the charge after the element name (e.g. Fe2).</li>
+</ul>
+</li>
+</ul>
+<p><br/></p>
+<h2 id="rules">Rules</h2>
+<h3 id="occupancies"><strong>Occupancies:</strong></h3>
+<ul>
+<li>Total occupancies for each dioctahedral/trioctahedral tetrahedral (<code>T</code>) sheet should sum up to 4.</li>
+<li>For octahedral (<code>O</code>) sheets, the total occupancies should amount to 4/3 for dioctahedral/trioctahedral unit cell types, respectively.</li>
+<li>For example, the occupancies of a dioctahedral 2:1 clay (TOT) should have <code>T</code> occupancies of 8, and <code>O</code> occupancies of 4;</li>
+<li>Experimental stoichiometries do not necessarily sum up to interger occupancies. <code>ClayCode.builder</code> will first process the target composition such that the occupancies match those expected for the specified <a href="../userguide/## Data files">unit cell type</a>.</li>
+</ul>
+<h3 id="interlayer-ions"><strong>Interlayer Ions:</strong></h3>
+<ul>
+<li>Interlayer ions will be added to compensate the total charge imbalance resulting from substitutions.</li>
+<li>The ratio of these ions can be specified in the <code>I</code> section. The sum of all ion contributions should sum to 1.</li>
+<li>Only ion species of the opposite sign to the layer charge will be considered.</li>
+</ul>
+<h3 id="iron-23"><strong>Iron 2+/3+:</strong></h3>
+<ul>
+<li>There is no need to specify how much of the total iron is Fe3+ or Fe2+ if at least two values among the total, <code>T</code> and <code>O</code> unit cell charge are specified.</li>
+<li><code>ClayCode.builder</code> can perform the splitting between the two iron species.</li>
+</ul>
+<p><br/></p>
+<h2 id="supplied-csv-file">Supplied CSV file</h2>
+<p>The supplied file within directory <code>Tutorial</code> is <code>exp_clay.csv</code> and contains clay structures corresponding to the <strong>Source Clays</strong> listed under "Physical and Chemical Data of Source Clays" <a href="https://www.clays.org/sourceclays_data/">clays.org</a>.</p>
+<ul>
+<li>
+<p>1:1 (TO) dioctohedral smectite:</p>
+<ul>
+<li>Kaolin KGa-1;</li>
+</ul>
+</li>
+<li>
+<p>2:1 (TOT) dioctohedral smectite:</p>
+<ul>
+<li>Na-Montmorillonite (Wyoming) SWy-1,</li>
+<li>Illite IMt-1,</li>
+<li>Ferruginous Smectite SWa-1,  </li>
+<li>Nontronite NAu-1-fe,</li>
+<li>Nontronite NAu-2-fe,</li>
+<li>Nontronite NG-1; </li>
+</ul>
+</li>
+<li>
+<p>example Al-Mg 3:1 layered double hydroxide (not via <a href="https://www.clays.org/sourceclays_data/">clays.org</a>):</p>
+<ul>
+<li>LDH31.</li>
+</ul>
+</li>
+</ul>
+<p><br/></p>
+<h2 id="example">Example</h2>
+<p>Example from <code>clay_comp.csv</code> file for NAu-1 and NAu-2 <a href="../nont/">nontronite</a> clays:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"><strong>sheet</strong></th>
+<th style="text-align: left;"><strong>element</strong></th>
+<th style="text-align: right;"><strong>NAu-1-fe</strong></th>
+<th style="text-align: right;"><strong>NAu-2-fe</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>T</strong></td>
+<td style="text-align: left;"><strong>Si</strong></td>
+<td style="text-align: right;">6.98</td>
+<td style="text-align: right;">7.55</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>T</strong></td>
+<td style="text-align: left;"><strong>Al</strong></td>
+<td style="text-align: right;">0.95</td>
+<td style="text-align: right;">0.16</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>T</strong></td>
+<td style="text-align: left;"><strong>Fe3</strong></td>
+<td style="text-align: right;">0.07</td>
+<td style="text-align: right;">0.29</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>O</strong></td>
+<td style="text-align: left;"><strong>Fe</strong></td>
+<td style="text-align: right;">3.61</td>
+<td style="text-align: right;">3.54</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>O</strong></td>
+<td style="text-align: left;"><strong>Al</strong></td>
+<td style="text-align: right;">0.36</td>
+<td style="text-align: right;">0.34</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>O</strong></td>
+<td style="text-align: left;"><strong>Mg</strong></td>
+<td style="text-align: right;">0.04</td>
+<td style="text-align: right;">0.05</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>I</strong></td>
+<td style="text-align: left;"><strong>Ca</strong></td>
+<td style="text-align: right;">0.525</td>
+<td style="text-align: right;">0.36</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>I</strong></td>
+<td style="text-align: left;"><strong>Na</strong></td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>I</strong></td>
+<td style="text-align: left;"><strong>Mg</strong></td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>I</strong></td>
+<td style="text-align: left;"><strong>K</strong></td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>I</strong></td>
+<td style="text-align: left;"><strong>Cl</strong></td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>C</strong></td>
+<td style="text-align: left;"><strong>T</strong></td>
+<td style="text-align: right;">-1.02</td>
+<td style="text-align: right;">-0.45</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>C</strong></td>
+<td style="text-align: left;"><strong>O</strong></td>
+<td style="text-align: right;">-0.03</td>
+<td style="text-align: right;">-0.27</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>C</strong></td>
+<td style="text-align: left;"><strong>tot</strong></td>
+<td style="text-align: right;">-1.05</td>
+<td style="text-align: right;">-0.72</td>
+</tr>
+</tbody>
+</table>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../YAML/" class="btn btn-neutral float-left" title="YAML"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../output/" class="btn btn-neutral float-right" title="OUTPUT files">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/Erastova-group/ClayCode" class="fa fa-code-fork" style="color: #fcfcfc"> ClayCode</a>
+        </span>
+    
+    
+      <span><a href="../YAML/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../output/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
