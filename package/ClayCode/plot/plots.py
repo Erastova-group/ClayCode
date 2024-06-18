@@ -7,12 +7,13 @@ import logging
 import os
 import pickle as pkl
 import re
-import shutil
+
+# import shutil
 import sys
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from collections import UserString
-from functools import cached_property, partialmethod, wraps
+from functools import cached_property, partialmethod  # , wraps
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple, Type, Union
 
@@ -47,6 +48,9 @@ from seaborn import saturate, set_hls_values
 from sklearn.neighbors import KernelDensity
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
+
+# from ClayCode.analysis.peaks import Peaks
+
 
 # from ClayCode.analysis.peaks import Peaks
 
@@ -5488,6 +5492,7 @@ class Data:
         group_all=False,
         max_line_width=LINE_LENGTH,
         other_cutoff=None,
+        edge_data=None,
     ):
         """Constructor method"""
         logger.info(f"Initialising {self.__class__.__name__}")
@@ -5510,6 +5515,10 @@ class Data:
             indir = Path(indir)
 
         self._indir = indir
+        if edge_data is not None:
+            self.edge_dir = Path(edge_data)
+        else:
+            self.edge_dir = PE_DATA
 
         if self.analysis is None:
             logger.info(
@@ -6103,7 +6112,7 @@ class Data:
         fname = (
             # Path(__file__).parent.parent
             # / f"analysis/pe_data/"
-            PE_DATA
+            self.edge_dir
             / f"{clay_type}{atom_type}_{other}{name}_data_{self._min}_{self.cutoff}_{self.bins}.p"
         )
         logger.info(f"Peak/edge Filename: {fname}\n")
@@ -6321,7 +6330,10 @@ class Data:
             if other is not None and isinstance(other, list):
                 other = other[0]
             fname = self._get_edge_fname(
-                atom_type, name="edges", other=other, clay_type=clay_type
+                atom_type,
+                name="edges",
+                other=other,
+                clay_type=clay_type,
             )
             if fname.exists():
                 break
@@ -6391,7 +6403,8 @@ class Data:
             for atom_type in self._atoms:
                 self._edges[atom_type] = {}
                 self._edges[atom_type]["all"] = self._read_edge_file(
-                    atom_type, other=None
+                    atom_type,
+                    other=None,
                 )
                 if self.other is not None:
                     if isinstance(self.other, list):
@@ -6415,7 +6428,10 @@ class Data:
                                 self._edges[atom_type][other][
                                     clay_type
                                 ] = self._read_edge_file(
-                                    atom_type, other=other, clay_type=clay_type
+                                    atom_type,
+                                    other=other,
+                                    clay_type=clay_type,
+                                    data_dir=self.edge_dir,
                                 )
                         else:
                             self._edges[atom_type][
@@ -7516,6 +7532,7 @@ class Data2D:
         analyses: Optional[List[str]] = None,
         zname: Optional[str] = "zdens",
         atomname=True,
+        edge_data=None,
         vel_bins: float = 0.05,
         velrange: Tuple[float, float] = (0.0, 1.0),
         atomnames=False,
@@ -7541,6 +7558,10 @@ class Data2D:
         self._indir = indir
 
         self._zdir = zdir
+        if edge_data is not None:
+            self.edge_dir = Path(edge_data)
+        else:
+            self.edge_dir = PE_DATA
 
         # if self.analysis is None:
         #     logger.info(
@@ -7866,7 +7887,7 @@ class Data2D:
         # fname = Path.cwd() / f"edge_data/edges_{atom_type}_{self.cutoff}_{self.bins}.p"
         fname = (
             # Path.cwd()
-            PE_DATA
+            self.edge_dir
             / f"{atom_type}_{other}{name}_data_{self.cutoff}_{self.bins}.p"
         )
         logger.info(f"Peak/edge Filename: {fname}")
@@ -16396,6 +16417,13 @@ if __name__ == "__main__":
     )
     p.add_argument("-zdata", type=Path, required=False, dest="zdir")
     p.add_argument("-format", type=str, default="png", required=False)
+    p.add_argument(
+        "-edge_dir",
+        type=Path,
+        required=False,
+        dest="edge_data",
+        default=PE_DATA,
+    )
     atype_parser = p.add_subparsers(  # 'atom_type arguments',
         dest="atypes"
     )  # 'atom type plots')
@@ -16434,6 +16462,7 @@ if __name__ == "__main__":
             zstem="zdist",
             zname="zdens",
             analyses=[args.analysis],
+            edge_data=args.edge_data,
         )
         atoms = args.atoms
     else:
@@ -16457,6 +16486,7 @@ if __name__ == "__main__":
                 overwrite=args.overwrite,
                 group_all=True,
                 load=args.load,  # '/storage/results.p'
+                edge_data=args.edge_data,
             )
             if args.new_bins is not None:
                 args.bins = args.new_bins
@@ -16498,6 +16528,7 @@ if __name__ == "__main__":
             atoms=atoms,
             atomname=args.atomname,
             load=False,
+            edge_data=args.edge_data,
         )
 
         data.ignore_density_sum = args.ignore_sum
