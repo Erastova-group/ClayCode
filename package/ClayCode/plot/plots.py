@@ -6164,7 +6164,7 @@ class Data:
         logger.info(f"Getting peaks edges for {atom_types}")
         for atom_type in atom_types:
             outname = self._get_edge_fname(
-                atom_type=atom_type, other=other, name="pe"
+                atom_type=atom_type, other=other, name="edges"
             )
             if not outname.is_file():
                 if atom_type == "OT":
@@ -6321,7 +6321,7 @@ class Data:
             if other is not None and isinstance(other, list):
                 other = other[0]
             fname = self._get_edge_fname(
-                atom_type, name="pe", other=other, clay_type=clay_type
+                atom_type, name="edges", other=other, clay_type=clay_type
             )
             if fname.exists():
                 break
@@ -12421,7 +12421,7 @@ class HistPlot(Plot):
                             drop_level=False,
                         )
                         bin_df.loc[slice.index, "x_bins"] = pd.cut(
-                            slice.index.get_level_values("x").unique(),
+                            slice.index.get_level_values("x"),  # .unique(),
                             bins=self.data.edges[atom][clay][other],
                         )
                 else:
@@ -12431,7 +12431,7 @@ class HistPlot(Plot):
                         drop_level=False,
                     )
                     bin_df.loc[slice.index, "x_bins"] = pd.cut(
-                        slice.index.get_level_values("x").unique(),
+                        slice.index.get_level_values("x"),  # .unique(),
                         bins=self.data.edges[atom][clay],
                     )
         #     x_bins = bin_df.groupby(['_atoms', 'clays'], sort=False, group_keys=False).apply(lambda x: pd.cut(x['x'], bins=self.data.edges[x.name[0]][x.name[1]]))
