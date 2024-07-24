@@ -28,7 +28,10 @@ ClayCode builder -f path/to/input_NAu-1-fe.yaml
 ```
 
 ## Docs and Examples:
+
 Please see ClayCode website [claycode.readthedocs.io/en/latest](https://erastova-group.github.io/ClayCode) for the Manual and Tutorials.
+
+A workshop material, part of the Molecular Modeling in Clay Science Meeting (16th - 17th May 2024, Edinburgh), is available at [ClayCode Workshop Repo](https://github.com/Erastova-group/ClayCode-workshop)
 
 
 ## Future Development and Contribution:
