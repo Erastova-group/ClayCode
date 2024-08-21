@@ -22,25 +22,12 @@ import pandas as pd
 import unicodeit
 from ClayCode.builder.claycomp import InterlayerIons, UCData
 from ClayCode.builder.topology import TopologyConstructor
-from ClayCode.builder.utils import get_checked_input, select_input_option
-from ClayCode.core.classes import (
-    Dir,
-    FileFactory,
-    GROFile,
-    TOPFile,
-    set_mdp_freeze_groups,
-    set_mdp_parameter,
-)
+from ClayCode.builder.utils import select_input_option
+from ClayCode.core.classes import Dir, FileFactory, GROFile, TOPFile
 from ClayCode.core.consts import ANGSTROM
-from ClayCode.core.gmx import (
-    GMXCommands,
-    add_gmx_args,
-    check_box_lengths,
-    gmx_command_wrapper,
-)
+from ClayCode.core.gmx import GMXCommands, add_gmx_args, check_box_lengths
 from ClayCode.core.lib import (
     add_ions_n_mols,
-    add_ions_neutral,
     add_resnum,
     center_clay,
     check_insert_numbers,
@@ -49,13 +36,8 @@ from ClayCode.core.lib import (
     select_outside_clay_stack,
     write_insert_dat,
 )
-from ClayCode.core.utils import (
-    backup_files,
-    get_header,
-    get_subheader,
-    progress_wrapper,
-)
-from ClayCode.data.consts import FF, GRO_FMT, MDP, MDP_DEFAULTS
+from ClayCode.core.utils import backup_files, get_header, get_subheader
+from ClayCode.data.consts import GRO_FMT
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.lib.mdamath import triclinic_box, triclinic_vectors
 from MDAnalysis.units import constants
@@ -173,6 +155,7 @@ class Builder:
             ion_add_func=self.add_il_ions,
             solvate_add_func=self.solvate_clay_sheets,
             solvent_remove_func=self.remove_il_solv,
+            solvent_rename_func=self.rename_il_solv,
             il_rename_func=self.rename_il,
             backup=self.args.backup,
             solvent=True,
@@ -258,17 +241,17 @@ class Builder:
         :return: None"""
         if not solvate and ion_charge == 0:
             pass
-        elif solvate or ion_charge != 0:
+        elif solvate or not np.equal(ion_charge, 0):
             if solvent:
                 solvate_add_func(backup=backup)
-            if ion_charge != 0 and ions:
+            if not np.equal(ion_charge, 0) and ions:
                 ion_add_func()
                 if not solvate:
                     solvent_remove_func()
-            if ion_charge == 0 and solvent and solvate:
+            if np.equal(ion_charge, 0) and solvent and solvate:
                 solvent_rename_func()
             elif (
-                ion_charge != 0
+                not np.equal(ion_charge, 0)
                 and ions
                 and solvate
                 and il_rename_func is not None
@@ -541,13 +524,13 @@ class Builder:
                                 ):
                                     self.stack = new_file
                                     logger.finfo(
-                                        f"Writing final output from energy minimisation to {str(file.parent)!r}:"
+                                        f"Writing final output from energy minimisation to {str(new_file.parent)!r}:"
                                     )
 
-                                    file.unlink(missing_ok=True)
-                                else:
-                                    file.unlink(missing_ok=True)
-                                    file = new_file
+                                #     file.unlink(missing_ok=True)
+                                # else:
+                                file.unlink(missing_ok=True)
+                                file = new_file
 
                         em_files.append(file.name)
             if backups:

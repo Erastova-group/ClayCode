@@ -33,13 +33,12 @@ from typing import (
 
 import dask.array
 import dask.bag
-import dask.dataframe as dd
 import numpy as np
 import pandas as pd
 import yaml
 import zarr
 from ClayCode.builder.consts import BUILDER_DATA
-from ClayCode.builder.utils import get_checked_input, select_input_option
+from ClayCode.builder.utils import select_input_option
 from ClayCode.core.classes import (
     ClayFFData,
     Dir,
@@ -53,11 +52,11 @@ from ClayCode.core.lib import get_ion_charges
 from ClayCode.core.utils import (
     backup_files,
     get_arr_bytes,
+    get_checked_input,
     get_debugheader,
     get_subheader,
 )
 from ClayCode.data.consts import CLAYFF_AT_TYPES, UCS
-from MDAnalysis.lib.mdamath import triclinic_vectors
 from numba import njit, prange
 from numpy._typing import NDArray
 from tqdm.auto import tqdm
@@ -1030,7 +1029,7 @@ class TargetClayComposition:
                                     result_type=int,
                                 )
                                 logger.finfo(
-                                    f"Assuming {at_type} charge of {at_charge}."
+                                    f"Assuming {at_type} charge of {at_charge:+.2f}."
                                 )
                         remove_charge = (
                             at_charge - self.uc_data.oxidation_numbers[group]
@@ -1167,6 +1166,7 @@ class TargetClayComposition:
             charge_df = charge_df.xs("C")
         except KeyError:
             pass
+        # charge_df = charge_df.astype(np.float)
         sheet_charges = charge_df.copy()
         charge_dict = sheet_charges.to_dict()
         # for sheet, charge in charge_df.items():
@@ -1201,7 +1201,7 @@ class TargetClayComposition:
             else:
                 logger.error(
                     f"Sheet charges ({sheet_charges.sum()}) "
-                    f"do not sum to specified total charge ({tot_charge})\n"
+                    f"do not sum to specified total charge ({tot_charge:.2f})\n"
                     "Please specify valid charges!"
                 )
                 self.__abort()
@@ -1680,13 +1680,19 @@ class TargetClayComposition:
     def __read_match_df(self, csv_file):
         """Read match DataFrame from csv file."""
 
-        match_df: pd.DataFrame = pd.read_csv(csv_file)
+        match_df: pd.DataFrame = pd.read_csv(
+            csv_file,
+            keep_default_na=True,
+            na_values=[" "],
+        )
+        match_df.convert_dtypes()
         match_df["sheet"].ffill(inplace=True)
         match_cols = match_df.columns.values
         match_cols[:2] = self.uc_df.index.names
         match_df.columns = match_cols
         match_df.set_index(self.uc_df.index.names, inplace=True)
         match_df.sort_index(level="sheet", sort_remaining=True, inplace=True)
+        match_df = match_df.astype(np.float_)
         return match_df
 
 
@@ -1758,7 +1764,7 @@ class ClayComposition(ABC):
             uc_group_df[uc_group_df != 0].dropna(how="all").fillna(0).items()
         ):
             if charges is not None:
-                charge_str = f"{fill}{'':28} {float(charges[uc_id]):<+2.0f}"
+                charge_str = f"{fill}{'':28} {charges[uc_id]:<+2.0f}"
             else:
                 charge_str = ""
             logger.finfo(

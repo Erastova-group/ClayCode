@@ -7,10 +7,8 @@ This module provides utility functions for the ClayCode builder.
 from __future__ import annotations
 
 import logging
-import re
-import sys
 from functools import singledispatch, wraps
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -89,65 +87,4 @@ def select_input_option(
         result = input(query).lower().strip(" ")
     if result_map is not None:
         result = result_map[result]
-    return result
-
-
-def get_checked_input(
-    query: str,
-    result_type: Type,
-    check_value: Optional[Any] = None,
-    result: Optional[Any] = None,
-    re_flags=0,
-    exit_val: str = "e",
-    default_val: Optional[Any] = None,
-    *result_init_args,
-    **result_init_kwargs,
-) -> Any:
-    """Get user input and check it against a given type
-    :param query: Query to display to user
-    :type query: str
-    :param result_type: Type to check input against
-    :type result_type: Type
-    :param check_value: Regular expression to check input against
-    :type check_value: Optional[Any]
-    :param result: Result to return if no user input is given
-    :type result: Optional[Any]
-    :param re_flags: Flags for regular expression
-    :type re_flags: int
-    :param exit_val: Value to exit the program
-    :type exit_val: str
-    :param result_init_args: Arguments for result type initialization
-    :type result_init_args: Any
-    :param result_init_kwargs: Keyword arguments for result type initialization
-    :type result_init_kwargs: Any
-    :return: User input or result
-    :rtype: Any
-    """
-    if default_val is not None:
-        default_str = f" (default: {default_val!r} "
-    else:
-        default_str = " ("
-    if exit_val is not None and len(exit_val) >= 1:
-        exit_str = f" or exit with {exit_val!r})"
-    else:
-        exit_str = ")"
-    while not isinstance(result, result_type):
-        result_input = input(f"{query}{default_str}{exit_str}:\n").strip(" ")
-        if result_input == exit_val:
-            logger.info(f"Selected {exit_val!r}, exiting.")
-            sys.exit(0)
-        elif result_input == "" and default_val is not None:
-            result_input = default_val
-        try:
-            result_match = re.match(
-                check_value, result_input, flags=re_flags
-            ).group(0)
-            if result_match != result_input:
-                raise AttributeError
-        except AttributeError:
-            print(f"\tInvalid input: {result_input!r}")
-        else:
-            result = result_type(
-                result_input, *result_init_args, **result_init_kwargs
-            )
     return result
