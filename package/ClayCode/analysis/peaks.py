@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn
+from ClayCode.analysis.consts import PE_DATA
 from ClayCode.core.consts import ANGSTROM
 from ClayCode.core.utils import get_header
 from ClayCode.plot.plots import Data, LinePlot
@@ -73,6 +74,7 @@ class Peaks:
         overwrite=False,
         smooting=2,
         interpolation=2,
+        datadir=PE_DATA,
     ):
         if other is None:
             other_str = ""
@@ -98,6 +100,7 @@ class Peaks:
                 other=other,
                 name="edges",
                 clay_type=self.clay_str,
+                # data_dir=datadir,
             )
             # )  # .cwd() / f"peaks_edges/{atom_type}_pe_data.p"
             if outname.is_file() and overwrite is False:
@@ -777,6 +780,7 @@ class Peaks:
                     name="edges",
                     other=other,
                     clay_type=self.clay_str,
+                    # datadir=datadir,
                 )
                 # for x, y in self.get_iter(atom_type=atom_type):
                 #     plt.plot(x, y)
@@ -970,21 +974,23 @@ class Peaks:
 
 
 if __name__ == "__main__":
-    data = Data(  # "/storage/bede_results/results/zdist",  # _c",
-        "/media/hannahpollak/free/coordination",  # SWy-123_Ba_ctl_7_ions_OW_20_10_rdens",
-        cutoff=14,
+    data = Data(
+        "/storage/bede_results/results/zdist_new",  # _c",
+        # "/media/hannahpollak/free/coordination",  # SWy-123_Ba_ctl_7_ions_OW_20_10_rdens",
+        cutoff=50,
         bins=0.10,
-        odir="../data/peaks/",  # _plots",
-        namestem="crd",
+        odir="../data/peaks_new/",  # _plots",
+        namestem="zdens",
         nameparts=1,
-        analysis="rdf",
+        analysis="zdens",
         atoms=["ions"],
-        ions=["Ba"],
+        ions=["Na"],
         # clays=["SWy-1-simplified", "SWy-123"],
         # clays = ['KGa-1']
         clays=["SWy-123", "IMt-1", "KGa-1", "SWy-1-simplified"],
-        other=["OW"],
-        other_cutoff=5.85,
+        # other=["OW"],
+        # other_cutoff=5.85,
+        edge_data="../data/peaks_new/",
     )
     # print(type(data))
     peaks = Peaks(data=data)
@@ -995,5 +1001,5 @@ if __name__ == "__main__":
         height_def=0.01,
         wiener_def=1,
         overwrite=True,
-        other="OW",
+        # other="OW",
     )

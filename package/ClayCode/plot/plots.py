@@ -38,6 +38,7 @@ from ClayCode.analysis.utils import (
 )
 from ClayCode.core.classes import Dir
 from ClayCode.core.consts import LINE_LENGTH
+from ClayCode.core.utils import get_ls_files
 from ClayCode.plots.classes import Bins, Cutoff
 from matplotlib import colormaps, ticker
 from matplotlib.table import table
@@ -5504,6 +5505,8 @@ class Data:
                 self.other_cutoff = Cutoff(other_cutoff)
             else:
                 self.other_cutoff = self.cutoff
+        else:
+            self.other_cutoff = self.cutoff
         self.analysis: Union[str, None] = analysis
         self._min = Cutoff(min)
         if use_rel_data is True:
@@ -6099,6 +6102,8 @@ class Data:
         other: Optional[str],
         clay_type="all",
         name: Union[Literal["pe"], Literal["edge"]] = "edges",
+        regex: Optional[str] = None,
+        # data_dir=PE_DATA,
     ):
         if other is not None:
             other = f"{other}_"
@@ -6108,13 +6113,41 @@ class Data:
             clay_type = ""
         else:
             clay_type = f"{clay_type}_"
+
         # fname = Path.cwd() / f"edge_data/edges_{atom_type}_{self.cutoff}_{self.bins}.p"
-        fname = (
+        if regex is None:
+            fname = (
+                self.edge_dir
+                / f"{clay_type}{atom_type}_{other}{name}_data_{self._min}_{self.cutoff}_{self.bins}.p"
+            )
+        else:
+            fname = get_ls_files(
+                self.edge_dir,
+                f"{clay_type}{atom_type}_{other}{name}_data_{self._min}_"
+                + "{"
+                + f"{self.cutoff}"
+                + ",{"
+                + f"{self.cutoff[0]}..9"
+                + "}{"
+                + f"{self.cutoff[1]}..9"
+                + "},{"
+                + f"{int(self.cutoff[0])+1}..9"
+                + "}{"
+                + f"0..9"
+                + "}}"
+                + f"_{self.bins}.p",
+            )
             # Path(__file__).parent.parent
+            if len(fname) == 0:
+                fname = None
+            elif len(fname) > 1:
+                logger.error(f"Multiple files found: {fname}")
+                sys.exit(1)
+            else:
+                fname = fname[0]
+
             # / f"analysis/pe_data/"
-            self.edge_dir
-            / f"{clay_type}{atom_type}_{other}{name}_data_{self._min}_{self.cutoff}_{self.bins}.p"
-        )
+            # self.edge_dir / f"{clay_type}{atom_type}_{other}{name}_data_{self._min}_{self.cutoff}_{self.bins}.p"
         logger.info(f"Peak/edge Filename: {fname}\n")
         return fname
 
@@ -6337,17 +6370,30 @@ class Data:
             )
             if fname.exists():
                 break
+            else:
+                fname = self._get_edge_fname(
+                    atom_type,
+                    name="edges",
+                    other=other,
+                    clay_type=clay_type,
+                    regex=True,
+                )
+            if fname is not None:
+                break
+
         if not fname.exists():
-            logger.debug(f"No {atom_type} edge file found.")
-            os.makedirs(fname.parent, exist_ok=True)
-            logger.info(f"{fname.parent}")
+            logger.debug(f"No {atom_type} {clay_type} edge file found.")
+            # os.makedirs(fname.parent, exist_ok=True)
+            # logger.info(f"{fname.parent}")
             if skip is True:
-                logger.info(f"Continuing without {atom_type} edges")
+                logger.info(
+                    f"Continuing without {atom_type} {clay_type} edges"
+                )
                 p = [self._min.num, self.cutoff.num]
             else:
                 # self._get_edges(atom_type=atom_type)
                 raise FileNotFoundError(
-                    f"No {atom_type} edge file found {fname!r}."
+                    f"No {atom_type} {clay_type} edge file found {fname!r}."
                 )
         else:
             with open(fname, "rb") as edges_file:
@@ -6360,9 +6406,12 @@ class Data:
                     )
                 except AttributeError:
                     logger.info(f"Removing {fname}")
-                    os.remove(fname)
+                    # os.remove(fname)
                     p = [self._min.num, self.cutoff.num]
-        logger.debug(f"edges: {p}")
+                else:
+                    logger.finfo(
+                        f"Found edges: " + ", ".join([f"{e:.2f}" for e in p])
+                    )
         return p
 
     #
@@ -7107,6 +7156,11 @@ class Data:
             pi += 1
         return view, col, pi
 
+    def load_pkl_df(self, load: Type["Path"]):
+        load = Path(load.resolve())
+        self.df: pd.DataFrame = pkl.load(load)
+        logger.info(f"Using data from {load!r}")
+
     def get_bar_peaks(self, atom_type, other=None, clay_type="all"):
         # if len(self._peaks) != len(self.df.index.get_level_values("_atoms").unique()):
         peaks = self._read_edge_file(
@@ -7209,9 +7263,8 @@ class AtomTypeData(Data):
         logger.info(f"Found {len(self.filelist)} files.")
 
         if load != False:
-            load = Path(load.resolve())
-            self.df: pd.DataFrame = pkl.load(load)
-            logger.info(f"Using data from {load!r}")
+            self.load_pkl_df()
+
         else:
             if ions is None:
                 ions = self.__class__.ions
@@ -12530,7 +12583,11 @@ class HistPlot(Plot):
 
         # add missing atom probabilities from bulk to the largest bin
         # (bin.left, cutoff] -> (bin.left, all bulk])
-        if self.data._arr_col == 2 and self.add_missing_bulk is True:
+        if (
+            self.data._arr_col == 2
+            and self.add_missing_bulk is True
+            and plot_df.groupby(plot_df.index.names).max().all() <= 1
+        ):
             inner_sum = plot_df.groupby(
                 plot_df.index.droplevel("x_bins").names
             ).sum()
@@ -12540,12 +12597,15 @@ class HistPlot(Plot):
             #     self.data.cutoff.num,
             #     np.rint(plot_df.index.get_level_values("x_bins").right),
             # )
-            plot_df.where(
-                np.rint(plot_df.index.get_level_values("x_bins").right)
-                != self.data.cutoff.num,
-                lambda x: x + extra,
-                inplace=True,
-            )
+            try:
+                plot_df.where(
+                    np.rint(plot_df.index.get_level_values("x_bins").right)
+                    <= self.data.cutoff.num,
+                    lambda x: x + extra,
+                    inplace=True,
+                )
+            except TypeError:
+                pass
         # setattr(self, "_plot_df", plot_df.copy())
         self._plot_df, self._colour_df = plot_df.copy(), colour_df.copy()
 

@@ -25,9 +25,9 @@ from ClayCode.analysis.lib import (
 )
 from ClayCode.analysis.utils import get_paths
 from ClayCode.analysis.zdist import ZDens
-from ClayCode.builder.utils import get_checked_input, select_input_option
+from ClayCode.builder.utils import select_input_option
 from ClayCode.core.consts import ANGSTROM
-from ClayCode.core.utils import get_ls_files, get_subheader
+from ClayCode.core.utils import get_checked_input, get_ls_files, get_subheader
 from MDAnalysis import Universe
 from MDAnalysis.core.groups import AtomGroup
 from MDAnalysis.lib.distances import apply_PBC
@@ -395,7 +395,7 @@ class CrdDist(ClayAnalysisBase):
                 zdist = ZDens(
                     sysname=zdist.name,
                     sel=sel,
-                    clay=clay,
+                    clay_type=clay,
                     n_bins=self._z_n_bins,
                     bin_step=self._z_bin_step,
                     cutoff=self._z_cutoff,

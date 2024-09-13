@@ -810,7 +810,11 @@ class DSpaceRun(GMXRun):
             },
             flags=re.MULTILINE | re.DOTALL,
         )
-        return self.conda_header + dspace_run_string
+        return (
+            f"\n# {self.run_id}: {self._name}:\n"
+            + self.conda_header
+            + dspace_run_string
+        )
 
     @property
     def sheet_n_wat(self) -> int:

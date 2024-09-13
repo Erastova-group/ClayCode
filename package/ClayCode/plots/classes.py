@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+__all__ = ["Cutoff", "Bins"]
+
 
 class Cutoff(str):
     def __new__(cls, length):

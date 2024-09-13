@@ -7,9 +7,10 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: '/storage/clay_models'
+# path to the directory where the output files will be saved
+# OUTPATH: '.'
 
-# name of system
+# system name
 SYSNAME: SWa-1
 
 # specify whether new clay model should be constructed:
@@ -22,7 +23,7 @@ SYSNAME: SWa-1
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: package/ClayCode/builder/tests/data/exp_non.csv
+CLAY_COMP: data/exp_clay.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
@@ -33,7 +34,7 @@ CLAY_COMP: package/ClayCode/builder/tests/data/exp_non.csv
 # layered double hydroxide 2:1 - L21
 # Sepiolite - SEP
 
-CLAY_TYPE: D21
+CLAY_TYPE: CD21
 
 
 # =============================================================================

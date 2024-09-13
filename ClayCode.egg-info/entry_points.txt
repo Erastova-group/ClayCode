@@ -1,0 +1,3 @@
+[console_scripts]
+ClayCode = ClayCode:__main__.run
+ClayCodeTests = ClayCodeTests:__main__

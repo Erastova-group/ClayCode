@@ -14,6 +14,8 @@ import pickle
 import re
 import shutil
 import subprocess as sp
+import sys
+import tempfile
 import threading
 import time
 import warnings
@@ -21,7 +23,17 @@ from collections import defaultdict
 from functools import partial, singledispatch, wraps
 from itertools import chain
 from pathlib import Path
-from typing import Any, List, Literal, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
 import numpy as np
 import pandas as pd
@@ -763,5 +775,146 @@ def parse_yaml(source, enumerate_duplicates=False):
     if enumerate_duplicates:
         yaml_str = parse_yaml_with_duplicate_keys(source)
     else:
-        yaml_str = yaml.safe_load(source)
+        try:
+            yaml_str = dict(yaml.safe_load(source))
+        except ValueError:
+            logger.error(
+                f"Could not parse yaml file {Path(source.name).resolve()}!\nAborting..."
+            )
+            sys.exit(1)
+        except TypeError:
+            logger.error(
+                f"{Path(source.name).resolve()} is empty!\nAborting..."
+            )
+            sys.exit(1)
     return yaml_str
+
+
+def get_checked_input(
+    query: str,
+    result_type: Type,
+    check_value: Optional[Any] = None,
+    result: Optional[Any] = None,
+    re_flags=0,
+    exit_val: str = "e",
+    default_val: Optional[Any] = None,
+    *result_init_args,
+    **result_init_kwargs,
+) -> Any:
+    """Get user input and check it against a given type
+    :param query: Query to display to user
+    :type query: str
+    :param result_type: Type to check input against
+    :type result_type: Type
+    :param check_value: Regular expression to check input against
+    :type check_value: Optional[Any]
+    :param result: Result to return if no user input is given
+    :type result: Optional[Any]
+    :param re_flags: Flags for regular expression
+    :type re_flags: int
+    :param exit_val: Value to exit the program
+    :type exit_val: str
+    :param result_init_args: Arguments for result type initialization
+    :type result_init_args: Any
+    :param result_init_kwargs: Keyword arguments for result type initialization
+    :type result_init_kwargs: Any
+    :return: User input or result
+    :rtype: Any
+    """
+    if default_val is not None:
+        default_str = f" (default: {default_val!r} "
+    else:
+        default_str = " ("
+    if exit_val is not None and len(exit_val) >= 1:
+        exit_str = f" or exit with {exit_val!r})"
+    else:
+        exit_str = ")"
+    while not isinstance(result, result_type):
+        result_input = input(f"{query}{default_str}{exit_str}:\n").strip(" ")
+        if result_input == exit_val:
+            logger.info(f"Selected {exit_val!r}, exiting.")
+            sys.exit(0)
+        elif result_input == "" and default_val is not None:
+            result_input = default_val
+        try:
+            result_match = re.match(
+                check_value, result_input, flags=re_flags
+            ).group(0)
+            if result_match != result_input:
+                raise AttributeError
+        except AttributeError:
+            print(f"\tInvalid input: {result_input!r}")
+        else:
+            result = result_type(
+                result_input, *result_init_args, **result_init_kwargs
+            )
+    return result
+
+
+def temp_file_wrapper(f: Callable):
+    """Decorator to create temporary output files for use in function."""
+
+    @wraps(f)
+    def wrapper(**kwargs):
+        kwargs_dict = locals()["kwargs"]
+        fargs_dict = {}
+        new_tmp = {}
+        for ftype in ["crd", "top"]:
+            if f"{ftype}in" in kwargs_dict.keys():
+                fargs_dict[f"{ftype}in"] = kwargs_dict[f"{ftype}in"]
+            if f"{ftype}out" in kwargs_dict.keys():
+                (
+                    fargs_dict[f"{ftype}in"],
+                    fargs_dict[f"{ftype}out"],
+                    new_tmp,
+                    temp_outp,
+                ) = init_temp_inout(
+                    kwargs_dict[f"{ftype}in"],
+                    kwargs_dict[f"{ftype}out"],
+                    new_tmp_dict=new_tmp,
+                    which=ftype,
+                )
+            elif f"{ftype}out" in kwargs_dict.keys():
+                fargs_dict[f"{ftype}out"] = kwargs_dict[f"{ftype}out"]
+        for k, v in fargs_dict.items():
+            locals()["kwargs"][k] = v
+        r = f(**kwargs_dict)
+        for ftype, new in new_tmp.items():
+            if new is True:
+                infile = Path(fargs_dict[f"{ftype}in"])
+                outfile = Path(fargs_dict[f"{ftype}out"])
+                assert outfile.exists(), "No file generated!"
+                shutil.move(outfile, infile)
+                logger.debug(f"Renaming {outfile.name!r} to {infile.name!r}")
+        return r
+
+    return wrapper
+
+
+def init_temp_inout(
+    inf: Union[str, Path],
+    outf: Union[str, Path],
+    new_tmp_dict: Dict[Literal["crd", "top"], bool],
+    which: Literal["crd", "top"],
+) -> Tuple[
+    Union[str, Path], Union[str, Path], Dict[Literal["crd", "top"], bool]
+]:
+    inp = Path(inf)
+    outp = Path(outf)
+    if inp == outp:
+        # outp = outp.parent / f'{outp.stem}_temp{outp.suffix}'
+        temp_outp = tempfile.NamedTemporaryFile(
+            suffix=outp.suffix, prefix=outp.stem, dir=outp.parent, delete=False
+        )
+        outp = outp.parent / temp_outp.name
+        new_tmp_dict[which] = True
+        logger.debug(
+            f"Creating temporary output file {outp.parent / outp.name!r}"
+        )
+    else:
+        temp_outp = None
+    if type(inf) == str:
+        inp = str(inp.resolve())
+    if type(outf) == str:
+        temp_outp = str(outp.resolve())
+    return inp, outp, new_tmp_dict, temp_outp

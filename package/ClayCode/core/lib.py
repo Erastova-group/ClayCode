@@ -15,19 +15,8 @@ import shutil
 import sys
 import tempfile
 from functools import partial, update_wrapper, wraps
-from pathlib import Path, PosixPath
-from typing import (
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Sequence,
-    Tuple,
-    Union,
-    cast,
-    overload,
-)
+from pathlib import Path
+from typing import Callable, Dict, List, Literal, Optional, Tuple, Union, cast
 
 import MDAnalysis as mda
 import MDAnalysis.coordinates
@@ -37,9 +26,25 @@ from ClayCode.core.cctypes import AtomGroup, PathType
 from ClayCode.core.classes import Dir, ForceField, GROFile, YAMLFile
 from ClayCode.core.consts import SOL, SOL_DENSITY
 from ClayCode.core.gmx import gmx_command_wrapper
-from ClayCode.core.utils import backup_files
-from ClayCode.data.consts import AA, CLAYFF_AT_TYPES, DATA, FF, UCS, USER_UCS
+
+# )
+from ClayCode.core.utils import backup_files, temp_file_wrapper
+from ClayCode.data.consts import (
+    AA,
+    CLAYFF_AT_TYPES,
+    DATA,
+    FF,
+    MDP,
+    UCS,
+    USER_UCS,
+)
 from MDAnalysis import Universe
+
+# from ClayCode.core.lib import (
+# add_resnum,
+# get_ion_charges,
+# logger,
+# rename_il_solvent,
 
 logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
     level=logging.WARNING
@@ -52,37 +57,7 @@ __all__ = [
     "select_solvent",
     "get_mol_prms",
     "get_system_charges",
-    "temp_file_wrapper",
 ]
-
-
-def init_temp_inout(
-    inf: Union[str, Path],
-    outf: Union[str, Path],
-    new_tmp_dict: Dict[Literal["crd", "top"], bool],
-    which: Literal["crd", "top"],
-) -> Tuple[
-    Union[str, Path], Union[str, Path], Dict[Literal["crd", "top"], bool]
-]:
-    inp = Path(inf)
-    outp = Path(outf)
-    if inp == outp:
-        # outp = outp.parent / f'{outp.stem}_temp{outp.suffix}'
-        temp_outp = tempfile.NamedTemporaryFile(
-            suffix=outp.suffix, prefix=outp.stem, dir=outp.parent, delete=False
-        )
-        outp = outp.parent / temp_outp.name
-        new_tmp_dict[which] = True
-        logger.debug(
-            f"Creating temporary output file {outp.parent / outp.name!r}"
-        )
-    else:
-        temp_outp = None
-    if type(inf) == str:
-        inp = str(inp.resolve())
-    if type(outf) == str:
-        temp_outp = str(outp.resolve())
-    return inp, outp, new_tmp_dict, temp_outp
 
 
 def fix_gro_residues(crdin: Union[Path, str], crdout: Union[Path, str]):
@@ -92,46 +67,6 @@ def fix_gro_residues(crdin: Union[Path, str], crdout: Union[Path, str]):
     if "iSL" not in u.residues.resnames:
         u = rename_il_solvent(crdin=crdout, crdout=crdout)
     return u
-
-
-def temp_file_wrapper(f: Callable):
-    """Decorator to create temporary output files for use in function."""
-
-    @wraps(f)
-    def wrapper(**kwargs):
-        kwargs_dict = locals()["kwargs"]
-        fargs_dict = {}
-        new_tmp = {}
-        for ftype in ["crd", "top"]:
-            if f"{ftype}in" in kwargs_dict.keys():
-                fargs_dict[f"{ftype}in"] = kwargs_dict[f"{ftype}in"]
-            if f"{ftype}out" in kwargs_dict.keys():
-                (
-                    fargs_dict[f"{ftype}in"],
-                    fargs_dict[f"{ftype}out"],
-                    new_tmp,
-                    temp_outp,
-                ) = init_temp_inout(
-                    kwargs_dict[f"{ftype}in"],
-                    kwargs_dict[f"{ftype}out"],
-                    new_tmp_dict=new_tmp,
-                    which=ftype,
-                )
-            elif f"{ftype}out" in kwargs_dict.keys():
-                fargs_dict[f"{ftype}out"] = kwargs_dict[f"{ftype}out"]
-        for k, v in fargs_dict.items():
-            locals()["kwargs"][k] = v
-        r = f(**kwargs_dict)
-        for ftype, new in new_tmp.items():
-            if new is True:
-                infile = Path(fargs_dict[f"{ftype}in"])
-                outfile = Path(fargs_dict[f"{ftype}out"])
-                assert outfile.exists(), "No file generated!"
-                shutil.move(outfile, infile)
-                logger.debug(f"Renaming {outfile.name!r} to {infile.name!r}")
-        return r
-
-    return wrapper
 
 
 def get_ag_numbers_info(ag: AtomGroup) -> Tuple[int, int]:
@@ -1432,7 +1367,7 @@ def remove_replaced_SOL(
             raise ValueError("No solvent found")
         except IndexError:
             raise IndexError("Not enough interlayer solvent groups found!")
-            n_sol = int(topmatch) - n_mols
+        n_sol = int(topmatch) - n_mols
         logger.fdebug(
             debug_mode, "Removing {n_mols} SOL residues from topology."
         )
@@ -1739,3 +1674,80 @@ def run_em(  # mdp: str,
     else:
         conv = False
     return conv
+
+
+@temp_file_wrapper
+@gmx_command_wrapper
+def neutralise_system(
+    odir: Path,
+    crdin: Path,
+    topin: Path,
+    topout: Path,
+    nion: str,
+    pion: str,
+    gmx_commands,
+    mdp_template: Path = MDP / "genion.mdp",
+):
+    logger.debug("neutralise_system")
+    # mdp = MDP / "genion.mdp"
+    assert mdp_template.exists(), f"{mdp_template.resolve()} does not exist"
+    odir = Path(odir).resolve()
+    assert odir.is_dir()
+    # make_opath = lambda p: odir / f"{p.stem}.{p.suffix}"
+    tpr = odir / "neutral.tpr"
+    ndx = odir / "neutral.ndx"
+    # isl = grep_file(crdin, 'iSL')
+    gmx = gmx_commands.run_gmx_make_ndx(f=crdin, o=ndx)
+    if ndx.is_file():
+        # if topin.resolve() == topout.resolve():
+        #     topout = topout.parent / f"{topout.stem}_n.top"
+        #     otop_copy = True
+        # else:
+        #     otop_copy = False
+        _, out = gmx_commands.run_gmx_grompp(
+            f=MDP / "genion.mdp",
+            c=crdin,
+            p=topin,
+            o=tpr,
+            pp=topout,
+            po=tpr.with_suffix(".mdp"),
+            v="",
+            maxwarn=1,
+            # renum="",
+        )
+        # isl = grep_file(crdin, 'iSL')
+        err = re.search(r"error", out)
+        if err is not None:
+            logger.error(f"gmx grompp raised an error!")
+            replaced = []
+        else:
+            logger.debug(f"gmx grompp completed successfully.")
+            out = gmx_commands.run_gmx_genion_neutralise(
+                s=tpr,
+                p=topout,
+                o=crdin,
+                n=ndx,
+                pname=pion,
+                pq=int(get_ion_charges()[pion]),
+                nname=nion,
+                nq=int(get_ion_charges()[nion]),
+            )
+            if not topout.is_file():
+                logger.error(f"gmx genion raised an error!")
+            else:
+                logger.info(f"gmx genion completed successfully.")
+                # add_resnum(crdname=crdin, crdout=crdin)
+                # rename_il_solvent(crdname=crdin, crdout=crdin)
+                # isl = grep_file(crdin, 'iSL')
+                # if otop_copy is True:
+                #     shutil.move(topout, topin)
+            replaced = re.findall(
+                "Replacing solvent molecule", out.stderr, flags=re.MULTILINE
+            )
+            logger.info(f"{crdin.name!r} add numbers, rename il solv")
+            add_resnum(crdin=crdin, crdout=crdin)
+            rename_il_solvent(crdin=crdin, crdout=crdin)
+    else:
+        logger.error(f"No index file {ndx.name} created!")
+        replaced = []
+    return len(replaced)

@@ -53,7 +53,7 @@ class ZDens(ClayAnalysisBase):
         self,
         sysname: str,
         sel: mda.AtomGroup,
-        clay: mda.AtomGroup,
+        clay_type: mda.AtomGroup,
         dist_selection: Literal[
             "smaller", "larger", "gt_zero", "lt_zero"
         ] = "gt_zero",
@@ -62,10 +62,12 @@ class ZDens(ClayAnalysisBase):
         bin_step: Optional[Union[int, float]] = None,
         xy_rad: Union[float, int] = 3.0,
         cutoff: Union[float, int] = 20.0,
+        # min_cutoff: Union[float, int] = 0,
         save: Union[bool, str] = True,
         write: Union[bool, str] = True,
         overwrite: bool = False,
         check_traj_len: Union[Literal[False], int] = False,
+        # use_abs: bool = True,
         **basekwargs: Any,
     ) -> None:
         """
@@ -73,8 +75,8 @@ class ZDens(ClayAnalysisBase):
         :type sysname: str
         :param sel: adsorbed atom group
         :type sel: MDAnalysis.core.groups.AtomGroup
-        :param clay: clay surface O-atoms
-        :type clay: MDAnalysis.core.groups.AtomGroup
+        :param clay_type: clay surface O-atoms
+        :type clay_type: MDAnalysis.core.groups.AtomGroup
         :param n_bins: z-distance bins
         :type n_bins: int, defaults to None
         :param bin_step: default z-distance bin step in Angstrom, defaults to None
@@ -95,11 +97,17 @@ class ZDens(ClayAnalysisBase):
         :type basekwargs:
         """
         super(ZDens, self).__init__(sel.universe.trajectory, **basekwargs)
-        uc_height = np.max(clay.residues[0].atoms.positions[:, 2]) - np.min(
-            clay.residues[0].atoms.positions[:, 2]
-        )
+        uc_height = np.max(
+            clay_type.residues[0].atoms.positions[:, 2]
+        ) - np.min(clay_type.residues[0].atoms.positions[:, 2])
         self.dist_selection = dist_selection.strip(" ")
         self._clay_sheet_ids = None
+        # self.use_abs = use_abs
+        # logger.info("Will use absolute z-distances.")
+        # if use_abs is True:
+        #     _min = 0
+        # else:
+        #     _min = min_cutoff
         if self.dist_selection == "gt_zero":
             self.symmetrical = True
             min = 0
@@ -107,14 +115,16 @@ class ZDens(ClayAnalysisBase):
             self.symmetrical = True
             min = -int(uc_height)
             self._clay_sheet_ids = np.isin(
-                clay.atoms.resids,
+                clay_type.atoms.resids,
                 upper_clay_sheet_idxs,
                 assume_unique=False,
                 invert=True,
             )
         else:
             self.symmetrical = False
-            min = -int(uc_height)  # {"zdens": -int(cutoff), "zdens_abs": 0}
+            min = (
+                0  # -int(uc_height)  # {"zdens": -int(cutoff), "zdens_abs": 0}
+            )
         self._init_data(
             n_bins=n_bins, bin_step=bin_step, cutoff=cutoff, min=min
         )
@@ -124,14 +134,16 @@ class ZDens(ClayAnalysisBase):
         self._universe = self._ags[0].universe
         self.sel = sel
         self.sel_n_atoms = sel.n_atoms
-        self.clay = clay
+        self.clay = clay_type
         self.xy_rad = float(xy_rad)
         self.save = save
         self.write = write
         if self.symmetrical is False:
             name_ext = (
                 re.search(
-                    "OH|OB", "".join(clay.atoms.names), flags=re.IGNORECASE
+                    "OH|OB",
+                    "".join(clay_type.atoms.names),
+                    flags=re.IGNORECASE,
                 ).group(0)
                 + "/"
             )
@@ -211,7 +223,7 @@ class ZDens(ClayAnalysisBase):
             xy_rad=self.xy_rad,
             max_z_dist=self.data["zdens"].cutoff,
             mask_array=self._sel_mask,
-            absolute=True,
+            absolute=True,  # self.use_abs,
         )
 
     def _select_cyzone_lt_zero(self):
@@ -223,7 +235,7 @@ class ZDens(ClayAnalysisBase):
         select_cyzone(
             distances=self._dist_array,
             xy_rad=self.xy_rad,
-            max_z_dist=-self.data["zdens"].cutoff,
+            max_z_dist=self.data["zdens"].cutoff,
             mask_array=self._sel_mask,
             min_z_dist=self.data["zdens"]._min,
         )
@@ -241,9 +253,9 @@ class ZDens(ClayAnalysisBase):
         select_cyzone(
             distances=self._dist_array,
             xy_rad=self.xy_rad,
-            max_z_dist=-self.data["zdens"].cutoff,
+            min_z_dist=-self.data["zdens"].cutoff,
             mask_array=self._sel_mask,
-            min_z_dist=-self.data["zdens"]._min,
+            max_z_dist=-self.data["zdens"]._min,
         )
 
     def _get_gt_zero_dist(self):
@@ -260,11 +272,22 @@ class ZDens(ClayAnalysisBase):
         # )
 
     def _get_lt_zero_dist(self):
-        np.compress(
-            np.min(np.abs(self._dist_array[:, :, 2]), axis=1),
-            self._dist_array[:, :, 2],
-            out=self._z_dist,
+        self._z_dist[:] = np.ma.filled(
+            np.take_along_axis(
+                self._dist_array[:, :, 2],
+                np.argmin(
+                    np.abs(self._dist_array[:, :, 2]),
+                    axis=1,
+                    keepdims=True,
+                ),
+                axis=1,
+            ).flatten()
         )
+        # np.compress(
+        #     np.argmin(np.abs(self._dist_array[:, :, 2]), axis=1),
+        #     self._dist_array[:, :, 2],
+        #     out=self._z_dist,
+        # )
 
     # def _get_lt_zero_dist(self):
     #     dist_mask = self._dist_array.mask
@@ -284,11 +307,11 @@ class ZDens(ClayAnalysisBase):
     #                             out=self._z_dist)
 
     def _get_larger_dist(self):
-        dist_mask = self._dist_array.mask
-        dist_mask[:, :, 2] = np.where(
-            self._dist_array[:, :, 2] < 0, True, dist_mask[:, :, 2]
+        dist_mask = self._dist_array.mask[:, :, 2]
+        dist_mask = np.where(self._dist_array[:, :, 2] < 0, True, dist_mask)
+        self._dist_array.mask = np.broadcast_to(
+            dist_mask[:, :, np.newaxis], self._dist_array.shape
         )
-        self._dist_array.mask = dist_mask
         # idx_sel = np.argwhere(np.min(np.abs(self._dist_array[:, :, 2]), axis=1))
         # self._z_dist.fill(np.NaN)
         # self._z_dist[idx_sel] = self._dist_array[idx_sel, :, 2]
@@ -297,28 +320,39 @@ class ZDens(ClayAnalysisBase):
         #               :,
         #               2,
         #               ]
-        np.compress(
-            np.min(np.abs(self._dist_array[:, :, 2]), axis=1),
-            self._dist_array[:, :, 2],
-            out=self._z_dist,
+        self._z_dist[:] = np.ma.filled(
+            np.take_along_axis(
+                self._dist_array[:, :, 2],
+                np.argmin(
+                    np.abs(self._dist_array[:, :, 2]),
+                    axis=1,
+                    keepdims=True,
+                ),
+                axis=1,
+            ).flatten()
         )
 
     def _get_smaller_dist(self):
-        dist_mask = self._dist_array.mask
-        dist_mask[:, :, 2] = np.where(
-            self._dist_array[:, :, 2] > 0, True, dist_mask[:, :, 2]
+        dist_mask = self._dist_array.mask[:, :, 2]
+        dist_mask = np.where(self._dist_array[:, :, 2] > 0, True, dist_mask)
+        self._dist_array.mask = np.broadcast_to(
+            dist_mask[:, :, np.newaxis], self._dist_array.shape
         )
-        self._dist_array.mask = dist_mask
-        np.compress(
-            np.min(np.abs(self._dist_array[:, :, 2]), axis=1),
-            np.negative(self._dist_array[:, :, 2]),
-            out=self._z_dist,
+        self._z_dist[:] = np.ma.filled(
+            np.take_along_axis(
+                np.negative(self._dist_array[:, :, 2]),
+                np.argmin(
+                    np.abs(self._dist_array[:, :, 2]), axis=1, keepdims=True
+                ),
+                axis=1,
+            ).flatten()
         )
 
     def _single_frame(self) -> NoReturn:
         self._dist_array.fill(0)
         self._dist_array.mask = False
         self._sel_mask.fill(0)
+        self._sel_mask.soften_mask()
         self._sel_mask.mask = False
         self._sel_mask.soften_mask()
         # Wrap coordinates back into simulation box (use mda apply_PBC)
@@ -391,7 +425,7 @@ parser = ArgumentParser(
     allow_abbrev=False,
 )
 parser.add_argument(
-    "-name", type=str, help="System name", dest="sysname", required=True
+    "-sysname", type=str, help="System name", dest="sysname", required=True
 )
 
 parser.add_argument(
@@ -454,6 +488,21 @@ parser.add_argument(
     default=20,
     help="cutoff in z-direction",
     dest="cutoff",
+)
+
+parser.add_argument(
+    "-min",
+    type=float,
+    default=0,
+    help="minimum in z-direction",
+    dest="_min",
+)
+parser.add_argument(
+    "--not_abs",
+    default=False,
+    help="don't use absolute z-distances",
+    action="store_true",
+    dest="use_abs",
 )
 
 parser.add_argument(
@@ -655,17 +704,28 @@ if __name__ == "__main__":
         zdens = ZDens(
             sysname=sysname,
             sel=sel,
-            clay=c,
+            clay_type=c,
             dist_selection=dist_selection,
             n_bins=args.n_bins,
             bin_step=args.bin_step,
             xy_rad=args.xyrad,
             cutoff=args.cutoff,
+            # min_cutoff=args._min,
             save=args.save,
             write=args.write,
             overwrite=args.overwrite,
             check_traj_len=args.check_traj_len,
             upper_clay_sheet_idxs=upper_clay_sheet_idxs,
+            # use_abs=args.use_abs,
         )
 
         run_analysis(zdens, start=args.start, stop=args.stop, step=args.step)
+
+else:
+    # for action in parser._actions:
+    # new_option_names = [
+    #     option_string.strip("-").upper()
+    #     for option_string in action.option_strings
+    # ]
+    # action.option_strings = new_option_names
+    ZDens.parser = parser

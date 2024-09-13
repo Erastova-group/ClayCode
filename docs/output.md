@@ -29,7 +29,7 @@ The `<OUTPATH>` directory is specified in the [YAML file](YAML.md)
 
 The output generated in the [nontronite tutorial](nont.md) executing command:
 ```shell
-ClayCode builder -f Tutorial/NAu1.yaml
+ClayCode builder -f Tutorial/NAu-1.yaml
 ```
 asking to generate clay named NAu-1-fe using 7 x 5 x 3 unit cells, featuring adding interlayer water and ions and solvated.
 

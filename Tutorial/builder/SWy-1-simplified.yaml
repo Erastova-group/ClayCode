@@ -7,7 +7,7 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: SWy-1-simplified
+OUTPATH: .Sx # /media/hannahpollak/free/cc_repeats/SWy-1-simplified
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
 # compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'L31' 'IMt-1' 'KGa-1'
@@ -59,7 +59,7 @@ N_SHEETS: 3
 
 # probability list of unit cells in system
 # p(tot): 1.00
-# UC_RATIOS_LIST: [1]
+UC_INDEX_RATIOS: {22: 1}
 
 # -----------------------------------------------------------------------------
 
@@ -81,7 +81,7 @@ IL_SOLV: True
 #ION_WATERS : 22
 
 # 3. OR per unit cell
-UC_WATERS: 20
+UC_WATERS: 10
 
 # 4. OR for a target d-spacing value in A
 #SPACING_WATERS: 20
@@ -91,7 +91,7 @@ UC_WATERS: 20
 # =============================================================================
 
 # full simulation box height in A (Default 150.0)
-BOX_HEIGHT: 150.0
+BOX_HEIGHT: 100.0
 
 # =============================================================================
 # Optional: Solvation and Bulk Ions Specifications

@@ -34,7 +34,7 @@ __all__ = [
     "execute_bash_command",
     "get_file_diff",
     "grep_file",
-    "get_logfname",
+    # "get_logfname",
     "get_search_str",
     "convert_str_list_to_arr",
     "select_file",
@@ -330,21 +330,21 @@ def grep_file(file, regex: str):
     return diff.stdout
 
 
-def get_logfname(
-    logname: str,
-    run_name=None,
-    time: Union[Literal[exec_time], Literal[exec_date]] = exec_date,
-    logpath=None,
-):
-    if logpath is None:
-        logpath = Path().cwd() / "logs"
-        if not logpath.is_dir():
-            os.mkdir(logpath)
-    if run_name is None:
-        run_name = ""
-    else:
-        run_name += "-"
-    return f"{logpath}/{logname}-{run_name}{time}.log"
+# def get_logfname(
+#     logname: str,
+#     run_name=None,
+#     time: Union[Literal[exec_time], Literal[exec_date]] = exec_date,
+#     logpath=None,
+# ):
+#     if logpath is None:
+#         logpath = Path().cwd() / "logs"
+#         if not logpath.is_dir():
+#             os.mkdir(logpath)
+#     if run_name is None:
+#         run_name = ""
+#     else:
+#         run_name += "-"
+#     return f"{logpath}/{logname}-{run_name}{time}.log"
 
 
 def get_search_str(match_dict: dict):
@@ -454,17 +454,16 @@ def get_u_files(path: Union[str, Path], suffices=["_gro", "top"]):
     return files["_gro"], files["trr"]
 
 
-def open_outfile(outpath: Union[Path, str], suffix: str, default: str):
-    if type(outpath) == bool:
-        outpath = Path(f"{default}.json")
-    elif type(outpath) in [str, Path]:
-        outpath = change_suffix(outpath, suffix)
-        if not outpath.parent.is_dir():
-            os.makedirs(outpath.parent)
-    else:
-        raise ValueError(f"Could not interpret {outpath} as path or bool.")
-    return outpath
-
+# def open_outfile(outpath: Union[Path, str], suffix: str, default: str):
+#     if type(outpath) == bool:
+#         outpath = Path(f"{default}.json")
+#     elif type(outpath) in [str, Path]:
+#         outpath = change_suffix(outpath, suffix)
+#         if not outpath.parent.is_dir():
+#             os.makedirs(outpath.parent)
+#     else:
+#         raise ValueError(f"Could not interpret {outpath} as path or bool.")
+#     return outpath
 
 if __name__ == "__main__":
     print(mda.__version__, "\n", np.__version__)

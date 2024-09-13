@@ -7,7 +7,6 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: '/storage/clay_models'
 
 # name of system
 SYSNAME: NAu-1-fe
@@ -22,7 +21,7 @@ SYSNAME: NAu-1-fe
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: package/ClayCode/builder/tests/data/exp_non.csv
+CLAY_COMP: package/ClayCode/builder/tests/data/exp_clay.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21

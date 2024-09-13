@@ -7,7 +7,6 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: '/storage/clay_models'
 
 # name of system
 SYSNAME: SWy-1
@@ -22,7 +21,7 @@ SYSNAME: SWy-1
 BUILD: new
 
 # name of .csv file with target stoichiometry
-CLAY_COMP: exp_non.csv
+CLAY_COMP: data/exp_clay.csv
 
 # clay type available options in 'clay_units' directory:
 # Dioctahedral 2:1 - D21
@@ -33,7 +32,7 @@ CLAY_COMP: exp_non.csv
 # layered double hydroxide 2:1 - L21
 # Sepiolite - SEP
 
-CLAY_TYPE: D21
+CLAY_TYPE: CD21
 
 
 # =============================================================================
@@ -107,7 +106,7 @@ BULK_SOLV: True
 
 BULK_IONS:
   Na: 0.1
-  Cl: 0.05
+  Ba: 0.05
 
 # =============================================================================
 # Optional: Simulation Runs Specifications

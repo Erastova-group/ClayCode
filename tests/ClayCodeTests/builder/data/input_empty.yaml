@@ -7,10 +7,10 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: '/storage/clay_models'
+OUTPATH: '.'
 
 # name of system
-SYSNAME: IMt-1
+# SYSNAME: IMt-1
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed

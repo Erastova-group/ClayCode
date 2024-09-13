@@ -7,6 +7,7 @@ This module provides classes for parsing command line arguments.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 import re
@@ -26,6 +27,11 @@ from caseless_dictionary import CaselessDict
 from ClayCode import PathType
 from ClayCode.addmols.consts import ADDMOLS_DEFAULTS as _addmols_defaults
 from ClayCode.addmols.consts import ADDTYPES
+from ClayCode.analysis.coordination import CrdDist
+from ClayCode.analysis.rdf import RDFDist
+from ClayCode.analysis.utils import get_paths
+from ClayCode.analysis.zdist import ZDens
+from ClayCode.builder import UCData
 from ClayCode.builder.consts import BUILDER_DATA
 from ClayCode.core.classes import (
     BasicPath,
@@ -46,6 +52,7 @@ from ClayCode.core.utils import (
 )
 from ClayCode.data.consts import FF, MDP_DEFAULTS, UCS, USER_UCS
 from ClayCode.siminp.writer import MDPRunGenerator
+from numba import optional
 
 __all__ = {
     "ArgsFactory",
@@ -588,10 +595,11 @@ def read_yaml_path_decorator(*path_args):
                     )
             except FileNotFoundError:
                 logger.error(
-                    f'{File(self.data["yaml_file"]).resolve()} not found!\nAborting...'
+                    f'{File(self.data["yaml_file"]).resolve()} not found!\n'
+                    f"Aborting..."
                 )
                 sys.exit(2)
-            logger.finfo(f"Reading {file.name!r}:\n")
+            logger.finfo(f"Reading {file.name!r}:")
             for k, v in self.__yaml_data.items():
                 if k in self._arg_names:
                     if k in path_args:
@@ -629,18 +637,22 @@ def read_yaml_path_decorator(*path_args):
                                     found = True
                                     break
                             if not found:
-                                raise FileNotFoundError(
-                                    f"File {v!r} not found!"
+                                logger.error(
+                                    f"\tFile {v!r} not found!\nAborting..."
                                 )
+                                sys.exit(2)
                                 #  # try:  #     path = File(path, check=True)  # except FileNotFoundError:  #     try:  #         path = File(  #             self.data["yaml_file"].parent / v,  #             check=True,  #         )  #     except FileNotFoundError:  #         try:  #             path = File(  #                 self.data["INPATH"]  #                 / path.relative_to(path.cwd()),  #                 check=True,  #             )  #             found = True  #         except KeyError:  #             found = False  #         except FileNotFoundError:  #             found = False  #         finally:  #             if not found:  #                 raise FileNotFoundError(  #                     f"File {v!r} not found!"  #                 )
                         else:
                             path = Dir(path)
                         v = str(path)
                     self.data[k] = v
                     if type(v) != dict:
-                        logger.finfo(kwd_str=f"\t{k} = ", message=f"{v!r}")
+                        logger.finfo(
+                            kwd_str=f"{k} = ", message=f"{v!r}", indent="\t"
+                        )
                 else:
-                    raise KeyError(f"Unrecognised argument {k}!")
+                    logger.error(f"Unrecognised argument {k}!\nAborting...")
+                    sys.exit(2)
             return f(self)
 
         return wrapper
@@ -674,10 +686,10 @@ class _Args(ABC, UserDict):
         pass
 
     def _set_attributes(
-        self, data_keys: List[str], optional: List[str] = None
+        self, data_keys: List[str], optional_keys: List[str] = None
     ):
-        if optional is None:
-            optional = []
+        if optional_keys is None:
+            optional_keys = []
         for prm in data_keys:
             try:
                 prm_value = self.data[prm]
@@ -685,7 +697,7 @@ class _Args(ABC, UserDict):
                 try:
                     prm_value = self._arg_defaults[prm]
                 except KeyError:
-                    if prm in optional:
+                    if prm in optional_keys:
                         prm_value = None
                     else:
                         raise KeyError(f"Missing required parameter {prm!r}")
@@ -1301,8 +1313,10 @@ class AnalysisArgs(_Args):
     _arg_names = [
         "TYPE",
         "INPATH",
-        "INFILES" "OUTPATH",
+        "INFILES",
+        "OUTPATH",
         "CLAY_TYPE",
+        "UC",
         "SEL",
         "BIN_STEP",
         "CUTOFF",
@@ -1315,8 +1329,14 @@ class AnalysisArgs(_Args):
         "OVERWRITE",
         "XYRAD" "WRITE_Z",
         "UPDATE",
-        "N_BINS" "NAME",
+        "N_BINS",
+        "SYSNAME",
     ]
+    _analysis_dict = {
+        "zdens": ZDens,
+        "rdfdist": RDFDist,
+        "coordination": CrdDist,
+    }
 
     def __init__(self, data: Dict[str, Any], debug_run: bool = False):
         super().__init__(data)
@@ -1324,7 +1344,54 @@ class AnalysisArgs(_Args):
         self.process()
 
     def check(self):
-        pass
+        gro, trr, path = get_paths(
+            self.path, self.infiles, self.inpname, self.traj_format
+        )
+
+    def assign_parameters(self):
+        try:
+            self._analysis_type = self._analysis_dict[
+                self.data.pop("TYPE").lower()
+            ]
+        except KeyError:
+            logger.error("No analysis type specified!\nAborting...")
+            sys.exit(2)
+        else:
+            self._yaml_args = self._analysis_type.parser.parse_args(self.data)
+            self._kwargs, self._run_args = {}, {}
+            for kwargs, prms in zip(
+                [self._kwargs, self._run_args],
+                [
+                    inspect.signature(self._analysis_type).parameters.items(),
+                    inspect.signature(
+                        self._analysis_type.run
+                    ).parameters.items(),
+                ],
+            ):
+                for parameter, parameter_value in prms:
+                    try:
+                        kwargs[parameter] = self._yaml_args.pop(
+                            parameter.upper(),
+                        )
+                    except KeyError:
+                        if (
+                            parameter_value.default == parameter_value.empty
+                            and parameter_value.kind.value != 4
+                            and parameter != "self"
+                        ):
+                            logger.error(
+                                f"Missing required parameter {parameter.upper()!r}!\nAborting..."
+                            )
+                            sys.exit(2)
+                        elif not (parameter_value == 4 or parameter == "self"):
+                            kwargs[parameter] = parameter_value.default
+                            logger.finfo(
+                                kwd_str=f"{parameter.upper()} = ",
+                                message=f"{parameter_value.default!r} (default)",
+                                indent="\t",
+                            )
+                        else:
+                            pass
 
     @read_yaml_path_decorator("OUTPATH", "INPATH")
     def read_yaml(self):
@@ -1332,7 +1399,13 @@ class AnalysisArgs(_Args):
 
     def process(self):
         self.read_yaml()
+        self.assign_parameters()
         self.check()
+        self.analysis = self._analysis_type(**self._kwargs)
+        self.run()
+
+    def run(self, *args, **kwargs):
+        self.analysis.run()
 
 
 class CheckArgs(_Args):
@@ -1350,7 +1423,7 @@ class CheckArgs(_Args):
 
 
 class EditArgs(_Args):
-    """Parameters for editing clay model with :mod:`ClayCode.edit`
+    """Parameters for editing clay model with: mod:`ClayCode.edit`
 
     :param data: dictionary of arguments
     :type data: Dict[str, Any]"""
@@ -1615,7 +1688,7 @@ class SiminpArgs(_Args):
             self.data["RUN_PATH"] = self.data["OUTPATH"]
         self._set_attributes(
             data_keys=data_keys,
-            optional=[
+            optional_keys=[
                 "INTOP",
                 "SCRIPT_TEMPLATE",
                 "MDRUN_PRMS",
@@ -1700,7 +1773,7 @@ class AddMolsArgs(_Args):
 
     option = "addmols"
     _arg_names = [
-        "ODIR",
+        "OUTPATH",
         "SYSNAME",
         "ADDTYPE",
         "MOLTYPES",
@@ -1710,6 +1783,7 @@ class AddMolsArgs(_Args):
         "PH",
         "FF",
         "NEUTRAL_IONS",
+        "CLAY_TYPE",
     ]
     _arg_defaults = _addmols_defaults
 
@@ -1721,8 +1795,11 @@ class AddMolsArgs(_Args):
         """Process data arguments."""
         self.read_yaml()
         self.check()
+        self._uc_data = UCData(
+            path=UCS, uc_stem=self.clay_type, ff=self.ff["clay"]
+        )
 
-    @read_yaml_path_decorator("OUTPATH", "INGRO")
+    @read_yaml_path_decorator("OUTPATH", "INGRO", "INTOP")
     def read_yaml(self):
         """Read specifications from yaml file."""
         pass
@@ -1733,7 +1810,9 @@ class AddMolsArgs(_Args):
             raise ValueError(
                 f"Invalid parameter {self.data['ADDTYPE']!r} for 'addmols'!\nAvailable options are: {', '.join(ADDTYPES)}"
             )
-        self._set_attributes(data_keys=self._arg_names)
+        data_keys = self._arg_names
+        optional_keys = data_keys.pop("INTOP")
+        self._set_attributes(data_keys=data_keys, optional_keys=optional_keys)
 
 
 class ArgsFactory:

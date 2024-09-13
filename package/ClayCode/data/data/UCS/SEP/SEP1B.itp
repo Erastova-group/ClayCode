@@ -1,0 +1,135 @@
+;
+;
+[ moleculetype ]
+; name		nrexcl
+  SEP1T		1
+
+[ atoms ]
+;   nr       type  resnr residue  atom   cgnr     charge       mass  typeB    chargeB      massB
+; residue   1 SEP1Trtp SEP1Tq  0.0
+     1    OH1     oh       1    SEP1T             1    -0.95         16 
+     2    HO1     ho       1    SEP1T             2    0.425      1.008   
+     3    OB1     ob       1    SEP1T             3    -1.05         16
+     4    OH2     oh       1    SEP1T             4    -0.95         16
+     5    HO2     ho       1    SEP1T             5    0.425      1.008
+     6    OB2     ob       1    SEP1T             6    -1.05         16 
+     7    OB3     ob       1    SEP1T             7    -1.05         16  
+     8    OB4     ob       1    SEP1T             8    -1.05         16  
+     9    OB5     ob       1    SEP1T             9    -1.05         16  
+    10    ST1     st       1    SEP1T            10     2.1         28.09  
+    11    ST2     st       1    SEP1T            11     2.1         28.09  
+    12    ST3     st       1    SEP1T            12     2.1         28.09
+    13    ST4     st       1    SEP1T            13     2.1         28.09 
+    14    ST5     st       1    SEP1T            14     2.1         28.09 
+    15    ST6     st       1    SEP1T            15     2.1         28.09 
+    16    ST7     st       1    SEP1T            16     2.1         28.09 
+    17    ST8     st       1    SEP1T            17     2.1         28.09 
+    18    OB6     ob       1    SEP1T            18     -1.05         16 
+    19    OB7     ob       1    SEP1T            19     -1.05         16 
+    20    OB8     ob       1    SEP1T            20     -1.05         16 
+    21    OB9     ob       1    SEP1T            21     -1.05         16 
+    22    OB10    ob       1    SEP1T            22     -1.05         16 
+    23    OB11    ob       1    SEP1T            23     -1.05         16 
+    24    OB12    ob       1    SEP1T            24     -1.05         16 
+    25    OB13    ob       1    SEP1T            25     -1.05         16 
+    26    OB14    ob       1    SEP1T            26     -1.05         16 
+    27    OB15    ob       1    SEP1T            27     -1.05         16 
+    28    OB16    ob       1    SEP1T            28     -1.05         16 
+    29    OB17    ob       1    SEP1T            29     -1.05         16 
+    30    OB18    ob       1    SEP1T            30     -1.05         16 
+    31    OB19    ob       1    SEP1T            31     -1.05         16 
+    32    OB20    ob       1    SEP1T            32     -1.05         16 
+    33    OB21    ob       1    SEP1T            33     -1.05         16 
+    34    ST9     st       1    SEP1T            34     2.1         28.09 
+    35    ST10    st       1    SEP1T            35     2.1         28.09 
+    36    ST11    st       1    SEP1T            36     2.1         28.09 
+    37    ST12    st       1    SEP1T            37     2.1         28.09 
+    38    ST13    st       1    SEP1T            38     2.1         28.09 
+    39    ST14    st       1    SEP1T            39     2.1         28.09 
+    40    ST15    st       1    SEP1T            40     2.1         28.09 
+    41    ST16    st       1    SEP1T            41     2.1         28.09 
+    42    ST17    st       1    SEP1T            42     2.1         28.09 
+    43    ST18    st       1    SEP1T            43     2.1         28.09 
+    44    ST19    st       1    SEP1T            44     2.1         28.09 
+    45    ST20    st       1    SEP1T            45     2.1         28.09 
+    46    ST21    st       1    SEP1T            46     2.1         28.09 
+    47    ST22    st       1    SEP1T            47     2.1         28.09 
+    48    ST23    st       1    SEP1T            48     2.1         28.09 
+    49    ST24    st       1    SEP1T            49     2.1         28.09 
+    50    MGO1    mgo      1    SEP1T            50     1.360       24.310 
+    51    MGO2    mgo      1    SEP1T            51     1.360       24.310 
+    52    MGO3    mgo      1    SEP1T            52     1.360       24.310 
+    53    MGO4    mgo      1    SEP1T            53     1.360       24.310 
+    54    MGO5    mgo      1    SEP1T            54     1.360       24.310 
+    55    MGO6    mgo      1    SEP1T            55     1.360       24.310 
+    56    MGO7    mgo      1    SEP1T            56     1.360       24.310 
+    57    MGO8    mgo      1    SEP1T            57     1.360       24.310 
+    58    OB22    ob       1    SEP1T            58     -1.05         16 
+    59    OB23    ob       1    SEP1T            59     -1.05         16 
+    60    OB24    ob       1    SEP1T            60     -1.05         16 
+    61    OB25    ob       1    SEP1T            61     -1.05         16 
+    62    OB26    ob       1    SEP1T            62     -1.05         16 
+    63    OB27    ob       1    SEP1T            63     -1.05         16 
+    64    OB28    ob       1    SEP1T            64     -1.05         16 
+    65    OB29    ob       1    SEP1T            65     -1.05         16 
+    66    OB30    ob       1    SEP1T            66     -1.05         16 
+    67    OB31    ob       1    SEP1T            67     -1.05         16 
+    68    OB32    ob       1    SEP1T            68     -1.05         16 
+    69    OB33    ob       1    SEP1T            69     -1.05         16 
+    70    OB34    ob       1    SEP1T            70     -1.05         16 
+    71    OB35    ob       1    SEP1T            71     -1.05         16 
+    72    OB36    ob       1    SEP1T            72     -1.05         16 
+    73    OB37    ob       1    SEP1T            73     -1.05         16 
+    74    OB38    ob       1    SEP1T            74     -1.05         16 
+    75    OB39    ob       1    SEP1T            75     -1.05         16 
+    76    OB40    ob       1    SEP1T            76     -1.05         16 
+    77    OB41    ob       1    SEP1T            77     -1.05         16 
+    78    OB42    ob       1    SEP1T            78     -1.05         16 
+    79    OB43    ob       1    SEP1T            79     -1.05         16 
+    80    OB44    ob       1    SEP1T            80     -1.05         16 
+    81    OB45    ob       1    SEP1T            81     -1.05         16 
+    82    OB46    ob       1    SEP1T            82     -1.05         16 
+    83    OB47    ob       1    SEP1T            83     -1.05         16 
+    84    OB48    ob       1    SEP1T            84     -1.05         16 
+    85    OB49    ob       1    SEP1T            85     -1.05         16 
+    86    OB50    ob       1    SEP1T            86     -1.05         16 
+    87    OB51    ob       1    SEP1T            87     -1.05         16 
+    88    OB52    ob       1    SEP1T            88     -1.05         16 
+    89    OB53    ob       1    SEP1T            89     -1.05         16 
+    90    OB54    ob       1    SEP1T            90     -1.05         16 
+    91    OB55    ob       1    SEP1T            91     -1.05         16 
+    92    OB56    ob       1    SEP1T            92     -1.05         16 
+    93    OB57    ob       1    SEP1T            93     -1.05         16 
+    94    OB58    ob       1    SEP1T            94     -1.05         16 
+    95    OB59    ob       1    SEP1T            95     -1.05         16 
+    96    OB60    ob       1    SEP1T            96     -1.05         16 
+    97    OB61    ob       1    SEP1T            97     -1.05         16 
+    98    OH3     oh       1    SEP1T            98     -0.95         16 
+    99    HO3     ho       1    SEP1T            99     0.425      1.008 
+   100    OH4     oh       1    SEP1T           100     -0.95         16 
+   101    HO4     ho       1    SEP1T           101     0.425      1.008 
+   102    OH5     oh       1    SEP1T           102     -0.95         16 
+   103    HO5     ho       1    SEP1T           103     0.425      1.008 
+   104    OH6     oh       1    SEP1T           104     -0.95         16 
+   105    HO6     ho       1    SEP1T           105     0.425      1.008 
+   106    OH7     oh       1    SEP1T           106     -0.95         16 
+   107    HO7     ho       1    SEP1T           107     0.425      1.008 
+   108    OH8     oh       1    SEP1T           108     -0.95         16 
+   109    HO8     ho       1    SEP1T           109     0.425      1.008 
+   110    OH9     oh       1    SEP1T           110     -0.95         16 
+   111    HO9     oh       1    SEP1T           111     -0.95         16 
+   112    OH10    oh       1    SEP1T           112     -0.95         16 
+   113    HO10    ho       1    SEP1T           113     0.425      1.008 
+
+[ bonds ]
+; i	j	funct	length	force.c.
+1	2     1     0.1    463532.808
+4	5     1     0.1    463532.808
+98     99     1     0.1    463532.808
+100   101     1     0.1    463532.808
+102   103     1     0.1    463532.808
+104   105     1     0.1    463532.808
+106   107     1     0.1    463532.808
+108   109     1     0.1    463532.808
+110   111     1     0.1    463532.808
+112   113     1     0.1    463532.808

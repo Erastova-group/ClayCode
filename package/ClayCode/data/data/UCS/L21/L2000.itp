@@ -1,0 +1,35 @@
+[ moleculetype]
+;   Name    nrexcl
+L2000  3
+[ atoms ]
+;   nr  type    resnr   residue atom    cgnr    charge  mass    typeB   chargeB massB
+    1   mgo 1    L2000 MGO1    7  1.3600  24.310  ;  1.360  +2  Mg
+    2   mgo 1    L2000 MGO2    8  1.3600  24.310  ;  1.360  +2  Mg
+    3   ao  1    L2000  AO3    9  1.5800  26.980  ;  1.575  +3  Al
+    4   oh  1    L2000  OH4    1  -0.975  16      ; -0.95   AK all same as ClayFF, but HO -0.974167
+    5   ho  1    L2000  HO4    1  0.425   1.008   ;
+    6   oh  1    L2000  OH5    2  -0.975  16      ;
+    7   ho  1    L2000  HO5    2  0.425   1.008   ;
+    8   oh  1    L2000  OH6    3  -0.975  16      ;
+    9   ho  1    L2000  HO6    3  0.425   1.008   ;
+    10  oh  1    L2000  OH7    4  -0.975  16      ;
+    11  ho  1    L2000  HO7    4  0.425   1.008   ;
+    12  oh  1    L2000  OH8    5  -0.975  16      ;
+    13  ho  1    L2000  HO8    5  0.425   1.008   ;
+    14  oh  1    L2000  OH9    6  -0.975  16      ;
+    15  ho  1    L2000  HO9    6  0.425   1.008   ;
+
+
+[ bonds ]
+;   ai  aj  funct   c0  c1  c2  c3
+    4   5   1   b-ohs
+    6   7   1   b-ohs
+    8   9   1   b-ohs
+    10  11  1   b-ohs
+    12  12  1   b-ohs
+    14  13  1   b-ohs
+
+; Include Position restraint file
+;#ifdef POSRES
+;#include "L200-posre.itp"
+;#endif

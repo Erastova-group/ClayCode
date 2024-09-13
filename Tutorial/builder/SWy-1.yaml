@@ -7,11 +7,11 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: SWy-1
+OUTPATH: /media/hannahpollak/free/cc_repeats/SWy-123
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
 # compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1' 'SWa-1' 'L31' 'IMt-1' 'KGa-1'
-SYSNAME: SWy-1
+SYSNAME: SWy-123
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
@@ -33,7 +33,6 @@ CLAY_COMP: exp_clay.csv
 # old dioctaedral 2:1 unit cells - D21
 
 CLAY_TYPE: CD21
-
 
 # =============================================================================
 # Optional: Clay Sheet and Interlayer Specifications
@@ -84,7 +83,7 @@ IL_SOLV: True
 # ION_WATERS : 12
 
 # 3. OR per unit cell
-UC_WATERS: 20
+UC_WATERS: 8
 
 # 4. OR for a target d-spacing value in A
 #SPACING_WATERS: 20
@@ -109,7 +108,7 @@ BULK_SOLV: True
 
 BULK_IONS:
   Na: 0.1
-  Cl: 0.1
+  Ba: 0.1
 
 # =============================================================================
 # Optional: Simulation Runs Specifications

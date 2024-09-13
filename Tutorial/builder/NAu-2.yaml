@@ -7,7 +7,7 @@
 # Required Parameters
 # =============================================================================
 
-OUTPATH: NAu-2-fe
+OUTPATH: '/media/hannahpollak/free/new_clays/Na'
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
 # compositions included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'L31' 'IMt-1' 'KGa-1'
@@ -107,7 +107,7 @@ BULK_SOLV: True
 #  Na: 0.1)
 
 BULK_IONS:
-  Ca: 0.25
+  Na: 0.25
 
 # =============================================================================
 # Optional: Simulation Runs Specifications

@@ -45,9 +45,15 @@ class ClayCodeLogger(logging.Logger):
     def set_file_name(self, new_filepath=None, new_filename=None, final=False):
         if new_filename is None:
             new_filename = self.logfilename.name
-            new_filepath = self.logfilename.parent
+            if new_filepath is None:
+                new_filepath = self.logfilename.parent
+            else:
+                new_filepath = Path(new_filepath)
+                if new_filepath.suffix != "":
+                    new_filename = new_filepath.name
+                    new_filepath = new_filepath.parent
             new_filename = re.search(
-                r"([a-z_0-9-]*?)_[0-9]*\.log",
+                r"([a-z_0-9-]*?)(_[0-9]*)?\.log",
                 new_filename,
                 flags=re.IGNORECASE,
             ).group(1)
@@ -120,8 +126,15 @@ class ClayCodeLogger(logging.Logger):
                         except FileNotFoundError:
                             pass
                         else:
-                            with open(new_filename, "a") as new_file:
+                            try:
+                                new_file = open(new_filename, "a")
+                            except FileNotFoundError:
+                                os.mkdir(new_filename.parent)
+                                new_file = open(new_filename, "a")
+                            finally:
+                                # with open(new_filename, "a") as new_file:
                                 new_file.write(old_log)
+                                new_file.close()
                                 os.unlink(instance.logfilename)
                         instance.logfilename = new_filename
                         instance.removeHandler(file_handler)

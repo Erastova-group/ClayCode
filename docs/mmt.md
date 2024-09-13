@@ -36,14 +36,14 @@ Please consult [YAML](YAML.md) for the parameter description
 OUTPATH: .
 
 # name of system to call according to CLAY_COMP (exp_clay.csv)
-# compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'LDH31' 'IMt-1' 'KGa-1'
+# compositions currently included are: 'NAu-1-fe' 'NAu-2-fe' 'NG-1'  'SWa-1' 'L31' 'IMt-1' 'KGa-1'
 SYSNAME: SWy-1
 
 # specify whether new clay model should be constructed:
 # new - a new clay model is constructed
-# load - sheet coordinates or unit cell sequences are loaded from existent .gro or .npy files
+# load - sheet coordinates or unit cell sequences are loaded from existent ._gro or .npy files
 # load: [X, Y]
-# with X - 'np' or 'gro', Y - '.npy' or '.gro' filename
+# with X - 'np' or '_gro', Y - '.npy' or '._gro' filename
 # False - no clay model is constructed
 BUILD: new
 

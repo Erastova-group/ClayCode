@@ -8,4 +8,5 @@ pipx uninstall ClayCodeTests > /dev/null 2>&1
 pipx uninstall ClayCode > /dev/null 2>&1
 
 # Install the package
-pipx install --python python3.10 --force $1 .
+pipx install --python python3.9 --force $1 .
+

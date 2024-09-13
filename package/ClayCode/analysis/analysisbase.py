@@ -129,7 +129,7 @@ import pickle as pkl
 import re
 from collections import UserDict
 from pathlib import Path
-from typing import List, Literal, Optional, Sequence, TypeVar, Union
+from typing import List, Literal, Optional, Sequence, Type, TypeVar, Union
 
 import dask
 import numpy as np
@@ -402,9 +402,12 @@ class AnalysisData(UserDict):
         if isinstance(self.timeseries, list):
             data = dask.array.stack(self.timeseries)
         elif isinstance(self.timeseries, np.ndarray):
-            data = dask.array.from_array(
-                self.timeseries, chunks=(True, -1, -1)
-            )
+            try:
+                data = dask.array.from_array(
+                    self.timeseries, chunks=(True, -1, -1)
+                )
+            except ValueError:
+                data = dask.array.from_array(self.timeseries)
         elif isinstance(self.timeseries, Path) or isinstance(
             self.timeseries, str
         ):
@@ -437,7 +440,12 @@ class AnalysisData(UserDict):
         #     data[:], self.edges, range=(self._min, self.cutoff)
         # )
         hist = hist.compute()
-        np.divide(hist, n_frames, out=hist, casting="unsafe")
+        hist = hist.astype(np.float64)
+        np.divide(
+            hist,
+            float(n_frames),
+            out=hist,
+        )
         # dask.array.divide(hist, n_frames, out=hist)
         # hist = hist / len(self.timeseries)
         self.hist[:] = hist
@@ -509,7 +517,7 @@ class AnalysisData(UserDict):
         #             self.norm_hist[key] = self.norm_hist[key] / n_atoms[key]
         self.norm_hist = self.hist.copy()
         if type(n_atoms) in [int, float, np.float_]:
-            self.norm_hist = self.norm_hist / n_atoms
+            self.norm_hist = np.divide(self.norm_hist, np.float(n_atoms))
         elif type(n_atoms) in [list, np.ndarray]:
             self.norm_hist = self.norm_hist / np.mean(n_atoms)
         else:
@@ -723,11 +731,20 @@ class ClayAnalysisBase(object):
     _name = "analysis"
 
     def __init__(self, trajectory, verbose=False, **kwargs):
+        if logger.__class__.__name__ == "ClayCodeLogger":
+            path = Path(trajectory.filename).stem
+            logger.set_file_name(
+                new_filename=f"{self.__class__.__name__.lower()}_{path}.log"
+            )
         self._trajectory = trajectory
         self._verbose = verbose
         self.results = Results()
         self.sel_n_atoms = None
-        self._abs = True
+        # if "_abs" in kwargs.keys():
+        #     self._abs = kwargs["_abs"]
+        #     del kwargs["_abs"]
+        # else:
+        #     self._abs = True
         self._get_new_data = True
 
     def _init_data(self, **kwargs):
@@ -933,6 +950,8 @@ class ClayAnalysisBase(object):
             frame indices in the `frames` keyword argument.
 
         """
+        if logger.__class__.__name__ == "ClayCodeLogger":
+            logger.set_file_name(new_filepath=self.write.parent)
         if self._get_new_data is False:
             logger.finfo(
                 "Not running new analysis. Output file exists and overwrite not selected."

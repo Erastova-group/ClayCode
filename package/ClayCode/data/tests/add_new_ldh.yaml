@@ -1,0 +1,42 @@
+# Name of output folder containing the unit cells
+UC_TYPE: 'L21'
+
+# Path where the unit cell folder will be placed
+OUTPATH: '/storage/claycode/package/ClayCode/data/user_data/UCS/'
+
+# Path to the unsubstituted input unit cell file
+#INGRO: '/storage/new_ucs/db/TD21/TD00.gro'
+INGRO: '/storage/L21/L2000.gro'
+#INGRO: '/storage/new_ucs/CD21/CD00.gro'
+
+# Name of the unsubstituted unit cell
+UC_NAME: 'L2000'
+
+# Interlayer solvation
+DEFAULT_SOLV: True
+
+# 'add_new', 'replace', 'remove'
+#ACTION: 'add_new'
+
+# Tetrahedral [T] and octahedral [O] substitutions:
+# Example:
+# SUBSTITUTIONS:
+#   (tetrahedral Si for Al and Fe3+ substitutions)
+#   T:
+#     st -> at
+#     st -> fet
+#   (octahedral Al for Mg substitutions)
+#   O:
+#     ao -> mgo
+
+#SUBSTITUTIONS:
+#  T:
+#    st -> at
+#    st -> fet
+#  O:
+#    feo -> ao
+#    feo -> fe2
+#    feo -> mgo
+#    ao -> feo
+#    ao -> fe2
+#    ao -> mgo

@@ -26,12 +26,11 @@ from typing import (
 
 import numpy as np
 import pandas as pd
-from ClayCode.analysis.analysisbase import ClayAnalysisBase, analysis_class
-from ClayCode.core import gmx
+from ClayCode.analysis.analysisbase import ClayAnalysisBase
 from ClayCode.core.cctypes import MaskedArray
-from ClayCode.core.consts import IONS, SOL, SOL_DENSITY
-from ClayCode.core.lib import temp_file_wrapper
-from ClayCode.data.consts import AA, DATA, FF, MDP, UCS
+from ClayCode.core.consts import IONS
+from ClayCode.core.utils import temp_file_wrapper
+from ClayCode.data.consts import AA, DATA, FF, UCS
 from MDAnalysis import AtomGroup, Universe
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
@@ -50,8 +49,8 @@ __all__ = [
     "check_traj",
     "run_analysis",
     "get_selections",
-    "get_mol_prms",
-    "get_system_charges",
+    # "get_mol_prms",
+    # "get_system_charges",
     "process_orthogonal_axes",
     "process_triclinic_axes",
 ]
@@ -361,6 +360,7 @@ def get_selections(
         other = u.select_atoms(f"resname {other[0]}* and name {other[1]}")
     else:
         raise ValueError('Expected 1 or 2 arguments for "other"')
+    logger.finfo("Selecting clay atoms: ")
     if not lt_zero:
         clay = u.select_atoms(f"resname {clay_type}* and name OB* ob* O* o*")
     else:
@@ -433,21 +433,23 @@ def get_selections(
             ag=clay, ag_name=clay_type, kwd_str="Clay unit cell type"
         )
         clay_ag = clay
+    logger.finfo("Selecting first atom group: ", initial_linebreak=True)
     if not lt_zero:
         sel = select_outside_clay_stack(sel, clay)
     else:
         sel = select_outside_octahedral_sheets(sel, clay)
     # Clay + two other atom groups selected
-    log_atomgroup_info(ag=sel, ag_name=sel_str, kwd_str="Atom selection")
+    # log_atomgroup_info(ag=sel, ag_name=sel_str, kwd_str="Atom selection")
 
     if other is not None:
+        logger.finfo("Selecting second atom group: ", initial_linebreak=True)
         if not lt_zero:
             other = select_outside_clay_stack(other, clay)
         else:
             other = select_outside_octahedral_sheets(other, clay)
-        log_atomgroup_info(
-            ag=other, ag_name=other_str, kwd_str="Second atom selection"
-        )
+        # log_atomgroup_info(
+        #     ag=other, ag_name=other_str, kwd_str="Second atom selection"
+        # )
         return sel, clay_ag, other
 
     # Only clay + one other atom group selected
@@ -478,11 +480,17 @@ def get_ag_numbers_info(ag: AtomGroup) -> Tuple[int, int]:
 #     return instance
 
 
-def log_atomgroup_info(ag: AtomGroup, kwd_str: str, ag_name: str):
+def log_atomgroup_info(ag: AtomGroup, kwd_str: str, ag_name: str = None):
     if ag.n_atoms > 0:
+        if ag_name is None:
+            ag_names = ", ".join(np.unique(ag.names))
+            ag_resnames = ", ".join(np.unique(ag.resnames))
+            ag_name = " in ".join(np.unique([ag_names, ag_resnames]))
         logger.finfo(f"{ag_name!r}", kwd_str=f"{kwd_str}: ")
         logger.finfo(get_ag_numbers_info(ag))
     else:
+        if ag_name is None:
+            ag_name = "Atom group"
         logger.ferror(
             f"{ag_name} contains 0 atoms. Check atom selection parameters."
         )
@@ -494,10 +502,14 @@ def select_outside_clay_stack(atom_group: AtomGroup, clay: AtomGroup):
         f" prop z >= {np.max(clay.positions[:, 2] - 1)} or"
         f" prop z <= {np.min(clay.positions[:, 2] + 1)}"
     )
-    logger.info(
-        f"'atom_group': Selected {atom_group.n_atoms} atoms of names: {np.unique(atom_group.names)} "
-        f"(residues: {np.unique(atom_group.resnames)})"
+    # logger.finfo(f"{atom_group!r}", kwd_str=f"Atoms outside clay stack: ")
+    log_atomgroup_info(
+        ag=atom_group, kwd_str="Selected atoms outside clay stack"
     )
+    # logger.finfo(
+    #     f"Selected {atom_group.n_atoms} atoms of names: {np.unique(atom_group.names)} "
+    #     f"(residues: {np.unique(atom_group.resnames)})"
+    # )
     return atom_group
 
 
@@ -507,10 +519,17 @@ def select_outside_octahedral_sheets(atom_group: AtomGroup, clay: AtomGroup):
         f" prop z >= {np.max(octahedral_sheet.positions[:, 2] - 1)} or"
         f" prop z <= {np.min(octahedral_sheet.positions[:, 2] + 1)}"
     )
-    logger.info(
-        f"'atom_group': Selected {atom_group.n_atoms} atoms of names: {np.unique(atom_group.names)} "
-        f"(residues: {np.unique(atom_group.resnames)})"
+    logger.finfo(
+        f"{atom_group!r}",
+        kwd_str=f"Selected atoms outside octahedral sheets: ",
     )
+    log_atomgroup_info(
+        ag=atom_group, kwd_str="Atoms outside octahedral sheets"
+    )
+    # logger.finfo(
+    #     f"Selected {atom_group.n_atoms} atoms of names: {np.unique(atom_group.names)} "
+    #     f"(residues: {np.unique(atom_group.resnames)})"
+    # )
     return atom_group
 
 
@@ -914,18 +933,18 @@ def update_universe(f):
     return wrapper
 
 
-def write_insert_dat(
-    n_mols: Union[int, float], save: Union[str, Literal[False]]
-):
-    pos = np.zeros((int(n_mols), 3), dtype=np.float16)
-    if save:
-        save = pl.Path(save)
-        if save.suffix != ".dat":
-            save = str(save.resolve()) + ".dat"
-        logger.debug(f"Saving {n_mols} insert positions to {save}")
-        np.savetxt(save, pos, fmt="%4.3f", delimiter=" ", newline="\n")
-        with open(save, "r") as file:
-            r = file.read()
+# def write_insert_dat(
+#     n_mols: Union[int, float], save: Union[str, Literal[False]]
+# ):
+#     pos = np.zeros((int(n_mols), 3), dtype=np.float16)
+#     if save:
+#         save = pl.Path(save)
+#         if save.suffix != ".dat":
+#             save = str(save.resolve()) + ".dat"
+#         logger.debug(f"Saving {n_mols} insert positions to {save}")
+#         np.savetxt(save, pos, fmt="%4.3f", delimiter=" ", newline="\n")
+#         with open(save, "r") as file:
+#             r = file.read()
 
 
 @update_universe
@@ -940,102 +959,33 @@ def center_clay(u: Universe, crdout: Union[Path, str], uc_name: Optional[str]):
     u.atoms.write(crdout)
 
 
-@temp_file_wrapper
-def add_mol_list_to_top(
-    topin: Union[str, pl.Path],
-    topout: Union[str, pl.Path],
-    insert_list: List[str],
-    ff_path: Union[pl.Path, str] = FF,
-):
-    logger.debug(insert_list)
-    with open(topin, "r") as topfile:
-        topstr = topfile.read().rstrip()
-    topmatch = re.search(
-        r"\[ system \].*", topstr, flags=re.MULTILINE | re.DOTALL
-    ).group(0)
-    ff_path = pl.Path(ff_path)
-    if not ff_path.is_dir():
-        raise FileNotFoundError(
-            f"Specified force field path: {ff_path.resolve()!r} does not exist!"
-        )
-    with open(ff_path / f"new_tophead.itp", "r") as tophead:
-        tophead = tophead.read()
-    if len(insert_list) != 0:
-        topstr = "\n".join([tophead, topmatch, *insert_list])
-    else:
-        topstr = "\n".join([tophead, topmatch])
-    with open(topout, "w") as topfile:
-        topfile.write(topstr)
-    assert Path(topout).exists()
-
-
-@temp_file_wrapper
-def neutralise_system(
-    odir: Path, crdin: Path, topin: Path, topout: Path, nion: str, pion: str
-):
-    logger.debug("neutralise_system")
-    mdp = MDP / "genion.mdp"
-    assert mdp.exists(), f"{mdp.resolve()} does not exist"
-    odir = Path(odir).resolve()
-    assert odir.is_dir()
-    # make_opath = lambda p: odir / f"{p.stem}.{p.suffix}"
-    tpr = odir / "neutral.tpr"
-    ndx = odir / "neutral.ndx"
-    # isl = grep_file(crdin, 'iSL')
-    gmx.run_gmx_make_ndx(f=crdin, o=ndx)
-    if ndx.is_file():
-        # if topin.resolve() == topout.resolve():
-        #     topout = topout.parent / f"{topout.stem}_n.top"
-        #     otop_copy = True
-        # else:
-        #     otop_copy = False
-        _, out = gmx.run_gmx_grompp(
-            f=MDP / "genion.mdp",
-            c=crdin,
-            p=topin,
-            o=tpr,
-            pp=topout,
-            po=tpr.with_suffix(".mdp"),
-            v="",
-            maxwarn=1,
-            # renum="",
-        )
-        # isl = grep_file(crdin, 'iSL')
-        err = re.search(r"error", out)
-        if err is not None:
-            logger.error(f"gmx grompp raised an error!")
-            replaced = []
-        else:
-            logger.debug(f"gmx grompp completed successfully.")
-            out = gmx.run_gmx_genion_neutralise(
-                s=tpr,
-                p=topout,
-                o=crdin,
-                n=ndx,
-                pname=pion,
-                pq=int(get_ion_charges()[pion]),
-                nname=nion,
-                nq=int(get_ion_charges()[nion]),
-            )
-            if not topout.is_file():
-                logger.error(f"gmx genion raised an error!")
-            else:
-                logger.info(f"gmx genion completed successfully.")
-                # add_resnum(crdname=crdin, crdout=crdin)
-                # rename_il_solvent(crdname=crdin, crdout=crdin)
-                # isl = grep_file(crdin, 'iSL')
-                # if otop_copy is True:
-                #     shutil.move(topout, topin)
-            replaced = re.findall(
-                "Replacing solvent molecule", out.stderr, flags=re.MULTILINE
-            )
-            logger.info(f"{crdin.name!r} add numbers, rename il solv")
-            add_resnum(crdin=crdin, crdout=crdin)
-            rename_il_solvent(crdin=crdin, crdout=crdin)
-    else:
-        logger.error(f"No index file {ndx.name} created!")
-        replaced = []
-    return len(replaced)
+# @temp_file_wrapper
+# def add_mol_list_to_top(
+#     topin: Union[str, pl.Path],
+#     topout: Union[str, pl.Path],
+#     insert_list: List[str],
+#     ff_path: Union[pl.Path, str] = FF,
+# ):
+#     logger.debug(insert_list)
+#     with open(topin, "r") as topfile:
+#         topstr = topfile.read().rstrip()
+#     topmatch = re.search(
+#         r"\[ system \].*", topstr, flags=re.MULTILINE | re.DOTALL
+#     ).group(0)
+#     ff_path = pl.Path(ff_path)
+#     if not ff_path.is_dir():
+#         raise FileNotFoundError(
+#             f"Specified force field path: {ff_path.resolve()!r} does not exist!"
+#         )
+#     with open(ff_path / f"new_tophead.itp", "r") as tophead:
+#         tophead = tophead.read()
+#     if len(insert_list) != 0:
+#         topstr = "\n".join([tophead, topmatch, *insert_list])
+#     else:
+#         topstr = "\n".join([tophead, topmatch])
+#     with open(topout, "w") as topfile:
+#         topfile.write(topstr)
+#     assert Path(topout).exists()
 
 
 @update_universe
@@ -1190,40 +1140,40 @@ PRM_INFO_DICT = {
 }
 
 
-def get_mol_prms(
-    prm_str: str,
-    itp_file: Union[str, pl.Path],
-    include_dir: Union[str, pl.Path] = FF,
-    write=False,
-    force_update=False,
-) -> dict:
-    dict_func = PRM_INFO_DICT[prm_str]
-    residue_itp = Path(itp_file)
-    prop_file = DATA / f"{residue_itp.stem}_{prm_str}.p"
-    if (force_update is True) or (not prop_file.is_file()):
-        atom_u = Universe(
-            str(residue_itp),
-            topology_format="ITP",
-            include_dir=str(include_dir),
-            infer_system=True,
-        )
-        prop_dict = dict_func(atom_u)
-        if write is True:
-            with open(prop_file, "wb") as prop_file:
-                pkl.dump(prop_dict, prop_file)
-    else:
-        with open(prop_file, "rb") as prop_file:
-            prop_dict = pkl.read(prop_file)
-    return prop_dict
+# def get_mol_prms(
+#     prm_str: str,
+#     itp_file: Union[str, pl.Path],
+#     include_dir: Union[str, pl.Path] = FF,
+#     write=False,
+#     force_update=False,
+# ) -> dict:
+#     dict_func = PRM_INFO_DICT[prm_str]
+#     residue_itp = Path(itp_file)
+#     prop_file = DATA / f"{residue_itp.stem}_{prm_str}.p"
+#     if (force_update is True) or (not prop_file.is_file()):
+#         atom_u = Universe(
+#             str(residue_itp),
+#             topology_format="ITP",
+#             include_dir=str(include_dir),
+#             infer_system=True,
+#         )
+#         prop_dict = dict_func(atom_u)
+#         if write is True:
+#             with open(prop_file, "wb") as prop_file:
+#                 pkl.dump(prop_dict, prop_file)
+#     else:
+#         with open(prop_file, "rb") as prop_file:
+#             prop_dict = pkl.read(prop_file)
+#     return prop_dict
 
 
-get_mol_n_atoms = partial(get_mol_prms, prm_str="n_atoms")
-update_wrapper(get_mol_n_atoms, "n_atoms")
-
-get_mol_charges = partial(get_mol_prms, prm_str="charges")
-update_wrapper(get_mol_charges, "charges")
-
-PRM_METHODS = {"charges": get_mol_charges, "n_atoms": get_mol_n_atoms}
+# get_mol_n_atoms = partial(get_mol_prms, prm_str="n_atoms")
+# update_wrapper(get_mol_n_atoms, "n_atoms")
+#
+# get_mol_charges = partial(get_mol_prms, prm_str="charges")
+# update_wrapper(get_mol_charges, "charges")
+#
+# PRM_METHODS = {"charges": get_mol_charges, "n_atoms": get_mol_n_atoms}
 # def get_residue_n_atoms(
 #     residue_itp: Union[str, pl.Path],
 #     include_dir: Union[str, pl.Path] = FF,
@@ -1274,209 +1224,209 @@ PRM_METHODS = {"charges": get_mol_charges, "n_atoms": get_mol_n_atoms}
 #             charge_dict = pkl.read(charge_file)
 #     return charge_dict
 
-ion_itp = FF / "Ion_Test.ff/ions.itp"
-get_ion_charges = partial(get_mol_charges, itp_file=ion_itp)
-update_wrapper(get_ion_charges, ion_itp)
+# ion_itp = FF / "Ion_Test.ff/ions.itp"
+# get_ion_charges = partial(get_mol_charges, itp_file=ion_itp)
+# update_wrapper(get_ion_charges, ion_itp)
+#
+# get_ion_n_atoms = partial(get_mol_n_atoms, itp_file=ion_itp)
+# update_wrapper(get_ion_charges, ion_itp)
+#
 
-get_ion_n_atoms = partial(get_mol_n_atoms, itp_file=ion_itp)
-update_wrapper(get_ion_charges, ion_itp)
-
-
-def get_ion_prms(prm_str: str, **kwargs):
-    if prm_str == "charges":
-        prm_dict = get_ion_charges(**kwargs)
-    elif prm_str == "n_atoms":
-        prm_dict = get_ion_n_atoms(**kwargs)
-    else:
-        raise KeyError(f"Unexpected parameter: {prm_str!r}")
-    return prm_dict
+# def get_ion_prms(prm_str: str, **kwargs):
+#     if prm_str == "charges":
+#         prm_dict = get_ion_charges(**kwargs)
+#     elif prm_str == "n_atoms":
+#         prm_dict = get_ion_n_atoms(**kwargs)
+#     else:
+#         raise KeyError(f"Unexpected parameter: {prm_str!r}")
+#     return prm_dict
 
 
 # get_clay_charges = partial(get_atom_type_charges, atom_itp=FF/"ClayFF_Fe.ff/ffnonbonded.itp")
 
 
-def get_clay_prms(prm_str: str, uc_name: str, uc_path=UCS, force_update=False):
-    prm_func = PRM_METHODS[prm_str]
-    prm_file = DATA / f"{uc_name.upper()}_{prm_str}.pkl"
-    if not prm_file.is_file() or force_update is True:
-        charge_dict = {}
-        uc_files = uc_path.glob(rf"{uc_name}/*[0-9].itp")
-        for uc_file in uc_files:
-            uc_charge = prm_func(
-                itp_file=uc_file, write=False, force_update=force_update
-            )
-            charge_dict.update(uc_charge)
-    else:
-        with open(prm_file, "rb") as prm_file:
-            charge_dict = pkl.read(prm_file)
-    return charge_dict
+# def get_clay_prms(prm_str: str, uc_name: str, uc_path=UCS, force_update=False):
+#     prm_func = PRM_METHODS[prm_str]
+#     prm_file = DATA / f"{uc_name.upper()}_{prm_str}.pkl"
+#     if not prm_file.is_file() or force_update is True:
+#         charge_dict = {}
+#         uc_files = uc_path.glob(rf"{uc_name}/*[0-9].itp")
+#         for uc_file in uc_files:
+#             uc_charge = prm_func(
+#                 itp_file=uc_file, write=False, force_update=force_update
+#             )
+#             charge_dict.update(uc_charge)
+#     else:
+#         with open(prm_file, "rb") as prm_file:
+#             charge_dict = pkl.read(prm_file)
+#     return charge_dict
 
 
-get_clay_charges = partial(get_clay_prms, prm_str="charges")
-update_wrapper(get_clay_charges, "charges")
-
-get_clay_n_atoms = partial(get_clay_prms, prm_str="n_atoms")
-update_wrapper(get_clay_n_atoms, "n_atoms")
-
-
-def get_sol_prms(
-    prm_str: str,
-    sol_path=FF / "ClayFF_Fe.ff",
-    include_dir: Union[str, pl.Path] = FF,
-    force_update=False,
-):
-    prm_func = PRM_METHODS[prm_str]
-    charge_file = DATA / f"SOL_{prm_str}.pkl"
-    if not charge_file.is_file() or (force_update is True):
-        charge_dict = {}
-        sol_fnames = ["interlayer_spc", "spc"]
-        for file in sol_fnames:
-            itp = f"{sol_path}/{file}.itp"
-            sol_charge = prm_func(
-                itp_file=itp,
-                write=False,
-                include_dir=include_dir,
-                force_update=force_update,
-            )
-            charge_dict.update(sol_charge)
-    else:
-        with open(charge_file, "rb") as charge_file:
-            charge_dict = pkl.read(charge_file)
-    return charge_dict
+# get_clay_charges = partial(get_clay_prms, prm_str="charges")
+# update_wrapper(get_clay_charges, "charges")
+#
+# get_clay_n_atoms = partial(get_clay_prms, prm_str="n_atoms")
+# update_wrapper(get_clay_n_atoms, "n_atoms")
 
 
-get_sol_charges = partial(get_sol_prms, prm_str="charge")
-update_wrapper(get_sol_charges, "charges")
+# def get_sol_prms(
+#     prm_str: str,
+#     sol_path=FF / "ClayFF_Fe.ff",
+#     include_dir: Union[str, pl.Path] = FF,
+#     force_update=False,
+# ):
+#     prm_func = PRM_METHODS[prm_str]
+#     charge_file = DATA / f"SOL_{prm_str}.pkl"
+#     if not charge_file.is_file() or (force_update is True):
+#         charge_dict = {}
+#         sol_fnames = ["interlayer_spc", "spc"]
+#         for file in sol_fnames:
+#             itp = f"{sol_path}/{file}.itp"
+#             sol_charge = prm_func(
+#                 itp_file=itp,
+#                 write=False,
+#                 include_dir=include_dir,
+#                 force_update=force_update,
+#             )
+#             charge_dict.update(sol_charge)
+#     else:
+#         with open(charge_file, "rb") as charge_file:
+#             charge_dict = pkl.read(charge_file)
+#     return charge_dict
+#
+#
+# get_sol_charges = partial(get_sol_prms, prm_str="charge")
+# update_wrapper(get_sol_charges, "charges")
+#
+# get_sol_n_atoms = partial(get_sol_prms, prm_str="n_atoms")
+# update_wrapper(get_sol_n_atoms, "n_atoms")
+#
 
-get_sol_n_atoms = partial(get_sol_prms, prm_str="n_atoms")
-update_wrapper(get_sol_n_atoms, "n_atoms")
-
-
-def get_aa_prms(prm_str: str, aa_name: str, aa_path=AA, force_update=False):
-    prm_func = PRM_METHODS[prm_str]
-    charge_file = DATA / f"{aa_name.upper()}_{prm_str}.pkl"
-    if not charge_file.is_file() or force_update is True:
-        charge_dict = {}
-        aa_dirs = aa_path.glob(rf"pK[1-9]/{aa_name.upper()}[1-9].itp")
-        for aa_file in aa_dirs:
-            aa_charge = prm_func(
-                itp_file=aa_file, write=False, force_update=force_update
-            )
-            charge_dict.update(aa_charge)
-    else:
-        with open(charge_file, "rb") as charge_file:
-            charge_dict = pkl.read(charge_file)
-    return charge_dict
-
-
-get_aa_charges = partial(get_aa_prms, prm_str="charges")
-update_wrapper(get_aa_charges, "charges")
-
-get_aa_n_atoms = partial(get_aa_prms, prm_str="n_atoms")
-update_wrapper(get_aa_n_atoms, "n_atoms")
-
-
-def get_all_prms(prm_str, force_update=True, write=True, name=None):
-    if name is not None:
-        namestr = f"{name}_"
-    else:
-        namestr = ""
-    charge_file = DATA / f"{namestr}{prm_str}.pkl"
-    if not charge_file.is_file() or force_update is True:
-        ion_dict = get_ion_prms(prm_str=prm_str, force_update=force_update)
-        aa_types = [
-            "ala",
-            "arg",
-            "asn",
-            "asp",
-            "ctl",
-            "cys",
-            "gln",
-            "glu",
-            "gly",
-            "his",
-            "ile",
-            "leu",
-            "lys",
-            "met",
-            "phe",
-            "pro",
-            "ser",
-            "thr",
-            "trp",
-            "tyr",
-            "val",
-        ]
-        aa_dict = {}
-        for aa in aa_types:
-            aa_dict.update(
-                get_aa_prms(
-                    prm_str=prm_str, aa_name=aa, force_update=force_update
-                )
-            )
-        clay_types = ["D21"]
-        clay_dict = {}
-        for uc in clay_types:
-            clay_dict.update(
-                get_clay_prms(
-                    prm_str=prm_str, uc_name=uc, force_update=force_update
-                )
-            )
-        sol_dict = get_sol_prms(prm_str=prm_str, force_update=force_update)
-        charge_dict = {**ion_dict, **clay_dict, **sol_dict, **aa_dict}
-        if write is True:
-            with open(charge_file, "wb") as file:
-                pkl.dump(charge_dict, file)
-    else:
-        with open(charge_file, "rb") as file:
-            charge_dict = pkl.load(file)
-    return charge_dict
+# def get_aa_prms(prm_str: str, aa_name: str, aa_path=AA, force_update=False):
+#     prm_func = PRM_METHODS[prm_str]
+#     charge_file = DATA / f"{aa_name.upper()}_{prm_str}.pkl"
+#     if not charge_file.is_file() or force_update is True:
+#         charge_dict = {}
+#         aa_dirs = aa_path.glob(rf"pK[1-9]/{aa_name.upper()}[1-9].itp")
+#         for aa_file in aa_dirs:
+#             aa_charge = prm_func(
+#                 itp_file=aa_file, write=False, force_update=force_update
+#             )
+#             charge_dict.update(aa_charge)
+#     else:
+#         with open(charge_file, "rb") as charge_file:
+#             charge_dict = pkl.read(charge_file)
+#     return charge_dict
+#
+#
+# get_aa_charges = partial(get_aa_prms, prm_str="charges")
+# update_wrapper(get_aa_charges, "charges")
+#
+# get_aa_n_atoms = partial(get_aa_prms, prm_str="n_atoms")
+# update_wrapper(get_aa_n_atoms, "n_atoms")
 
 
-get_all_charges = partial(get_all_prms, prm_str="charges")
-update_wrapper(get_all_charges, "charges")
-
-get_all_n_atoms = partial(get_all_prms, prm_str="n_atoms")
-update_wrapper(get_all_n_atoms, "n_atoms")
-
-
-def get_system_prms(
-    prm_str, crds: Union[str, Path, Universe], write=True, force_update=True
-) -> Union[str, pd.Series, None]:
-    if type(crds) == Universe:
-        u = crds
-        name = "universe"
-    else:
-        try:
-            u = Universe(str(crds))
-            name = Path(crds).stem
-        except ValueError:
-            logger.error(f"Could not create Universe from {crds}")
-            return None
-    prm_df = pd.Series(
-        get_all_prms(prm_str, write=write, force_update=force_update),
-        name=name,
-    )
-    if prm_str == "charges":
-        residue_df = pd.Series(
-            u.residues.resnames, name="residues", dtype="str"
-        )
-        residue_df = residue_df.aggregate("value_counts")
-        prm_df = pd.concat(
-            {prm_str: prm_df, "counts": residue_df}, axis=1, join="inner"
-        )
-        prm_df["sum"] = prm_df.apply("product", axis=1).astype(int)
-        sys_prms = prm_df["sum"].sum().astype(int)
-    elif prm_str == "n_atoms":
-        sys_prms = prm_df
-    return sys_prms
-
-
-get_system_charges = partial(get_system_prms, prm_str="charges")
-update_wrapper(get_system_charges, "charges")
-
-get_system_n_atoms = partial(get_system_prms, prm_str="n_atoms")
-update_wrapper(get_system_n_atoms, "n_atoms")
+# def get_all_prms(prm_str, force_update=True, write=True, name=None):
+#     if name is not None:
+#         namestr = f"{name}_"
+#     else:
+#         namestr = ""
+#     charge_file = DATA / f"{namestr}{prm_str}.pkl"
+#     if not charge_file.is_file() or force_update is True:
+#         ion_dict = get_ion_prms(prm_str=prm_str, force_update=force_update)
+#         aa_types = [
+#             "ala",
+#             "arg",
+#             "asn",
+#             "asp",
+#             "ctl",
+#             "cys",
+#             "gln",
+#             "glu",
+#             "gly",
+#             "his",
+#             "ile",
+#             "leu",
+#             "lys",
+#             "met",
+#             "phe",
+#             "pro",
+#             "ser",
+#             "thr",
+#             "trp",
+#             "tyr",
+#             "val",
+#         ]
+#         aa_dict = {}
+#         for aa in aa_types:
+#             aa_dict.update(
+#                 get_aa_prms(
+#                     prm_str=prm_str, aa_name=aa, force_update=force_update
+#                 )
+#             )
+#         clay_types = ["D21"]
+#         clay_dict = {}
+#         for uc in clay_types:
+#             clay_dict.update(
+#                 get_clay_prms(
+#                     prm_str=prm_str, uc_name=uc, force_update=force_update
+#                 )
+#             )
+#         sol_dict = get_sol_prms(prm_str=prm_str, force_update=force_update)
+#         charge_dict = {**ion_dict, **clay_dict, **sol_dict, **aa_dict}
+#         if write is True:
+#             with open(charge_file, "wb") as file:
+#                 pkl.dump(charge_dict, file)
+#     else:
+#         with open(charge_file, "rb") as file:
+#             charge_dict = pkl.load(file)
+#     return charge_dict
+#
+#
+# get_all_charges = partial(get_all_prms, prm_str="charges")
+# update_wrapper(get_all_charges, "charges")
+#
+# get_all_n_atoms = partial(get_all_prms, prm_str="n_atoms")
+# update_wrapper(get_all_n_atoms, "n_atoms")
+#
+#
+# def get_system_prms(
+#     prm_str, crds: Union[str, Path, Universe], write=True, force_update=True
+# ) -> Union[str, pd.Series, None]:
+#     if type(crds) == Universe:
+#         u = crds
+#         name = "universe"
+#     else:
+#         try:
+#             u = Universe(str(crds))
+#             name = Path(crds).stem
+#         except ValueError:
+#             logger.error(f"Could not create Universe from {crds}")
+#             return None
+#     prm_df = pd.Series(
+#         get_all_prms(prm_str, write=write, force_update=force_update),
+#         name=name,
+#     )
+#     if prm_str == "charges":
+#         residue_df = pd.Series(
+#             u.residues.resnames, name="residues", dtype="str"
+#         )
+#         residue_df = residue_df.aggregate("value_counts")
+#         prm_df = pd.concat(
+#             {prm_str: prm_df, "counts": residue_df}, axis=1, join="inner"
+#         )
+#         prm_df["sum"] = prm_df.apply("product", axis=1).astype(int)
+#         sys_prms = prm_df["sum"].sum().astype(int)
+#     elif prm_str == "n_atoms":
+#         sys_prms = prm_df
+#     return sys_prms
+#
+#
+# get_system_charges = partial(get_system_prms, prm_str="charges")
+# update_wrapper(get_system_charges, "charges")
+#
+# get_system_n_atoms = partial(get_system_prms, prm_str="n_atoms")
+# update_wrapper(get_system_n_atoms, "n_atoms")
 
 
 # def neutralise_charge(
@@ -1572,144 +1522,144 @@ update_wrapper(get_system_n_atoms, "n_atoms")
 #             logger.debug("\ngmx grompp raised error!")
 
 
-def add_mols_to_top(
-    topin: Union[str, pl.Path],
-    topout: Union[str, pl.Path],
-    insert: Union[None, str, pl.Path],
-    n_mols: int,
-    include_dir,
-):
-    if n_mols != 0:
-        itp_path = pl.Path(insert).parent.resolve()
-        itp = pl.Path(insert).stem
-        # insertgro = Universe(str(itp_path / f'{itp}.crdin'))
-        insert = Universe(
-            str(itp_path / f"{itp}.itp"),
-            topology_format="ITP",
-            include_dir=include_dir,
-        )
-    else:
-        itp_path = pl.Path(topin).parent
-    topin = pl.Path(topin)
-    with open(topin, "r") as topfile:
-        topstr = topfile.read().rstrip()
-    topmatch = re.search(
-        r"\[ system \].*", topstr, flags=re.MULTILINE | re.DOTALL
-    ).group(0)
-    with open(itp_path.parent.parent / "FF/tophead.itp", "r") as tophead:
-        tophead = tophead.read()
-    # topstr_iter = topstr.splitlines()
-
-    # for line in topstr_iter:
-    #     match =re.search(r'^\s*[#]\s*include\s*["'+r"']"+r'([A-Za-z0-9./_])["'+r"']" , line)
-    #     if match is not None:
-    #         top_list.append(match.group(1))
-    # for file in top_list:
-    #     with open(file, 'r') as topfile:
-    #         topstr=topfile.read().rstrip()
-    #     topstr = topstr.splitlines()
-    #     topstr_iter.extend(topstr)
-    # prm_dict=OrderedDict()
-    # prms=['defaults', 'atomtypes','bondtypes','pairtypes','angletypes', 'dihedraltypes',
-    #       'constrainttypes', 'nonbond_params', 'moleculetype', 'atoms', 'system', 'molecules']
-    # for prm in prms:
-    #     prm_dict[prm] = []
-    # prm_str=get_search_str(prm_dict)
-    #
-    # match_list=[]
-    # kwd=None
-    # topstr_iter=iter(topstr_iter)
-    # while True:
-    #     try:
-    #         line=next(topstr_iter)
-    #
-    #         match=re.search(rf'{prm_str}', line)
-    #         if match is None and kwd is None:
-    #             pass
-    #         elif match is not None:
-    #
-    #             kwd = match.group(0)
-    #
-    #             if len(match_list) != 0:
-    #                 if last_kwd == 'defaults':
-    #                     for item in match_list:
-    #                         if item.strip().startswith(';'):
-    #                             match_list.remove(item)
-    #                 prm_dict[last_kwd].extend([match_list])
-    #             match_list = []
-    #             last_kwd=kwd
-    #             line=next(topstr_iter)
-    #         elif match is None and re.search(r'[[][a-zA-Z\s]+[]]', line) is not None:
-    #             if kwd is None:
-    #                 pass
-    #             # else:
-    #             #     last_kwd=kwd
-    #             match, kwd= None, None
-    #         line=line.strip().split(sep='\s')
-    #         if kwd is not None and len(line) != 0:#and not line[0].strip().startswith(';'):
-    #
-    #             # if ';', in line:
-    #             #     line = line[:line.index(';')]
-    #
-    #             line=''.join(line) + '\n'
-    #             match_list.extend([line])
-    #     except StopIteration:
-    #         prm_dict[last_kwd].extend([match_list])
-    #         break
-    #
-    # parameters =['defaults', 'atomtypes', 'bondtypes', 'pairtypes', 'angletypes', 'dihedraltypes',
-    #              'constrainttypes', 'nonbond_params']
-    # molecules = ['moleculetype', 'atoms']
-    with open(topout, "w") as topfile:
-        # for prm in parameters:
-        #     topfile.write(f'\n[ {prm} ]\n')
-        #     for p in prm_dict[prm]:
-        #
-        #         topfile.writelines(p)
-        #     # topfile.write(*prm_dict[prm])
-        # for mol_id, mol in enumerate(prm_dict['moleculetype']):
-        #
-        #     #               f'{prm_dict["moleculetype"][mol_id]}\n'
-        #     #               '\n[ atoms ]\n')
-        #
-        #     topfile.write('\n[ moleculetype ]\n')
-        #     for lines in prm_dict["moleculetype"][mol_id]:
-        #         topfile.writelines(lines)
-        #     topfile.write('\n[ atoms ]\n')
-        #     for lines in prm_dict['atoms'][mol_id]:
-        #         topfile.writelines(lines)
-        # topfile.write('\n[ system ]\n')
-        # for lines in prm_dict['system']:
-        #     topfile.writelines(lines)
-        # topfile.write('\n[ molecules ]\n')
-        #
-        # for lines in prm_dict['molecules']:
-        #
-        #     topfile.writelines(lines)
-        if n_mols != 0:
-            topfile.write(
-                "\n".join(
-                    [
-                        tophead,
-                        topmatch,
-                        f"\n{insert.residues.moltypes[0]}  {n_mols}\n",
-                    ]
-                )
-            )
-        else:
-            topfile.write("\n".join([tophead, topmatch]))
-
-    # # substr=r'([#]\s*include\s*[."A-Za-z0-9\s]\{-}\n)'
-    # # topstr = re.sub(rf'({substr})', '\1' + f'{itp_path}/{itp}.itp', topstr, flags=re.MULTILINE)
-    # substr=r'^\s*\[ system \]'
-    # topstr = re.sub(rf'({substr})', rf'\n#include "{itp_path}/{itp}.itp"\n\1', topstr,
-    #                 flags=re.MULTILINE)
-    #
-    #
-    # topstr += f'\n{insert.residues.moltypes[0]}  {n_mols}\n'
-    #
-    # with open(topout, 'w') as topfile:
-    #     topfile.write(topstr)
+# def add_mols_to_top(
+#     topin: Union[str, pl.Path],
+#     topout: Union[str, pl.Path],
+#     insert: Union[None, str, pl.Path],
+#     n_mols: int,
+#     include_dir,
+# ):
+#     if n_mols != 0:
+#         itp_path = pl.Path(insert).parent.resolve()
+#         itp = pl.Path(insert).stem
+#         # insertgro = Universe(str(itp_path / f'{itp}.crdin'))
+#         insert = Universe(
+#             str(itp_path / f"{itp}.itp"),
+#             topology_format="ITP",
+#             include_dir=include_dir,
+#         )
+#     else:
+#         itp_path = pl.Path(topin).parent
+#     topin = pl.Path(topin)
+#     with open(topin, "r") as topfile:
+#         topstr = topfile.read().rstrip()
+#     topmatch = re.search(
+#         r"\[ system \].*", topstr, flags=re.MULTILINE | re.DOTALL
+#     ).group(0)
+#     with open(itp_path.parent.parent / "FF/tophead.itp", "r") as tophead:
+#         tophead = tophead.read()
+#     # topstr_iter = topstr.splitlines()
+#
+#     # for line in topstr_iter:
+#     #     match =re.search(r'^\s*[#]\s*include\s*["'+r"']"+r'([A-Za-z0-9./_])["'+r"']" , line)
+#     #     if match is not None:
+#     #         top_list.append(match.group(1))
+#     # for file in top_list:
+#     #     with open(file, 'r') as topfile:
+#     #         topstr=topfile.read().rstrip()
+#     #     topstr = topstr.splitlines()
+#     #     topstr_iter.extend(topstr)
+#     # prm_dict=OrderedDict()
+#     # prms=['defaults', 'atomtypes','bondtypes','pairtypes','angletypes', 'dihedraltypes',
+#     #       'constrainttypes', 'nonbond_params', 'moleculetype', 'atoms', 'system', 'molecules']
+#     # for prm in prms:
+#     #     prm_dict[prm] = []
+#     # prm_str=get_search_str(prm_dict)
+#     #
+#     # match_list=[]
+#     # kwd=None
+#     # topstr_iter=iter(topstr_iter)
+#     # while True:
+#     #     try:
+#     #         line=next(topstr_iter)
+#     #
+#     #         match=re.search(rf'{prm_str}', line)
+#     #         if match is None and kwd is None:
+#     #             pass
+#     #         elif match is not None:
+#     #
+#     #             kwd = match.group(0)
+#     #
+#     #             if len(match_list) != 0:
+#     #                 if last_kwd == 'defaults':
+#     #                     for item in match_list:
+#     #                         if item.strip().startswith(';'):
+#     #                             match_list.remove(item)
+#     #                 prm_dict[last_kwd].extend([match_list])
+#     #             match_list = []
+#     #             last_kwd=kwd
+#     #             line=next(topstr_iter)
+#     #         elif match is None and re.search(r'[[][a-zA-Z\s]+[]]', line) is not None:
+#     #             if kwd is None:
+#     #                 pass
+#     #             # else:
+#     #             #     last_kwd=kwd
+#     #             match, kwd= None, None
+#     #         line=line.strip().split(sep='\s')
+#     #         if kwd is not None and len(line) != 0:#and not line[0].strip().startswith(';'):
+#     #
+#     #             # if ';', in line:
+#     #             #     line = line[:line.index(';')]
+#     #
+#     #             line=''.join(line) + '\n'
+#     #             match_list.extend([line])
+#     #     except StopIteration:
+#     #         prm_dict[last_kwd].extend([match_list])
+#     #         break
+#     #
+#     # parameters =['defaults', 'atomtypes', 'bondtypes', 'pairtypes', 'angletypes', 'dihedraltypes',
+#     #              'constrainttypes', 'nonbond_params']
+#     # molecules = ['moleculetype', 'atoms']
+#     with open(topout, "w") as topfile:
+#         # for prm in parameters:
+#         #     topfile.write(f'\n[ {prm} ]\n')
+#         #     for p in prm_dict[prm]:
+#         #
+#         #         topfile.writelines(p)
+#         #     # topfile.write(*prm_dict[prm])
+#         # for mol_id, mol in enumerate(prm_dict['moleculetype']):
+#         #
+#         #     #               f'{prm_dict["moleculetype"][mol_id]}\n'
+#         #     #               '\n[ atoms ]\n')
+#         #
+#         #     topfile.write('\n[ moleculetype ]\n')
+#         #     for lines in prm_dict["moleculetype"][mol_id]:
+#         #         topfile.writelines(lines)
+#         #     topfile.write('\n[ atoms ]\n')
+#         #     for lines in prm_dict['atoms'][mol_id]:
+#         #         topfile.writelines(lines)
+#         # topfile.write('\n[ system ]\n')
+#         # for lines in prm_dict['system']:
+#         #     topfile.writelines(lines)
+#         # topfile.write('\n[ molecules ]\n')
+#         #
+#         # for lines in prm_dict['molecules']:
+#         #
+#         #     topfile.writelines(lines)
+#         if n_mols != 0:
+#             topfile.write(
+#                 "\n".join(
+#                     [
+#                         tophead,
+#                         topmatch,
+#                         f"\n{insert.residues.moltypes[0]}  {n_mols}\n",
+#                     ]
+#                 )
+#             )
+#         else:
+#             topfile.write("\n".join([tophead, topmatch]))
+#
+#     # # substr=r'([#]\s*include\s*[."A-Za-z0-9\s]\{-}\n)'
+#     # # topstr = re.sub(rf'({substr})', '\1' + f'{itp_path}/{itp}.itp', topstr, flags=re.MULTILINE)
+#     # substr=r'^\s*\[ system \]'
+#     # topstr = re.sub(rf'({substr})', rf'\n#include "{itp_path}/{itp}.itp"\n\1', topstr,
+#     #                 flags=re.MULTILINE)
+#     #
+#     #
+#     # topstr += f'\n{insert.residues.moltypes[0]}  {n_mols}\n'
+#     #
+#     # with open(topout, 'w') as topfile:
+#     #     topfile.write(topstr)
 
 
 # def remove_charge_Cl(
@@ -1833,83 +1783,83 @@ def add_mols_to_top(
 #         return bulk_ions[ion_id], remove_ions, n_cl
 
 
-def remove_replaced_SOL(
-    topin: Union[str, pl.Path], topout: Union[str, pl.Path], n_mols: int
-):
-    if n_mols > 0:
-        with open(topin, "r") as topfile:
-            topstr = topfile.read()
-
-        substr = r"(SOL\s*)([0-9]*)"
-
-        pattern = rf"{substr}(?!.*{substr})"
-
-        try:
-            topmatch = re.search(
-                pattern, topstr, flags=re.MULTILINE | re.DOTALL
-            ).group(2)
-            n_sol = int(topmatch) - n_mols
-            logger.debug(
-                f"Removing {n_mols} SOL residues from topology."
-            )  # , topmatch)
-
-            if n_sol < 0:
-                raise ValueError
-
-            else:
-                topstr = re.sub(
-                    pattern,
-                    rf"\1 {n_sol}",
-                    topstr,
-                    flags=re.MULTILINE | re.DOTALL,
-                )
-
-                with open(topout, "w") as topfile:
-                    logger.debug(
-                        f"New topology {topout.name!r} has {n_sol} SOL molecules."
-                    )
-                    topfile.write(topstr)
-        except:
-            raise ValueError
-
-
-@update_universe
-def center_clay_universe(
-    u: Universe, crdout: Union[str, Path], uc_name: Optional[str]
-) -> None:
-    if uc_name is None:
-        clay = u.select_atoms("not resname SOL iSL" + " ".join(IONS))
-    else:
-        clay = u.select_atoms(f"resname {uc_name}*")
-    for ts in u.trajectory:
-        ts = center_in_box(clay, wrap=True)(ts)
-        ts = wrap(u.atoms)(ts)
-    u.atoms.write(crdout)
+# def remove_replaced_SOL(
+#     topin: Union[str, pl.Path], topout: Union[str, pl.Path], n_mols: int
+# ):
+#     if n_mols > 0:
+#         with open(topin, "r") as topfile:
+#             topstr = topfile.read()
+#
+#         substr = r"(SOL\s*)([0-9]*)"
+#
+#         pattern = rf"{substr}(?!.*{substr})"
+#
+#         try:
+#             topmatch = re.search(
+#                 pattern, topstr, flags=re.MULTILINE | re.DOTALL
+#             ).group(2)
+#             n_sol = int(topmatch) - n_mols
+#             logger.debug(
+#                 f"Removing {n_mols} SOL residues from topology."
+#             )  # , topmatch)
+#
+#             if n_sol < 0:
+#                 raise ValueError
+#
+#             else:
+#                 topstr = re.sub(
+#                     pattern,
+#                     rf"\1 {n_sol}",
+#                     topstr,
+#                     flags=re.MULTILINE | re.DOTALL,
+#                 )
+#
+#                 with open(topout, "w") as topfile:
+#                     logger.debug(
+#                         f"New topology {topout.name!r} has {n_sol} SOL molecules."
+#                     )
+#                     topfile.write(topstr)
+#         except:
+#             raise ValueError
 
 
-@update_universe
-def remove_ag(
-    u: Universe,
-    crdout: str,
-    selstr: str,
-    last: Union[bool, int],
-    first: Union[bool, int],
-) -> None:
-    sel = u.select_atoms(selstr)
-    logger.debug(
-        f"Before: {u.atoms.n_atoms}. "
-        f"Removing first {first} last {last} {np.unique(sel.residues.resnames)}"
-    )
-    if first is not False:
-        if last is not False:
-            raise ValueError(
-                f"Not possible to select first and last ends of atom group at the same time"
-            )
-    elif last is not False:
-        first = -last
-        logger.debug("last not false", first)
-    else:
-        first = 0
-    u.atoms -= sel[first:]
-    logger.debug(f"After: {u.atoms.n_atoms}")
-    u.atoms.write(crdout)
+# @update_universe
+# def center_clay_universe(
+#     u: Universe, crdout: Union[str, Path], uc_name: Optional[str]
+# ) -> None:
+#     if uc_name is None:
+#         clay = u.select_atoms("not resname SOL iSL" + " ".join(IONS))
+#     else:
+#         clay = u.select_atoms(f"resname {uc_name}*")
+#     for ts in u.trajectory:
+#         ts = center_in_box(clay, wrap=True)(ts)
+#         ts = wrap(u.atoms)(ts)
+#     u.atoms.write(crdout)
+
+
+# @update_universe
+# def remove_ag(
+#     u: Universe,
+#     crdout: str,
+#     selstr: str,
+#     last: Union[bool, int],
+#     first: Union[bool, int],
+# ) -> None:
+#     sel = u.select_atoms(selstr)
+#     logger.debug(
+#         f"Before: {u.atoms.n_atoms}. "
+#         f"Removing first {first} last {last} {np.unique(sel.residues.resnames)}"
+#     )
+#     if first is not False:
+#         if last is not False:
+#             raise ValueError(
+#                 f"Not possible to select first and last ends of atom group at the same time"
+#             )
+#     elif last is not False:
+#         first = -last
+#         logger.debug("last not false", first)
+#     else:
+#         first = 0
+#     u.atoms -= sel[first:]
+#     logger.debug(f"After: {u.atoms.n_atoms}")
+#     u.atoms.write(crdout)
