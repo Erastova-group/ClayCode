@@ -45,3 +45,4 @@ A workshop material, part of the Molecular Modeling in Clay Science Meeting (16t
 
 ## Cite as:
 Hannah Pollak, Matteo T. Degiacomi, Valentina Erastova. "ClayCode v.0.8.0" 10.5281/zenodo.11219451
+Pollak, Hannah, Matteo T. Degiacomi, and Valentina Erastova. "Modelling realistic clay systems with ClayCode." arXiv preprint [arXiv:2407.18882](https://arxiv.org/abs/2407.18882) (2024). 
