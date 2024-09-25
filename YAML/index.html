@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="author" content="Valentina Erastova" /><link rel="canonical" href="https://erastova-group.github.io/ClayCode/YAML/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>YAML - ClayCode</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "YAML";
+        var mkdocs_page_input_path = "YAML.md";
+        var mkdocs_page_url = "/ClayCode/YAML/";
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/yaml.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> ClayCode
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../start/">Quick Start</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Documentation</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../userguide/">User Guide</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Modules</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../builder/">ClayCode.builder</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../siminp/">ClayCode.simpinp</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" >INPUT files</a>
+    <ul class="current">
+                <li class="toctree-l2 current"><a class="reference internal current" href="#">YAML</a>
+    <ul class="current">
+    <li class="toctree-l3"><a class="reference internal" href="#required-parameters">Required Parameters</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#optional-parameters">Optional Parameters</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#clay-sheet-size">Clay Sheet Size</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#clay-composition">Clay Composition</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#interlayer-solvent-and-ions">Interlayer Solvent and Ions</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#simulation-box-specifications">Simulation Box Specifications</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#gromacs-version-specification">GROMACS version specification</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../CSV/">CSV</a>
+                </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../output/">OUTPUT files</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Tutorials</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../tutorials/">Tutorials</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" >Clays</a>
+    <ul>
+                <li class="toctree-l2"><a class="reference internal" href="../mmt/">Montmorillonite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../imt/">Illite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../pyr/">Pyrophylite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../nont/">Nontronite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../swa/">Fe-smectite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../kao/">Kaolinite</a>
+                </li>
+                <li class="toctree-l2"><a class="reference internal" href="../ldh/">LDH</a>
+                </li>
+    </ul>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../developers/">Developers Guide</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">ClayCode</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+          <li class="breadcrumb-item">Documentation</li>
+          <li class="breadcrumb-item">INPUT files</li>
+      <li class="breadcrumb-item active">YAML</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/Erastova-group/ClayCode/edit/master/docs/YAML.md">Edit on ClayCode</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h2 id="claycodebuilder-system-specifications-yaml-file"><code>ClayCode.builder</code> System Specifications YAML file</h2>
+<p><code>ClayCode.builder</code> reads the parameters specified in this file.</p>
+<h3 id="required-parameters">Required Parameters</h3>
+<p>The first section contains general parameters that are required for the model construction.</p>
+<p><code>OUTPATH</code>  - output directory path [str] <br/>
+Directory in which output folder is created.</p>
+<p><code>SYSNAME</code> - clay system name [str] <br/>
+Th name for clay type, must to match a column header in the <a href="../CSV/">CSV</a> file, the created output folder will also have this name. Avoid spaces and unusual symbols.</p>
+<p><code>CLAY_COMP</code> - filename.csv [str] <br/>
+Name of CSV file where the target stoichiometry for the system specified under <code>SYSNAME</code>.</p>
+<p><code>CLAY_TYPE</code> - unit cell type [str] <br/>
+Clay unit cell type, available in <code>data/UCS</code> directory. <br/>
+Such as:<br/>
+Dioctahedral 2:1 - D21  <br/>
+Trioctahedral 2:1 - T21  <br/>
+Dioctahedral 1:1 - D11  <br/>
+Trioctahedral 1:1 - T11  <br/>
+layered double hydroxide 3:1 - L31  <br/>
+layered double hydroxide 2:1 - L21  <br/>
+Sepiolite - SEP  <br/>
+<em>Note</em>: Only D21, D11 and L31 are supplied with current release. </p>
+<p><strong>Example:</strong></p>
+<pre><code class="language-yaml"># output directory path
+OUTPATH: /path/to/output/directory
+
+# name of system
+SYSNAME: NAu-1-fe
+
+# name of CSV file with target stoichiometry
+CLAY_COMP: /path/to/clay_comp.csv
+
+# clay type
+CLAY_TYPE: D21
+# Dioctahedral 2:1 - D21
+</code></pre>
+<p><br/></p>
+<h3 id="optional-parameters">Optional Parameters</h3>
+<p>This is an optional parameter section, if the directives are not given by the user, <code>ClayCode.builder</code> will use default values.</p>
+<h4 id="clay-sheet-size">Clay Sheet Size</h4>
+<p><code>X_CELLS</code> - Unit cell number [int] (Default: 7)<br/>
+Number of unit cells in x-direction. <br/>
+<em>Note</em>: Future version will have the option to specify target x-dimensions <code>X_DIM</code></p>
+<p><code>Y_CELLS</code> - Unit cell number [int] (Default: 5) <br/>
+Number of unit cells in y-direction. <br/>
+<em>Note</em>: Future version will have the option to specify target y-dimensions <code>Y_DIM</code></p>
+<p><code>N_SHEETS</code> - Unit cell number [int] (Default: 3) <br/>
+Number of sheets of 1 unit cell thickness to be stacked in z-direction.<br/></p>
+<p><strong>Example:</strong></p>
+<pre><code class="language-yaml"># number of unit cells in x direction (Default 7)
+X_CELLS: 7
+
+# number of unit cells in y direction (Default 5)
+Y_CELLS: 5
+
+# number of unit cells in z direction (Default 3)
+N_SHEETS: 3
+</code></pre>
+<p><br/></p>
+<h4 id="clay-composition">Clay Composition</h4>
+<p><code>ClayCode.builder</code> calculates the number and type of unit cells necessary to match the desired composition, as given in <a href="../CSV/">CSV</a> file. <br/>
+If, instead, the user would like to specify this manually, the following parameters can be used:</p>
+<p><code>UC_INDEX_LIST</code> - unit cell list [list] <br/>
+required unit cells, as specified in <code>data/UCS</code> directory, to use for building the system</p>
+<p><code>UC_RATIOS_LIST</code> - probabilities [list]<br/>
+ probability list for the above unit cells, total probability must be 1.00</p>
+<p><strong>Example:</strong></p>
+<p>The following script will use the dioctohedral 2:1 unit cells, which are both neutral smectite unit cells, with the latter having 1 octohedral Al substitution for the Fe3.</p>
+<p>This will produce a neutral smectite with the following stoichiometry: <script type="math/tex">\mathrm{Si_8 \left[Al_{3.8}Fe_{0.2}\right]}</script>.</p>
+<pre><code class="language-yaml"># required UCs to builder system as list
+UC_INDEX_LIST: [D221 D228]
+
+# probability list of unit cells in system
+UC_RATIOS_LIST: [0.8 0.2]
+</code></pre>
+<p><br/></p>
+<h4 id="interlayer-solvent-and-ions">Interlayer Solvent and Ions</h4>
+<p><code>IL_SOLV</code> - interlayer solvent presence [bool] (Default: <em>True</em>)<br/>
+If <em>True</em> interlayer space should be solvated, otherwise <em>False</em> will produce non-hydrated clay.</p>
+<p>There are three options to handle interlayer water and interlayer ions, <strong>only one should be specified</strong>:</p>
+<ol>
+<li>
+<p><code>ION_WATERS</code> - number of waters per ion [int, Dict[str: int]] <br/>
+Number of water molecules that should be added per ion. <br/> 
+If a single number [int] is given, all of the ions will be hydrated by the same number of waters. <br/>
+To specify number of waters per ion-type the entry should be a citionary, then the total number of water molecules will be mapped to the specifications given for each of the  interlayer occupancies <code>I</code> in the <a href="../CSV/">CSV</a> entry.<br/>
+<br/>
+<strong>Example:</strong><br/>
+A given number of waters will be added for each cation, which quantity is specified in the clay stoichiometry <a href="../CSV/">CSV</a> file.</p>
+<pre><code>  ION_WATERS: 
+        Ca: 12
+        Na: 12
+        K: 10
+</code></pre>
+</li>
+<li>
+<p><code>UC_WATERS</code> - number of water molecules per unit cell [int] <br/>
+The specified number of water molecules multiplied by the number of unit cells is added into each of the interlayer spaces.</p>
+</li>
+<li>
+<p><code>SPACING_WATERS</code> - hydrated interleyer spacing, in A [float] (Default 10.0 A) <br/>
+Target interlayer spacing filled with water, final value may vary due to the water rearrangement when in contact with clay surface and packing around ions.</p>
+</li>
+</ol>
+<p><br/></p>
+<h4 id="simulation-box-specifications">Simulation Box Specifications</h4>
+<p><code>BOX_HEIGHT</code> - simulation box height in A [float]  <br/>
+Size of the final simulation box in z-direction in A, note the clay layers are positioned in xy-plane.</p>
+<p><code>BULK_SOLV</code> - bulk solvent presence [bool] (Default: <em>True</em>)<br/>
+If <em>True</em> the box space will be filled with water, otherwise <em>False</em> will keep the box empty. This is useful if further plan is to add other species, such as oil, into the system.</p>
+<p><code>BULK_IONS</code> - type of ions and their concentration in mol/L [int, Dict[str: int]] <br/>
+Ions to be added into the bulk solvated space. <br/>
+<em>Note</em>: GROMACS will not be happy if the system is not neutral!</p>
+<p><strong>Example:</strong></p>
+<p>This will create a simulation box of 120 A height, filled with 0.1 M NaCl solution.</p>
+<pre><code class="language-yaml">
+# full simulation box height in A 
+BOX_HEIGHT: 120.0
+
+# Bulk solvent added or not (Default: True)
+BULK_SOLV: True
+
+BULK_IONS:
+  Na: 0.1
+  Cl: 0.1
+</code></pre>
+<p><br/></p>
+<h4 id="gromacs-version-specification">GROMACS version specification</h4>
+<p>Sometimes more than one version of GROMACS may be installed, this allows user to specify the one to use. </p>
+<p><code>GMX</code> - bash alias for your favourite GROMACS version [str]</p>
+<p><strong>Example:</strong></p>
+<p>To use your MPI-compiled version:</p>
+<pre><code class="language-yaml">GMX: gmx_mpi
+</code></pre>
+<p><br/></p>
+<hr />
+<h2 id="claycodesiminp-system-specifications-yaml-file"><code>ClayCode.siminp</code> System Specifications YAML file</h2>
+<p><code>ClayCode.simpinp</code> reads the parameters specified in this file and generates simulation inputs for GROMACS.</p>
+<p>Coming soon...</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../siminp/" class="btn btn-neutral float-left" title="ClayCode.simpinp"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../CSV/" class="btn btn-neutral float-right" title="CSV">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/Erastova-group/ClayCode" class="fa fa-code-fork" style="color: #fcfcfc"> ClayCode</a>
+        </span>
+    
+    
+      <span><a href="../siminp/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../CSV/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
