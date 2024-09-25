@@ -51,7 +51,8 @@ ClayCode is published under the `MIT License`_.
 
 .. _`MIT License`: https://github.com/Erastova-group/ClayCode/blob/main/LICENSE.txt
 
-Please CITE us: HP, MTD, VE "ClayCode: setting up clay structures from simulation in Gromacs", DOI: XXX
+Hannah Pollak, Matteo T. Degiacomi, Valentina Erastova. "Modelling realistic clay systems with ClayCode." arXiv preprint [arXiv:2407.18882](https://arxiv.org/abs/2407.18882) (2024). 
+
 
 
 .. toctree::
