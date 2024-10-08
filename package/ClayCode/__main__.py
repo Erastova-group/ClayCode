@@ -11,8 +11,9 @@ import logging
 import sys
 
 from ClayCode import ArgsFactory, BuildArgs, ClayCodeLogger, SiminpArgs, parser
+from ClayCode.addmols.lib import add_aa
 from ClayCode.builder.utils import select_input_option
-from ClayCode.core.parsing import AnalysisArgs, DataArgs, PlotArgs
+from ClayCode.core.parsing import AddMolsArgs, AnalysisArgs, DataArgs, PlotArgs
 from ClayCode.data.ucgen import UCWriter
 from ClayCode.plot.plots import AtomTypeData2D, Data, Data2D
 
@@ -26,7 +27,7 @@ logger: ClayCodeLogger = logging.getLogger(__name__)
 
 
 def run_builder(args: BuildArgs):
-    from ClayCode.builder import Builder
+    from ClayCode.builder.assembly import Builder
 
     extra_il_space = {True: 1.5, False: 1}
     clay_builder = Builder(args)
@@ -259,6 +260,24 @@ def run():
         plot_data(args)
     elif isinstance(args, AnalysisArgs):
         pass
+    elif isinstance(args, AddMolsArgs):
+        if args.addtype == "AA":
+            add_aa(
+                args.data,
+                aa=args.moltypes,
+                clay_type=args._uc_data.uc_stem,
+                pH=args.ph,
+                neutral_ions=args.neutral_ions,
+                conc=args.conc,
+                ff=args.ff,
+                odir=args.outpath,
+                crdin=args.ingro,
+                topin=args.intop,
+                aadir=args.aapath,
+                uc_data=args._uc_data,
+                overwrite=args.overwrite,
+                extra_prms=args.extra_prms,
+            )
     else:
         logger.ferror(f"Unknown args type: {args}")
         return 1

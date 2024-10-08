@@ -4,18 +4,20 @@ import os
 import pathlib as pl
 import re
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import List, Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Type, Union
 
 import ClayCode.addmols.ph as ph
 import ClayCode.core.gmx as gmx
 import ClayCode.core.lib as lib
 import ClayCode.core.utils as ut
+import ClayCode.data.lib
 import MDAnalysis as mda
 import numpy as np
-from ClayCode.builder import UCData
+from ClayCode.builder.claycomp import InterlayerIons, UCData
 from ClayCode.builder.topology import TopologyConstructor
 from ClayCode.core.parsing import AddMolsArgs
 from ClayCode.data.consts import AA, DATA, FF, MDP
@@ -24,16 +26,17 @@ __all__ = [
     "check_insert_numbers",
     "get_insert_charge",
     "init_outpaths",
-    "run_em",
     "add_aa",
 ]
 
-from ClayCode.core.classes import SimDir
+from ClayCode.core.classes import ForceField, SimDir
 from ClayCode.core.lib import (
     add_resnum,
     center_clay_universe,
     rename_il_solvent,
+    run_em,
 )
+from ClayCode.data.lib import get_ion_charges
 
 logger = logging.getLogger(Path(__file__).stem)
 
@@ -109,96 +112,102 @@ def init_outpaths(
         ut.remove_files(outpath, "#*")
     crdout = outpath / Path(crdout).with_suffix(".gro").name
     topout = crdout.with_suffix(".top")
+    if not (crdin.suffix == ".gro" and topin.suffix == ".top"):
+        logger.error(
+            f"Input files must be .gro and .top files!\n"
+            f"{crdin} and {topin} given."
+        )
+        sys.exit(1)
     shutil.copyfile(crdin, crdout)
     shutil.copyfile(topin, topout)
     assert crdout.is_file() and topout.is_file()
     return crdout, topout
 
 
-def run_em(
-    mdp: str,
-    crdin: Union[str, Path],
-    topin: Union[str, Path],
-    tpr: Union[str, Path],
-    odir: Path,
-    outname: str = "em",
-) -> Union[str, None]:
-    """
-    Run an energy minimisation using gmx and
-    return convergence information if successful.
-    :param mdp: mdp parameter file path
-    :type mdp: Union[Path, str]
-    :param crdin: Input coordinate file name
-    :type crdin: Union[Path, str]
-    :param topin: In put topology file name
-    :type topin: Union[Path, str]
-    :param tpr: Output tpr file name
-    :type tpr: Union[Path, str]
-    :param odir: Output directory path
-    :type odir: Path
-    :param outname: Default stem for output files
-    :type outname: str
-    :return: Convergence information message
-    :rtype: Union[str, None]
-    """
-    if not pl.Path(mdp).is_file():
-        mdp = MDP / mdp
-        assert mdp.is_file()
-    logger.info("# MINIMISING ENERGY")
-    outname = (Path(odir) / outname).resolve()
-    otop = ut.change_suffix(outname, "top")
-    if topin.resolve() == otop.resolve():
-        otop = otop.parent / f"{otop.stem}_temp.top"
-        otop_copy = True
-    else:
-        otop_copy = False
-    _, em = gmx.run_gmx_grompp(
-        f=mdp,
-        c=crdin,
-        p=topin,
-        o=tpr,
-        pp=otop,
-        v="",
-        po=ut.change_suffix(tpr, "mdp"),
-    )
-    err = re.search(r"error", em)
-    logger.info(em)
-    if err is None:
-        _, em = gmx.run_gmx_mdrun(s=tpr, deffnm=outname)
-        conv = re.search(
-            r"converged to Fmax < (\d+) in (\d+) steps",
-            em,
-            flags=re.MULTILINE | re.DOTALL,
-        )
-        if conv is None:
-            logger.info(em)
-        assert conv is not None, "Energy minimisation run not converged!"
-        fmax, n_steps = conv.groups()
-        logger.info(f"Fmax: {fmax}, reached in {n_steps} steps")
-        logger.info(f"Output written to {outname!r}")
-        conv = (
-            f"Fmax: {fmax}, reached in {n_steps} steps."
-            f"Output written to {outname!r}"
-        )
-        if otop_copy is True:
-            shutil.move(otop, topin)
-    else:
-        logger.info(f"\n{em}")
-        raise RuntimeError("gmx grompp raised error!")
-    return conv
+# def run_em(
+#     mdp: str,
+#     crdin: Union[str, Path],
+#     topin: Union[str, Path],
+#     tpr: Union[str, Path],
+#     odir: Path,
+#     outname: str = "em",
+# ) -> Union[str, None]:
+#     """
+#     Run an energy minimisation using gmx and
+#     return convergence information if successful.
+#     :param mdp: mdp parameter file path
+#     :type mdp: Union[Path, str]
+#     :param crdin: Input coordinate file name
+#     :type crdin: Union[Path, str]
+#     :param topin: In put topology file name
+#     :type topin: Union[Path, str]
+#     :param tpr: Output tpr file name
+#     :type tpr: Union[Path, str]
+#     :param odir: Output directory path
+#     :type odir: Path
+#     :param outname: Default stem for output files
+#     :type outname: str
+#     :return: Convergence information message
+#     :rtype: Union[str, None]
+#     """
+#     if not pl.Path(mdp).is_file():
+#         mdp = MDP / mdp
+#         assert mdp.is_file()
+#     logger.info("# MINIMISING ENERGY")
+#     outname = (Path(odir) / outname).resolve()
+#     otop = ut.change_suffix(outname, "top")
+#     if topin.resolve() == otop.resolve():
+#         otop = otop.parent / f"{otop.stem}_temp.top"
+#         otop_copy = True
+#     else:
+#         otop_copy = False
+#     _, em = gmx.run_gmx_grompp(
+#         f=mdp,
+#         c=crdin,
+#         p=topin,
+#         o=tpr,
+#         pp=otop,
+#         v="",
+#         po=ut.change_suffix(tpr, "mdp"),
+#     )
+#     err = re.search(r"error", em)
+#     logger.info(em)
+#     if err is None:
+#         _, em = gmx.run_gmx_mdrun(s=tpr, deffnm=outname)
+#         conv = re.search(
+#             r"converged to Fmax < (\d+) in (\d+) steps",
+#             em,
+#             flags=re.MULTILINE | re.DOTALL,
+#         )
+#         if conv is None:
+#             logger.info(em)
+#         assert conv is not None, "Energy minimisation run not converged!"
+#         fmax, n_steps = conv.groups()
+#         logger.info(f"Fmax: {fmax}, reached in {n_steps} steps")
+#         logger.info(f"Output written to {outname!r}")
+#         conv = (
+#             f"Fmax: {fmax}, reached in {n_steps} steps."
+#             f"Output written to {outname!r}"
+#         )
+#         if otop_copy is True:
+#             shutil.move(otop, topin)
+#     else:
+#         logger.info(f"\n{em}")
+#         raise RuntimeError("gmx grompp raised error!")
+#     return conv
 
 
 def add_aa(
-    data: AddMolsArgs,
+    data,
     aa: Union[str, List[str]],
     clay_type: str,
     conc: Union[int, float],
-    pion: str,
-    nion: str,
+    neutral_ions: List[str],
     odir: Union[str, pl.Path],
     crdin: Union[str, pl.Path],
     pH: Union[int, float, List[Union[int, float]]],
-    ff_path: Union[str, pl.Path] = FF,
+    ff: ForceField,
+    uc_data: UCData,
     topin: Optional[Union[str, pl.Path]] = None,
     posfile: Union[str, pl.Path] = "pos.dat",
     rm_tempfiles: bool = True,
@@ -206,6 +215,8 @@ def add_aa(
     new_outpath: Union[bool, str, Path] = True,
     overwrite: bool = False,
     outname_suffix: Optional[str] = None,
+    aadir=AA,
+    extra_prms: Optional[AddMolsArgs] = None,
 ):
     # initialise output directory
     odir = pl.Path(odir).resolve()
@@ -260,10 +271,12 @@ def add_aa(
         crdin = pl.Path(crdin)
         if topin is None:
             topin = crdin.with_suffix(".top")
-        ff_path = pl.Path(ff_path)
+        else:
+            topin = pl.Path(topin)
+        aa_ff = ff["aa"]
         logger.info(f"gro = {str(crdin.resolve())!r}")
         logger.info(f"top = {str(topin.resolve())!r}")
-        logger.info(f"FF = {str(ff_path.resolve())!r}")
+        logger.info(f"FF = {str(aa_ff.path.resolve())!r}")
         # else:
         # center atoms in coordinate file
         centered_crd = tmppath / "center.gro"
@@ -281,11 +294,12 @@ def add_aa(
         conc /= 1000
         n_mols = lib.get_n_mols(conc=conc, u=u)
         # determine aa species to be added at pH
+        aadir = pl.Path(aadir)
         conc_dict = ph.get_aa_numbers(
             aa=aa,
             pH=pH,
             totmols=n_mols,
-            o=AA / "aa_numbers.pkl",
+            aadir=aadir / "aa_numbers.pkl",
             new=overwrite_aa_numbers,
         )
         # get total number of AA to add
@@ -304,19 +318,24 @@ def add_aa(
                 replaced_sol = 0
                 logger.info(f"Inserting {aa_str.upper()}:")
                 aa_gros = sorted(
-                    AA.glob(rf"pK[1-4]/{aa_species.upper()}[1-4].gro")
+                    aadir.glob(rf"pK[1-4]/{aa_species.upper()}[1-4].gro")
                 )
                 aa_itps = sorted(
-                    AA.glob(rf"pK[1-4]/{aa_species.upper()}[1-4].itp")
+                    aadir.glob(rf"pK[1-4]/{aa_species.upper()}[1-4].itp")
                 )
                 if not len(aa_gros) == len(conc_dict[aa_species]):
                     logger.debug(f"{aa_gros} != {conc_dict[aa_species]}!")
                     raise ValueError(
-                        f"Number of found files ({len(aa_gros)}, {len(aa_itps)}) does not match "
+                        "\n".join([str(gro) for gro in aa_gros])
+                        + "\n"
+                        + "\n".join([str(itp) for itp in aa_itps])
+                        + f"\nNumber of found files ({len(aa_gros)}, {len(aa_itps)}) does not match "
                         f"specified number of amino acid conformations {len(conc_dict[aa_species])}."
                     )
                 insert_charges = 0
-                aa_charge_dict = lib.get_aa_charges(aa_name=aa_species)
+                aa_charge_dict = ClayCode.data.lib.get_aa_charges(
+                    aa_name=aa_species
+                )
                 gmx_commands = gmx.GMXCommands()
                 # add all AA species
                 for prot_id, prot_species in enumerate(conc_dict[aa_species]):
@@ -370,15 +389,21 @@ def add_aa(
                         logger.info(
                             f"Not inserting {aa_species} mols from pK{prot_id + 1}"
                         )
-            uc_data = UCData(
-                path=DATA, uc_stem=clay_type, ff=data.ff, write=False
-            )
-            topology = TopologyConstructor(uc_data, data.ff, gmx_commands)
+            # topology = TopologyConstructor(uc_data, ff, gmx_commands)
+            # lib.add_new_ff_to_top(
+            #     topin=topout,
+            #     topout=topout,
+            #     force_field=aa_ff
+            # )
+            # lib.add_new_ff_to_top(
+            #     topin=topout,
+            #     topout=topout,
+            #     force_field=extra_prms
+            # )
             lib.add_mol_list_to_top(
                 topin=topout,
                 topout=topout,
                 insert_list=inserted,
-                ff_path=ff_path,
             )
             # remove replaced solvent molecules from topology file
             lib.remove_replaced_SOL(
@@ -392,34 +417,126 @@ def add_aa(
             # setup for system without aa
             logger.info("Not adding any molecules.")
             lib.add_mol_list_to_top(
-                topin=topout, topout=topout, insert_list=[], ff_path=ff_path
+                topin=topout, topout=topout, insert_list=[], ff_path=aa_ff.path
             )
         # if necessary, rename interlayer SOL to iSL
         add_resnum(crdin=crdout, crdout=crdout)
         rename_il_solvent(crdin=crdout, crdout=crdout)
         # lib.fix_gro_residues(crdin=crdout, crdout=crdout)
         # neutralise system charge
-        replaced = lib.add_ions_neutral(
-            odir=tmppath,
+
+        if insert_charges != 0:
+            assert len(neutral_ions) == 2, "Only two neutral ions allowed!"
+            all_ions = get_ion_charges()
+            for ion in neutral_ions:
+                if all_ions[ion] > 0:
+                    pion = ion
+                else:
+                    nion = ion
+            pion_charge = int(all_ions[pion])
+            nion_charge = int(all_ions[nion])
+            n_nion = 0
+            n_pion = 0
+            while insert_charges != 0:
+                if insert_charges > 0:
+                    n_nion = abs(insert_charges // nion_charge)
+                    remaining = insert_charges % nion_charge
+                    if remaining != 0:
+                        n_nion += 1
+                    insert_charges += nion_charge * n_nion
+                if insert_charges < 0:
+                    n_pion = abs(insert_charges // pion_charge)
+                    remaining = insert_charges % pion_charge
+                    if remaining != 0:
+                        n_pion += 0
+                    insert_charges += pion_charge * n_pion
+                print(insert_charges)
+            # replaced =
+            #     neutral_bulk_ions = InterlayerIons(
+            #         insert_charges,
+            #         ion_ratios=,
+            #         n_ucs=1,
+            #         neutral=True,
+            #     )
+            #     for ion, values in neutral_bulk_ions.df.iterrows():
+            #         charge, n_ions = values
+            #         replaced += add_ions_n_mols(
+            #             odir=self.__tmp_outpath.name,
+            #             crdin=self.stack,
+            #             topin=self.stack.top,
+            #             ion=ion,
+            #             charge=int(charge),
+            #             n_atoms=n_ions,
+            #             gmx_commands=self.gmx_commands,
+            #         )
+            #     logger.debug(
+            #         f"after n_atoms: {self.stack.universe.atoms.n_atoms}"
+            #     )
+            #     logger.finfo(
+            #         f"Added {n_ions} {ion}{self.get_formatted_ion_charges(ion, charge)} ions to bulk",
+            #         indent="\t",
+            #     )
+            tpr = odir / "add_ions.tpr"
+            ndx = odir / "add_ions.ndx"
+            gmx_commands.run_gmx_make_ndx(f=crdout, o=ndx)
+            if ndx.is_file():
+                out = gmx_commands.run_gmx_grompp(
+                    c=crdout,
+                    p=topout,
+                    o=tpr,
+                    # pp=topout.with_stem(topout.stem + '_o'),
+                    po=tpr.with_suffix(".mdp"),
+                    v="",
+                    maxwarn=1,
+                    run_type="GENION",
+                )
+                err, out = gmx_commands.run_gmx_genion_add_n_ions(
+                    s=tpr,
+                    p=topout,
+                    o=crdout,
+                    n=ndx,
+                    pname=pion,
+                    pq=pion_charge,
+                    np=int(n_pion),
+                    nname=nion,
+                    nq=nion_charge,
+                    nn=int(n_nion),
+                )
+            # replaced = lib.add_ions_neutral(
+            #     odir=tmppath,
+            #     crdin=crdout,
+            #     topin=topout,
+            #     topout=topout.with_stem(topout.stem + '_n'),
+            #     pion=pion,
+            #     nion=nion,
+            #     gmx_commands=gmx_commands,
+            #     nq=int(all_ions[nion]),
+            #     pq=int(all_ions[pion])
+            # )
+            replaced = re.findall(
+                "Replacing solvent molecule", err, flags=re.MULTILINE
+            )
+            if replaced is not None:
+                logger.info(f"Replaced {len(replaced)} SOL molecules.")
+            u = mda.Universe(str(crdout))
+            # print(np.unique(u.residues.resnames))
+            # run energy minimisation
+        result = run_em(
             crdin=crdout,
             topin=topout,
-            pion=pion,
-            nion=nion,
+            odir=tmppath,
+            topout=tmppath / f"{outname}.top",
+            outname=outname,
             gmx_commands=gmx_commands,
         )
-        if replaced is not None:
-            logger.info(f"Replaced {replaced} SOL molecules.")
-        u = mda.Universe(str(crdout))
-        # print(np.unique(u.residues.resnames))
-        # run energy minimisation
-        _ = run_em(
-            mdp="em.mdp",
-            crdin=crdout,
-            topin=topout,
-            tpr=tmppath / "em.tpr",
-            odir=tmppath,
-            outname=outname,
-        )
+        # _ = run_em(
+        #     mdp="em.mdp",
+        #     crdin=crdout,
+        #     topin=topout,
+        #     tpr=tmppath / "em.tpr",
+        #     odir=tmppath,
+        #     outname=outname,
+        # )
         # lib.fix_gro_residues(crdin=crdout, crdout=crdout)
         add_resnum(crdin=crdout, crdout=crdout)
         rename_il_solvent(crdin=crdout, crdout=crdout)
@@ -550,7 +667,8 @@ if __name__ == "__main__":
                     f"val "  # 20
                     + f"-conc 250 -uc T2 -inp ctl_7 -pion {i} -nion Cl -ff /storage/claycode/package/ClayCode/data/data/FF "
                     f"-sysdir /media/hannahpollak/free/new_NAu/{i}/NAu-{idx}-fe/  "
-                    f"-pH 7"
+                    f"-pH 7 "
+                    "-aa-dir /storage/claycode/package/ClayCode/addmols/data/AA"
                 ).split()
             )
             for aa in a.aa:
@@ -567,6 +685,7 @@ if __name__ == "__main__":
                     posfile="pos.dat",
                     new_outpath=False,
                     overwrite=False,
+                    aadir=a.aa_dir,
                 )
             add_aa(
                 aa=["ctl"],
@@ -581,4 +700,5 @@ if __name__ == "__main__":
                 posfile="pos.dat",
                 new_outpath=False,
                 overwrite=False,
+                aadir=a.aa_dir,
             )

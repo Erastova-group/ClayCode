@@ -1,0 +1,23 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="zdist NAu-2-Ca" type="PythonConfigurationType" factoryName="Python" folderName="analysis" singleton="false">
+    <module name="ClayCode" />
+    <option name="ENV_FILES" value="" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="PARENT_ENVS" value="true" />
+    <option name="SDK_HOME" value="" />
+    <option name="SDK_NAME" value="ClayCode" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/../" />
+    <option name="IS_MODULE_SDK" value="false" />
+    <option name="ADD_CONTENT_ROOTS" value="true" />
+    <option name="ADD_SOURCE_ROOTS" value="true" />
+    <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+    <option name="SCRIPT_NAME" value="ClayCode.analysis.zdist" />
+    <option name="PARAMETERS" value="-path /media/hannahpollak/free/3_NAu_models/Ca/NAu-2-fe/ctl_7/ -inpname ctl_7_nosol -name NAu-2_Ca_ctl_7_ions_50_02 -sel Ca -uc T2 -cutoff 50 -start 0 -step 1 -bin_step &quot;0.02&quot; -out $PROJECT_DIR$/../NAu_repeats_results/results/zdist_20/ --overwrite" />
+    <option name="SHOW_COMMAND_LINE" value="true" />
+    <option name="EMULATE_TERMINAL" value="false" />
+    <option name="MODULE_MODE" value="true" />
+    <option name="REDIRECT_INPUT" value="false" />
+    <option name="INPUT_FILE" value="" />
+    <method v="2" />
+  </configuration>
+</component>

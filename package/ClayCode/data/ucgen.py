@@ -8,29 +8,29 @@ import logging
 import os
 import re
 import shutil
-from collections import UserDict, UserList
+from collections import UserDict  # , UserList
 from functools import cached_property
 from typing import Dict, List, Literal, Optional, Tuple, Type, Union
 
 import nglview
 import numpy as np
 import pandas as pd
-from caseless_dictionary import CaselessDict
+
+# from caseless_dictionary import CaselessDict
 from ClayCode.builder.claycomp import UCData
 from ClayCode.builder.utils import select_input_option
 from ClayCode.core.cctypes import PathType
-from ClayCode.core.classes import (
+from ClayCode.core.classes import (  # File,
     CSVFile,
     Dir,
-    File,
     ForceField,
     GROFile,
     ITPFile,
     YAMLFile,
 )
-from ClayCode.core.lib import get_system_charges
-from ClayCode.data.consts import (
-    ALL_UCS,
+
+# from ClayCode.core.lib import get_system_charges
+from ClayCode.data.consts import (  # ALL_UCS,
     CLAY_FF,
     CLAYFF_AT_CHARGES,
     CLAYFF_AT_TYPES,
@@ -155,7 +155,13 @@ class UCWriter:
         self._get_gro(uc_name)
         self.init_uc_folder()
         self._get_itp(uc_name)
-        uc_data = UCData(self.path, ff=self.ff, write=False, reset=True)
+        uc_data = UCData(
+            self.path,
+            ff=self.ff,
+            write=False,
+            reset=True,
+            uc_stem=self.uc_stem,
+        )
         occ = uc_data.occupancies
         charge = uc_data.oxidation_numbers
         all_charge_occ_df = UC_CHARGE_OCC
@@ -325,7 +331,7 @@ class UCWriter:
                 logger.debug(e)
         tot_charge = itp_atom_df["charge"].sum()
         if abs(tot_charge) > abs(max_charge) + 1e-1:
-            logger.finfo(
+            logger.fdebug(
                 f"Total absolute charge of {abs(tot_charge):.3f} is greater than {abs(max_charge)}"
             )
             os.remove(self.gro)
@@ -503,7 +509,7 @@ class UCWriter:
         sub_atoms,
         sub_charge,
         sheet_loc=None,
-        max_charge=3,
+        max_charge=2,
     ):
         info_dict = self.sub_info
         if info_dict is None:
@@ -531,6 +537,7 @@ class UCWriter:
             None,
         ]
         n_subs = 1
+        uc_charge = info_dict.loc[len(info_dict) - 1, "charge"]
         while parent_id != self.base_id:
             old_id = parent_id
             subs = info_dict.loc[len(info_dict) - 1, "substitutions"]
@@ -601,7 +608,12 @@ class UCWriter:
                 f"Added substitution info for {uc_id}, {sub_sheet}, {sub_atoms}, {sheet_loc}, {sub_charge:.7f}, {n_subs}"
             )
             logger.finfo(
-                f"Wrote new unit cell substitution of {self.uc_stem}{self.uc_id} to {self.uc_stem}{uc_id.split(' -> ')[1]} with {sub_atoms} (charge = {sub_charge:.2f})"
+                f"Wrote new unit cell substitution of {self.uc_stem}{self.uc_id} to "
+                f"{self.uc_stem}{uc_id.split(' -> ')[1]} with {sub_atoms}"
+            )
+            logger.finfo(
+                "substitution/total UC charge = {sub_charge:.2f}/{float(uc_charge):.2f})",
+                initial_indent="\t",
             )
             return uc_id
 
@@ -813,6 +825,7 @@ class UCWriter:
                         # new_gro, new_itp = self.add_new_uc(
                         #     uc_name=new_name.stem, universe=new_u
                         # )
+                        # tot_charge = new_itp.atoms.df["charge"].sum()
                         added = self.add_sub_info(
                             f"{self.uc_id} -> {new_uc_id}",
                             sub_sheet,
@@ -825,10 +838,14 @@ class UCWriter:
                             new_gro, new_itp = self.add_new_uc(
                                 uc_name=new_name.stem, universe=new_u
                             )
-                            # charge = new_itp["atoms"].df["charge"].sum()
-                            logger.debug(
-                                f"Wrote new unit cell substitution of {self.uc_stem}{self.uc_id} to {self.uc_stem}{new_uc_id} with {atom.name} -> {sub_name} (charge = {sub_charge:.2f})"
-                            )
+                            try:
+                                charge = new_itp["atoms"].df["charge"].sum()
+                            except TypeError:
+                                logger.fdebug(new_itp)
+                            else:
+                                logger.debug(
+                                    f"Wrote new unit cell substitution of {self.uc_stem}{self.uc_id} to {self.uc_stem}{new_uc_id} with {atom.name} -> {sub_name} (charge = {sub_charge:.2f})"
+                                )
                             # self.add_sub_info(
                             #     f"{self.uc_id} -> {new_uc_id}",
                             #     sub_sheet,

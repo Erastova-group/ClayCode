@@ -345,10 +345,10 @@ def copy_final_setup(outpath: Path, tmpdir: Path, rm_tempfiles: bool = True):
     for file in [tpr, log, mdp]:
         shutil.move(
             file,
-            outpath / file.with_stem(f"{file.name}_em").name,
+            outpath / file.with_stem(f"{file.stem}_em").name,
             copy_function=shutil.copy2,
         )
-    logger.finfo(f"Done! Copied files to {outpath.name!r}")
+    logger.finfo(f"Done! Copied files to {str(outpath)!r}")
     if rm_tempfiles:
         shutil.rmtree(tmpdir)
     return tuple(new_files)

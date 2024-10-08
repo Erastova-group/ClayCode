@@ -129,10 +129,9 @@ class ClayCodeLogger(logging.Logger):
                             try:
                                 new_file = open(new_filename, "a")
                             except FileNotFoundError:
-                                os.mkdir(new_filename.parent)
+                                os.makedirs(new_filename.parent, exist_ok=True)
                                 new_file = open(new_filename, "a")
                             finally:
-                                # with open(new_filename, "a") as new_file:
                                 new_file.write(old_log)
                                 new_file.close()
                                 os.unlink(instance.logfilename)

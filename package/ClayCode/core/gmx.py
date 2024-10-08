@@ -359,10 +359,6 @@ class GMXCommands:
                             execute_shell_command,
                             f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup",
                         )
-                        # else:
-                        #     output = execute_shell_command(
-                        #         f"cd {odir}; {self.gmx_alias} {command} {kwd_str} -nobackup"
-                        #     )
                     except FileNotFoundError as e:
                         logger.ferror("This point should not be reached!")
                         sys.exit(1)
@@ -908,25 +904,26 @@ class GMXCommands:
         :param nq: anion charge
         :type nq: int
         """
-        with tempfile.TemporaryDirectory() as odir:
-            output = execute_shell_command(
-                f'cd {odir}; echo -e " SOL \n q" | '
-                f"{self.gmx_alias} genion -s {s} -p {p} -o {o} -n {n} "
-                f"-pname {pname} -pq {pq} -nn {nn} "
-                f"-nname {nname} -nq {nq} -np {np} "
-                f"-rmin 0.2 -noneutral -nobackup"
-            )
-            logger.debug(
-                f'echo -e " SOL \n q" | '
-                f"{self.gmx_alias} genion -s {s} -p {p} -o {o} -n {n} "
-                f"-pname {pname} -pq {pq} -nn {nn} "
-                f"-nname {nname} -nq {nq} -np {np} "
-                f"-rmin 0.2 -noneutral -nobackup"
-            )
-            out, err = output.stdout, output.stderr
-            self.search_gmx_error(err)
-            logger.debug(f"{self.gmx_alias} genion completed successfully.")
-            return err, out  # -> gmx process stderr, gmx process stdout
+        # with tempfile.TemporaryDirectory() as odir:
+        odir = Path(s).parent
+        output = execute_shell_command(
+            f'cd {odir}; echo -e " SOL \n q" | '
+            f"{self.gmx_alias} genion -s {s} -p {p} -o {o} -n {n} "
+            f"-pname {pname} -pq {pq} -nn {nn} "
+            f"-nname {nname} -nq {nq} -np {np} "
+            f"-rmin 0.2 -noneutral -nobackup"
+        )
+        logger.debug(
+            f'echo -e " SOL \n q" | '
+            f"{self.gmx_alias} genion -s {s} -p {p} -o {o} -n {n} "
+            f"-pname {pname} -pq {pq} -nn {nn} "
+            f"-nname {nname} -nq {nq} -np {np} "
+            f"-rmin 0.2 -noneutral -nobackup"
+        )
+        out, err = output.stdout, output.stderr
+        self.search_gmx_error(err)
+        logger.debug(f"{self.gmx_alias} genion completed successfully.")
+        return err, out  # -> gmx process stderr, gmx process stdout
 
     @run_gmx_command(
         commandargs_dict={"nsteps": -1},

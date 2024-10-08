@@ -31,13 +31,13 @@ from ClayCode.core.lib import (
     add_resnum,
     center_clay,
     check_insert_numbers,
-    get_system_n_atoms,
     run_em,
     select_outside_clay_stack,
     write_insert_dat,
 )
 from ClayCode.core.utils import backup_files, get_header, get_subheader
 from ClayCode.data.consts import GRO_FMT
+from ClayCode.data.lib import get_system_n_atoms
 from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.lib.mdamath import triclinic_box, triclinic_vectors
 from MDAnalysis.units import constants

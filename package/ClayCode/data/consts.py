@@ -49,7 +49,7 @@ try:
 except FileNotFoundError:
     pass
 else:
-    UC_CHARGE_OCC: pd.DataFrame = UC_CHARGE_OCC.append(
+    UC_CHARGE_OCC: pd.DataFrame = UC_CHARGE_OCC._append(
         USER_CHARGE_OCC, verify_integrity=True
     )
 GRO_FMT: str = "{:>5s}{:<5s}{:5s}{:5d}{:8.3f}{:8.3f}{:8.3f}\n"

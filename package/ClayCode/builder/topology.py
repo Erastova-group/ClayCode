@@ -1,7 +1,7 @@
 import codecs
 import logging
 import os
-from functools import cached_property, wraps
+from functools import cached_property, singledispatchmethod, wraps
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -15,22 +15,56 @@ logger = logging.getLogger(__name__)
 
 
 class TopologyConstructor:
-    def __init__(self, uc_data, ff, gmx_commands=None):
+    _ff_keys = ["clay", "ions", "aas", "water"]
+
+    def __init__(
+        self, uc_data, ff, gmx_commands=None, ff_sel=["clay", "water", "ions"]
+    ):
         self._definitions = {}
         self.ff = ff
+        self._ff_sel = []
+        self.ff_sel = ff_sel
         self.uc_data = uc_data
         self.__mol_str = ""
         self._gmx_commands = gmx_commands
 
-    @cached_property
+    @property
+    def ff_sel(self):
+        return self._ff_sel
+
+    @ff_sel.setter
+    def ff_sel(self, ff_sel):
+        self._get_ff_sel(ff_sel)
+
+    @singledispatchmethod
+    def _get_ff_sel(self, ff_sel):
+        pass
+
+    @_get_ff_sel.register(str)
+    def _(self, ff_sel):
+        if ff_sel in self._ff_keys:
+            self._ff_sel.append(ff_sel)
+        else:
+            logger.error(f"Invalid forcefield selection: {ff_sel}")
+
+    @_get_ff_sel.register(list)
+    def _(self, ff_sel):
+        for sel in ff_sel:
+            if sel in self._ff_keys and sel not in self._ff_sel:
+                self._ff_sel.append(sel)
+            else:
+                logger.error(f"Invalid forcefield selection: {sel}")
+
+    @property
     def _ff_head(self):
-        ff_head_str = "; selection FF params for clay, water and ions\n"
-        ff_itps = ITPList(
-            [*self.ff["clay"].itp_filelist, *self.ff["ions"].itp_filelist]
-        )
-        for itp_file in ff_itps:
-            ff_head_str += f'#include "{itp_file}"\n'
-        return ff_head_str + "\n"
+        if self._ff_head is None:
+            ff_head_str = "; selection FF params for clay, water and ions\n"
+            ff_itps = ITPList(
+                *[self.ff[sel].itp_filelist for sel in self.ff_sel]
+            )
+            for itp_file in ff_itps:
+                ff_head_str += f'#include "{itp_file}"\n'
+            return ff_head_str + "\n"
 
     def generate_restraints(
         self,

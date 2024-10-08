@@ -792,7 +792,7 @@ class ParameterBase:
         self._kwd: Kwd = Kwd(kwd)
         self._df: pd.DataFrame = pd.DataFrame()
         self.init_df()
-        self.update_df()
+        self.update_df(update_from_string=True)
         self._path: ITPFile = path
 
     def __str__(self):
@@ -811,11 +811,74 @@ class ParameterBase:
         if other.__class__ == self.collection:
             new = other + self
         elif other.kwd == self.kwd:
-            new_str = self._string + f"\n{other._string}"
+            if self.kwd in Parameter.kwd_list:
+                kwd = self.kwd
+                logger.finfo(f"{kwd} has {len(self.df)} entries.")
+                logger.finfo(f"{other.kwd} has {len(other.df)} entries.")
+                self.update_df(add_df=other.df)
+                logger.finfo(f"{kwd} has {len(self.df)} entries.\n")
+                # new_df = pd.concat([self._df, other._df], join="outer", ignore_index=True)
+                # new_df = new_df.drop_duplicates()
+                new_str = self._df.to_string(
+                    index=False, float_format=lambda x: "{:.6f}".format(x)
+                )
+                new_str = f"; {new_str}\n\n"
+            else:
+                new_str = self._string + f"\n{other._string}"
+            # self.update_string(new=self._df)
+            # new_str = self._string + f"\n{other._string}"
             new = self.__class__(self.kwd, new_str, self._path)
         else:
             new = self.collection(self, other)
         return new
+
+    @singledispatch
+    def update_string(self, add=None, new=None, read=False):
+        pass
+
+    @update_string.register(str)
+    def _(self, add=None, new=None, read=False):
+        if new is not None:
+            new_str = new
+        elif new is None and read:
+            new_str = pd.read_csv(
+                StringIO(self._string), sep="\s+", comment=";", header=None
+            )
+        else:
+            if not add:
+                return
+            else:
+                new_str = self._string + f"\n{add}"
+        self._string = new_str
+
+    @update_string.register(pd.DataFrame)
+    def _(self, add=None, new=None, read=False):
+        if new is not None:
+            new_str = new.reset_index().to_string(
+                index=False, float_format=lambda x: "{:.6f}".format(x)
+            )
+            max_kwd_len = max([len(kwd) for kwd in new.columns])
+            header = "\t".join(new.columns)
+            new_str = f"; {new_str}\n\n"
+        elif new is None and read:
+            new_str = pd.read_csv(
+                StringIO(self._string), sep="\s+", comment=";", header=None
+            )
+        else:
+            if not add:
+                return
+            else:
+                new_df = pd.concat(
+                    [self._df, add], join="outer", ignore_index=True
+                )
+            new_df = new_df.drop_duplicates()
+        self._df = new_df
+
+    @property
+    def header(self):
+        max_len = max([len(col) for col in self._df.columns])
+        header = "\t".join([col.ljust(max_len) for col in self._df.columns])
+        return "; " + header
 
     @_arithmetic_type_check
     def __sub__(self, other):
@@ -840,22 +903,69 @@ class ParameterBase:
         for i in range(other):
             yield self
 
-    def update_df(self) -> None:
-        try:
-            df = pd.read_csv(
-                StringIO(self._string), sep="\s+", comment=";", header=None
-            )
-            column_names = list(_KWD_DICT[self.suffix][self.kwd].keys())
+    def update_df(
+        self, add_df=None, new_df=None, update_from_string=False, inplace=True
+    ) -> None:
+        if new_df is not None:
+            df = new_df
+        elif new_df is None and update_from_string:
+            try:
+                df = pd.read_csv(
+                    StringIO(ITPFile.process_string(self._string)),
+                    sep="\s+",
+                    comment=";",
+                    header=None,
+                )
+            except TypeError:
+                return
+        else:
+            if add_df is None:
+                return
+            else:
+                df = self._df
+        column_names = list(_KWD_DICT[self.suffix][self.kwd].keys())
+        if add_df is None:
             if len(column_names) > len(df.columns):
                 max_len = len(df.columns)
             else:
                 max_len = len(column_names)
             df = df.iloc[:, :max_len]
             df.columns = column_names[:max_len]
-            self._df = pd.concat([self._df, df])
-            self._df.drop_duplicates(inplace=True)
-        except EmptyDataError:
-            pass
+            df.drop_duplicates(inplace=True)
+        else:
+            if isinstance(add_df, str):
+                add_df = pd.read_csv(
+                    StringIO(ITPFile.process_string(add_df)),
+                    sep="\s+",
+                    comment=";",
+                    header=None,
+                )
+                add_df.dropna(axis=1, inplace=True, how="any")
+            logger.finfo(f"1.\nDF columns: {len(df.columns)}")
+            logger.finfo(f"Add DF columns: {len(add_df.columns)}")
+            if len(add_df.columns) > len(column_names):
+                add_df = add_df.iloc[:, : len(column_names)]
+            if len(df.columns) > len(column_names):
+                df = df.iloc[:, : len(column_names)]
+            logger.finfo(f"2.\nDF columns: {len(df.columns)}")
+            logger.finfo(f"Add DF columns: {len(add_df.columns)}")
+            df = pd.concat([df, add_df], join="outer", ignore_index=True)
+            if len(add_df.columns) >= len(df.columns):
+                max_len = len(add_df.columns)
+            elif len(df.columns) > len(add_df.columns):
+                max_len = len(df.columns)
+            logger.finfo(
+                f"3.\nDF columns: {len(df.columns)}\n" f"Entries: {len(df)}"
+            )
+            df.columns = column_names[:max_len]
+            df.drop_duplicates(inplace=True)
+            logger.finfo(
+                f"4.\nDF columns: {len(df.columns)}\n" f"Entries: {len(df)}"
+            )
+        if inplace:
+            self._df = df
+        else:
+            return df
 
     @property
     def df(self) -> pd.DataFrame:
@@ -923,7 +1033,7 @@ class Parameter(ParameterBase):
         self._kwd: Kwd = Kwd(kwd)
         self._df: pd.DataFrame = pd.DataFrame()
         self.init_df()
-        self.update_df()
+        self.update_df(update_from_string=True)
         self._path: ITPFile = path
 
 
@@ -1228,7 +1338,7 @@ class ITPFile(File):
     def process_string(string):
         """Remove comments from raw string."""
         new_str = re.sub(
-            r"\s*;[~<>?|`@$£%&*!{}()#^/\[\]\\a-zA-Z\d\s_.+=\"\',-]*?\n",
+            r"\s*;[;~<>?|:`@$£%&*!{}()#^/\[\]\\a-zA-Z\d\s_.+=\"\',-]*?\n",
             "\n",
             string,
             flags=re.MULTILINE,
@@ -1272,15 +1382,17 @@ class ITPFile(File):
                     return sys_str
                 elif section == "moleculetype":
                     mol_str = re.search(
-                        r"\[ moleculetype \][#\[\]a-zA-Z\d\s_.+-]+(?<=\[ system \])*",
+                        r"(\[ moleculetype ][\n#\[\]a-zA-Z\d\s_.+-]+?)(\[ system ])",
                         self.string,
                         flags=re.MULTILINE | re.DOTALL,
-                    ).group(0)
+                    ).group(1)
                     return mol_str
             else:
                 return ""
 
-    def get_section(self, prm: Literal["parameters", "molecules", "system"]):
+    def get_section(
+        self, prm: Literal["parameters", "moleculetype", "system"]
+    ):
         try:
             return self._prm_str_dict[prm]
         except KeyError:
@@ -1388,34 +1500,181 @@ class ITPFile(File):
         if item in self.kwds:
             return self.__parse_str(self.string, item)
 
-    def __setitem__(self, key: str, value: Union[pd.DataFrame, str]):
+    def _set_prm_item(self, key: str, value: Union[pd.DataFrame, str]):
         assert type(value) in [
             str,
             pd.DataFrame,
         ], f"Unexpected datatype ({type(value)}) for {key} value"
-        if not isinstance(value, str):
-            new_str = value.reset_index().to_string(
-                index=False, float_format=lambda x: "{:.6f}".format(x)
-            )
-            new_str = f"; {new_str}\n\n"
-        else:
-            kwd_list = ITP_KWDS[key]
-            max_kwd_len = max([len(kwd) for kwd in kwd_list])
-            header = "\t".join([f"{kwd:{max_kwd_len}}" for kwd in kwd_list])
-            new_str = f"; {header}\n{value}\n\n"
+        if isinstance(value, str):
+            value = ParameterFactory(key, value, self._path).df
+        try:
+            if (value == self[key].df).all().all():
+                return
+        except ValueError:
+            value = self[key].update_df(add_df=value, inplace=False)
+        except AttributeError:
+            pass
+        new_str = value.to_string(
+            index=False, float_format=lambda x: "{:.6f}".format(x)
+        )
+        new_str = f"; {new_str}\n\n"
+        max_kwd_len = max([len(kwd) for kwd in value.columns])
+        header = "\t".join(value.columns)
+        # else:
+        #     kwd_list = ITP_KWDS[key]
+        #     max_kwd_len = max([len(kwd) for kwd in kwd_list])
+        #     header = "\t".join([f"{kwd:{max_kwd_len}}" for kwd in kwd_list])
+        #     df = pd.read_csv(
+        #         StringIO(self.process_string(string)), sep="\s+", comment=";", header=None
+        #     )
+        #
+        # new_str = f"; {header}\n{value}\n\n"
         if self.string != "":
-            repl_str = re.sub(
-                rf"({key} ]\s*\n)[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*",
-                f"\1{new_str}",
-                self.raw_string,
-                flags=re.MULTILINE | re.DOTALL,
+            match_pattern = get_match_pattern(list(ITP_KWDS.keys()))
+            pattern_match = re.search(
+                rf"([a-zA-Z_\-\|]*?)\|?{key}\|?([a-zA-Z_\-\|]*)", match_pattern
             )
-            if re.search(key, repl_str, flags=re.MULTILINE) is None:
-                repl_str = f"{self.raw_string}\n[ {key} ]\n{new_str}"
+            before = pattern_match.group(1)
+            after = pattern_match.group(2)
+            before = (
+                "[ "
+                + get_match_pattern(
+                    re.findall(get_match_pattern(list(self.kwds)), before)[-1]
+                )
+                + " ]\s*\n"
+            )
+            if before == "[  ]\s*\n":
+                before = ""
+            after = (
+                "[ "
+                + get_match_pattern(
+                    re.findall(get_match_pattern(list(self.kwds)), after)[0]
+                )
+                + " ]"
+            )
+            if after == "[  ]":
+                after = ""
+            if re.search(key, self.raw_string, flags=re.MULTILINE) is None:
+                logger.finfo(f"Adding {key} to {self.name}")
+                repl_str = re.sub(
+                    rf"({before}({header})?[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*?)(;[\sa-zA-Z\d#_.\-()^%$'\[]*\n+)*({header})?({after})",
+                    r"\1" + f"\n\n[ {key} ]\n{new_str}" + r"\3\5",
+                    self.raw_string,
+                    flags=re.MULTILINE | re.DOTALL,
+                )
+                # repl_str = f"{self.raw_string}\n[ {key} ]\n{new_str}"
+            else:
+                logger.finfor(f"Updating {key} in {self.name}")
+                repl_str = re.sub(
+                    rf"({key} ]\s*\n)({header})?[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*?(;[\sa-zA-Z\d#_.\-()^%$'\[]*\n+)*({header})?({after})",
+                    r"\1" + f"{new_str}" + r"\3\5",
+                    self.raw_string,
+                    flags=re.MULTILINE | re.DOTALL,
+                )
+            assert (
+                re.search(new_str, repl_str, flags=re.MULTILINE | re.DOTALL)
+                is not None
+            ), f"New string not found in replacement string"
+            assert repl_str != self.raw_string, "Nothing replaced"
         else:
             repl_str = f"[ {key} ]\n{new_str}"
-        repl_str = re.sub(r"\n\{2,}", "\n" * 2, repl_str, flags=re.MULTILINE)
+        repl_str = re.sub(r"\n{2,}", "\n" * 2, repl_str, flags=re.MULTILINE)
         self.string = repl_str
+
+    def _set_mol_item(self, key: str, value: Union[pd.DataFrame, str]):
+        assert type(value) in [
+            str,
+            pd.DataFrame,
+        ], f"Unexpected datatype ({type(value)}) for {key} value"
+        if isinstance(value, str):
+            value = ParameterFactory(key, value, self._path).df
+        try:
+            if (value == self[key].df).all().all():
+                return
+        except ValueError:
+            pass
+        except AttributeError:
+            pass
+        new_str = value.to_string(
+            index=False, float_format=lambda x: "{:.6f}".format(x)
+        )
+        new_str = f"; {new_str}\n\n"
+        max_kwd_len = max([len(kwd) for kwd in value.columns])
+        header = "\t".join(value.columns)
+        # else:
+        #     kwd_list = ITP_KWDS[key]
+        #     max_kwd_len = max([len(kwd) for kwd in kwd_list])
+        #     header = "\t".join([f"{kwd:{max_kwd_len}}" for kwd in kwd_list])
+        #     df = pd.read_csv(
+        #         StringIO(self.process_string(string)), sep="\s+", comment=";", header=None
+        #     )
+        #
+        # new_str = f"; {header}\n{value}\n\n"
+        if self.string != "":
+            match_pattern = get_match_pattern(list(ITP_KWDS.keys()))
+            pattern_match = re.search(
+                rf"([a-zA-Z_\-\|]*?)\|?{key}\|?([a-zA-Z_\-\|]*)", match_pattern
+            )
+            before = pattern_match.group(1)
+            after = pattern_match.group(2)
+            try:
+                before = (
+                    "[ "
+                    + get_match_pattern(
+                        re.findall(get_match_pattern(list(self.kwds)), before)[
+                            -1
+                        ]
+                    )
+                    + " ]\s*\n"
+                )
+            except TypeError:
+                before = ""
+            try:
+                after = (
+                    "[ "
+                    + get_match_pattern(
+                        re.findall(get_match_pattern(list(self.kwds)), after)[
+                            0
+                        ]
+                    )
+                    + " ]"
+                )
+            except TypeError:
+                after = ""
+            if re.search(key, self.raw_string, flags=re.MULTILINE) is None:
+                logger.finfo("Adding {key} to {self.name}")
+                repl_str = re.sub(
+                    rf"({before}({header})?[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*?)(;[\sa-zA-Z\d#_.\-()^%$'\[]*\n+)*({header})?({after})",
+                    r"\1" + f"\n\n[ {key} ]\n{new_str}" + r"\3\5",
+                    self.raw_string,
+                    flags=re.MULTILINE | re.DOTALL,
+                )
+                # repl_str = f"{self.raw_string}\n[ {key} ]\n{new_str}"
+            else:
+                logger.finfor("Updating {key} in {self.name}")
+                repl_str = re.sub(
+                    rf"({key} ]\s*\n)({header})?[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*?(;[\sa-zA-Z\d#_.\-()^%$'\[]*\n+)*({header})?({after})",
+                    r"\1" + f"{new_str}" + r"\3\5",
+                    self.raw_string,
+                    flags=re.MULTILINE | re.DOTALL,
+                )
+            assert (
+                re.search(new_str, repl_str, flags=re.MULTILINE | re.DOTALL)
+                is not None
+            ), f"New string not found in replacement string"
+            assert repl_str != self.raw_string, "Nothing replaced"
+        else:
+            repl_str = f"[ {key} ]\n{new_str}"
+        repl_str = re.sub(r"\n{2,}", "\n" * 2, repl_str, flags=re.MULTILINE)
+        self.string = repl_str
+
+    def __setitem__(self, key: str, value: Union[pd.DataFrame, str]):
+        if key in self._prm_types[0].kwd_list:
+            self._set_prm_item(key, value)
+        # elif key in self._mol_types:
+        #     self._set_mol_item(key, value)
+        # elif key in self._sys_types:
+        #     self._set_sys_item(key, value)
 
     def __contains__(self, item: str):
         return item in self.kwds
@@ -1424,7 +1683,6 @@ class ITPFile(File):
         if prm_name in self.kwds:
             return self.__parse_str(self.string, prm_name)
 
-    # @staticmethod
     def __parse_str(self, string, kwds: Optional[str] = None):
         prms = None
         kwd_dict = _KWD_DICT[".itp"]

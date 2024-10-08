@@ -59,16 +59,16 @@ def get_aa_numbers(
     aa: Optional[List[str]],
     pH: Union[int, float, List[Union[int, float]]],
     totmols: int,
-    o: Union[str, pl.Path],
     new: bool = False,
+    aadir: Union[str, pl.Path] = AA,
 ) -> Dict[str, List[np.float64]]:
-    if not new and pl.Path(o).is_file():
-        with open(o, "rb") as infile:
+    if not new and pl.Path(aadir).is_file():
+        with open(aadir, "rb") as infile:
             conc_dict = pkl.load(infile)
     else:
         conc_dict = {}
 
-    pka_df = pd.read_csv(AA / "aa.csv", index_col=0)
+    pka_df = pd.read_csv(aadir.parent / "aa.csv", index_col=0)
     if aa == "all":
         aa = pka_df.index.values
 
@@ -110,8 +110,8 @@ def get_aa_numbers(
     else:
         conc_dict["ctl"] = [0]
 
-    with open(o, "wb") as outfile:
-        logger.debug(f"Writing amino acid numbers to insert to {o!r}.")
+    with open(aadir, "wb") as outfile:
+        logger.debug(f"Writing amino acid numbers to insert to {aadir!r}.")
         pkl.dump(conc_dict, outfile)
 
     logger.debug("Done!")
@@ -172,4 +172,4 @@ if __name__ == "__main__":
     )
 
     a = parser.parse_args(sys.argv[1:])
-    get_aa_numbers(aa=a.aa, pH=a.pH, totmols=a.totmols, o=a.o, new=a.new)
+    get_aa_numbers(aa=a.aa, pH=a.pH, totmols=a.totmols, aadir=a.o, new=a.new)

@@ -37,6 +37,7 @@ import numpy as np
 import pandas as pd
 import yaml
 import zarr
+from ClayCode import ITPList
 from ClayCode.builder.consts import BUILDER_DATA
 from ClayCode.builder.utils import select_input_option
 from ClayCode.core.classes import (
@@ -48,7 +49,6 @@ from ClayCode.core.classes import (
     YAMLFile,
 )
 from ClayCode.core.consts import LINE_LENGTH
-from ClayCode.core.lib import get_ion_charges
 from ClayCode.core.utils import (
     backup_files,
     get_arr_bytes,
@@ -57,6 +57,7 @@ from ClayCode.core.utils import (
     get_subheader,
 )
 from ClayCode.data.consts import CLAYFF_AT_TYPES, UCS
+from ClayCode.data.lib import get_ion_charges
 from numba import njit, prange
 from numpy._typing import NDArray
 from tqdm.auto import tqdm
@@ -125,7 +126,7 @@ class UCData(Dir):
     _sheet_grouper = pd.Grouper(level="sheet", sort=False)
 
     def __init__(
-        self, path: Dir, uc_stem=None, ff=None, write: bool = True, reset=False
+        self, path: Dir, uc_stem, ff=None, write: bool = True, reset=False
     ):
         """Initialize UCData object
         :param path: path to unit cell data directory
@@ -264,8 +265,16 @@ class UCData(Dir):
         self.__base_ucs = {}
 
     @property
-    def uc_itp_filelist(self):
-        return self.itp_filelist.filter(f"{self.uc_stem}[0-9][0-9][0-9]")
+    def uc_itp_filelist(self) -> ITPList:
+        try:
+            uc_itp_filelist: ITPList = self.itp_filelist.filter(
+                f"{self.uc_stem}[0-9][0-9][0-9]"
+            )
+        except AttributeError:
+            uc_itp_filelist: ITPList = self.itp_filelist.filter(
+                f"[A-Z]+[0-9][0-9][0-9]"
+            )
+        return uc_itp_filelist
 
     @property
     def bbox_height(self):
@@ -3038,15 +3047,15 @@ class InterlayerIons(Ions):
 
 
 class BulkIons(Ions):
-    def __init__(self, ion_con_dict, default_ions):
+    def __init__(self, ion_conc_dict, default_ions):
         ion_charges = get_ion_charges()
         ion_idx = pd.Index(
-            np.unique([*ion_con_dict.keys(), *default_ions.keys()]),
+            np.unique([*ion_conc_dict.keys(), *default_ions.keys()]),
             name="itype",
         )
         self.df = pd.DataFrame(columns=["charge", "conc"], index=ion_idx)
         default_ions = pd.Series(default_ions)
-        bulk_ion_sel = pd.Series(ion_con_dict)
+        bulk_ion_sel = pd.Series(ion_conc_dict)
         default_ions = default_ions[
             default_ions.index.difference(bulk_ion_sel.index)
         ]

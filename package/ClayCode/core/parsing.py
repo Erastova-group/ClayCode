@@ -25,14 +25,12 @@ import pandas as pd
 import yaml
 from caseless_dictionary import CaselessDict
 from ClayCode import PathType
-from ClayCode.addmols.consts import ADDMOLS_DEFAULTS as _addmols_defaults
 from ClayCode.addmols.consts import ADDTYPES
 from ClayCode.analysis.coordination import CrdDist
 from ClayCode.analysis.rdf import RDFDist
 from ClayCode.analysis.utils import get_paths
 from ClayCode.analysis.zdist import ZDens
-from ClayCode.builder import UCData
-from ClayCode.builder.consts import BUILDER_DATA
+from ClayCode.builder.claycomp import UCData
 from ClayCode.core.classes import (
     BasicPath,
     Dir,
@@ -52,7 +50,6 @@ from ClayCode.core.utils import (
 )
 from ClayCode.data.consts import FF, MDP_DEFAULTS, UCS, USER_UCS
 from ClayCode.siminp.writer import MDPRunGenerator
-from numba import optional
 
 __all__ = {
     "ArgsFactory",
@@ -159,6 +156,19 @@ buildparser.add_argument(
     required=False,
 )
 
+addmolsparser = subparsers.add_parser(
+    "addmols", help="Add molecules to clay models."
+)
+addmolsparser.add_argument(
+    "-f",
+    type=File,
+    help="YAML file with addition parameters",
+    metavar="yaml_file",
+    dest="yaml_file",
+    required=True,
+)
+
+
 # Clay model modification parser
 editparser = subparsers.add_parser("edit", help="Edit clay models.")
 
@@ -193,7 +203,7 @@ editparser.add_argument(
 editparser.add_argument(
     "-neutralise",
     help="Neutralise system with selected ion types",
-    nargs="?",
+    nargs="*",
     type=str,
     metavar="ion_types",
     dest="neutral_ions",
@@ -703,6 +713,40 @@ class _Args(ABC, UserDict):
                         raise KeyError(f"Missing required parameter {prm!r}")
             setattr(self, prm.lower(), prm_value)
 
+    def get_clay_type_data(self):
+        try:
+            uc_type = self.data["CLAY_TYPE"]
+            if (
+                uc_type
+                in self._charge_occ_df.index.get_level_values("value").unique()
+            ):
+                if (UCS / uc_type).is_dir():
+                    self._uc_path = UCS / uc_type
+                elif (USER_UCS / uc_type).is_dir():
+                    self._uc_path = USER_UCS / uc_type
+                else:
+                    raise ValueError(f"Unknown unit cell type {uc_type!r}!")
+                self._uc_path = Dir(self._uc_path)
+                self._uc_name = uc_type
+                self._tbc = None
+                tbc_match = re.search(
+                    "[A-Z]+[0-9]+", uc_type, flags=re.IGNORECASE
+                )
+                if tbc_match:
+                    pass
+                self.uc_stem = self._uc_path.itp_filelist.filter(
+                    "[A-Z][A-Z0-9]\d\d\d"
+                )[0].stem[:-3]
+                logger.debug(f"Setting unit cell type: {self._uc_name!r}")
+            else:
+                raise ValueError(f"Unknown unit cell type {uc_type!r}!")
+        except ValueError as e:
+            logger.error(f"{e}\nAborting...")
+            sys.exit(2)
+        except KeyError:
+            logger.error("No unit cell type specified!")
+            sys.exit(2)
+
     @property
     def mdp_parameters(self) -> CaselessDict[str, str]:
         if not hasattr(self, "_mdp_defaults"):
@@ -770,7 +814,7 @@ class BuildArgs(_Args):
     """
 
     option = "builder"
-    from ClayCode.builder.consts import BUILD_DEFAULTS as _build_defaults
+    from ClayCode.builder.consts import BUILD_DEFAULTS as _arg_defaults
     from ClayCode.data.consts import UC_CHARGE_OCC as _charge_occ_df
 
     _arg_names = [
@@ -808,7 +852,7 @@ class BuildArgs(_Args):
         "SAVE_PROGRESS",
         "LOAD_PROGRESS",
     ]
-    _arg_defaults = _build_defaults
+    # _arg_defaults = _build_defaults
 
     def __init__(self, data, debug_run=False) -> None:
         super().__init__(data)
@@ -895,38 +939,7 @@ class BuildArgs(_Args):
             )
         except KeyError:
             raise KeyError("Clay system name must be given")
-        try:
-            uc_type = self.data["CLAY_TYPE"]
-            if (
-                uc_type
-                in self._charge_occ_df.index.get_level_values("value").unique()
-            ):
-                if (UCS / uc_type).is_dir():
-                    self._uc_path = UCS / uc_type
-                elif (USER_UCS / uc_type).is_dir():
-                    self._uc_path = USER_UCS / uc_type
-                else:
-                    raise ValueError(f"Unknown unit cell type {uc_type!r}!")
-                self._uc_path = Dir(self._uc_path)
-                self._uc_name = uc_type
-                self._tbc = None
-                tbc_match = re.search(
-                    "[A-Z]+[0-9]+", uc_type, flags=re.IGNORECASE
-                )
-                if tbc_match:
-                    pass
-                self.uc_stem = self._uc_path.itp_filelist.filter(
-                    "[A-Z][A-Z0-9]\d\d\d"
-                )[0].stem[:-3]
-                logger.debug(f"Setting unit cell type: {self._uc_name!r}")
-            else:
-                raise ValueError(f"Unknown unit cell type {uc_type!r}!")
-        except ValueError as e:
-            logger.error(f"{e}\nAborting...")
-            sys.exit(2)
-        except KeyError:
-            logger.error("No unit cell type specified!")
-            sys.exit(2)
+        self.get_clay_type_data()
         il_solv = self._charge_occ_df.loc[
             pd.IndexSlice["T", self._uc_name], ["solv"]
         ].values[0]
@@ -998,8 +1011,11 @@ class BuildArgs(_Args):
 
     def _get_zarr_storage(self, name, **kwargs):
         import zarr
+        from ClayCode.builder.consts import BUILDER_DATA as _builder_datapath
 
-        return zarr.storage.DirectoryStore(BUILDER_DATA / f"{name}", **kwargs)
+        return zarr.storage.DirectoryStore(
+            _builder_datapath / f"{name}", **kwargs
+        )
 
     def process(self):
         logger.info(get_header("Getting build parameters"))
@@ -1422,13 +1438,14 @@ class CheckArgs(_Args):
         pass
 
 
-class EditArgs(_Args):
+class EditArgs:
     """Parameters for editing clay model with: mod:`ClayCode.edit`
 
     :param data: dictionary of arguments
     :type data: Dict[str, Any]"""
 
     option = "edit"
+    _subclasses = {"aa": "AminoAcids", "ions": "Ions"}
 
     _arg_names = [
         "ingro",
@@ -1444,12 +1461,14 @@ class EditArgs(_Args):
         "ions": ["pion", "n_ion", "conc", "n_mols", "replace_type"],
     }
 
-    def __init__(self, data: Dict[str, Any]):
-        super().__init__(data)
+    def __init__(self, data: Dict[str, Any], debug_run: bool = False):
+        return AddMolsArgs(data, debug_run=debug_run)
 
 
 class PlotArgs(_Args):
-    """Parameters for plotting analysis data with :mod:`ClayCode.plot`        :param data: dictionary of arguments
+    """Parameters for plotting analysis data with
+    :mod:`ClayCode.plot`
+    :param data: dictionary of arguments
     :type data: Dict[str, Any]"""
 
     option = "plot"
@@ -1780,23 +1799,37 @@ class AddMolsArgs(_Args):
         "INGRO",
         "INTOP",
         "CONC",
+        "NMOLS",
         "PH",
         "FF",
         "NEUTRAL_IONS",
         "CLAY_TYPE",
+        "AAPATH",
+        "EXTRA_PRMS",
+        "OVERWRITE",
     ]
-    _arg_defaults = _addmols_defaults
+    from ClayCode.addmols.consts import ADDMOLS_DEFAULTS as _arg_defaults
+    from ClayCode.data.consts import UC_CHARGE_OCC as _charge_occ_df
 
     def __init__(self, data, debug_run=False):
         super().__init__(data)
+        self.ph = None
+        self.aapath = None
+        self.moltypes = None
+        self.ingro = None
+        self.intop = None
+        self.conc = None
+        self.neutral_ions = None
         self.process()
 
     def process(self):
         """Process data arguments."""
         self.read_yaml()
         self.check()
+        self.get_ff_data()
+        self.get_clay_type_data()
         self._uc_data = UCData(
-            path=UCS, uc_stem=self.clay_type, ff=self.ff["clay"]
+            self._uc_path, uc_stem=self.uc_stem, ff=self.ff["clay"]
         )
 
     @read_yaml_path_decorator("OUTPATH", "INGRO", "INTOP")
@@ -1810,8 +1843,17 @@ class AddMolsArgs(_Args):
             raise ValueError(
                 f"Invalid parameter {self.data['ADDTYPE']!r} for 'addmols'!\nAvailable options are: {', '.join(ADDTYPES)}"
             )
+        optional_keys = [
+            "OVERWRITE",
+            "INTOP",
+            "PH",
+            "NEUTRAL_IONS",
+            "AAPATH",
+            "CONC",
+            "NMOLS",
+            "EXTRA_PRMS",
+        ]
         data_keys = self._arg_names
-        optional_keys = data_keys.pop("INTOP")
         self._set_attributes(data_keys=data_keys, optional_keys=optional_keys)
 
 
