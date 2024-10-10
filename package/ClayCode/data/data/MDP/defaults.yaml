@@ -976,9 +976,9 @@ GENION:
   nsteps: "5000"
   pbc: "xyz"
   pcoupl: "no"
-  rcoulomb: "0.2"
-  rlist: "0.2"
-  rvdw: "0.2"
+  rcoulomb: "0.4"
+  rlist: "0.4"
+  rvdw: "0.4"
   tcoupl: "no"
   verlet-buffer-tolerance: "-1"
 0:
