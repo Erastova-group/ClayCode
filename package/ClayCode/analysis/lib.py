@@ -2,12 +2,9 @@
 from __future__ import annotations
 
 import logging
-import pathlib as pl
-import pickle as pkl
 import re
 import shutil
 import sys
-from functools import partial, update_wrapper
 from pathlib import Path, PosixPath
 from typing import (
     Callable,
@@ -25,12 +22,13 @@ from typing import (
 )
 
 import numpy as np
-import pandas as pd
 from ClayCode.analysis.analysisbase import ClayAnalysisBase
+from ClayCode.analysis.classes import ClayAnalysisClass
 from ClayCode.core.cctypes import MaskedArray
 from ClayCode.core.consts import IONS
+
+# from ClayCode.data.lib import get_system_n_atoms
 from ClayCode.core.utils import temp_file_wrapper
-from ClayCode.data.consts import AA, DATA, FF, UCS
 from MDAnalysis import AtomGroup, Universe
 from MDAnalysis.lib.distances import minimize_vectors
 from MDAnalysis.lib.mdamath import triclinic_vectors
@@ -333,6 +331,7 @@ def get_selections(
     if len(sel) == 1:
         sel_str = sel[0]
         sel = u.select_atoms(f"resname {sel[0]}")
+        print(sel_str)
 
     # rename and atom type specified
     elif len(sel) == 2:
@@ -382,7 +381,7 @@ def get_selections(
             f"name OB* ob* OX* ox* and (prop z > {clay_o_z_max} or prop z < {clay_o_z_min})"
         )
         clay_oh_surface = clay.select_atoms(
-            f"name OH* oh* and (prop z >= {max(clay_o_z_max, np.max(clay_ob_surface.positions[:, 2])) - 0.2} or prop z < {min(clay_o_z_min, np.min(clay_ob_surface.positions[:, 2]))  + 0.2})"
+            f"name OH* oh* and (prop z >= {max(clay_o_z_max, np.max(clay_ob_surface.positions[:, 2])) - 0.2} or prop z < {min(clay_o_z_min, np.min(clay_ob_surface.positions[:, 2])) + 0.2})"
         )
         clay_ag = (clay_ob_surface, clay_oh_surface)
         log_atomgroup_info(
@@ -598,7 +597,7 @@ def save_selection(
 
 
 def check_traj(
-    instance: Type["ClayAnalysisBase"], check_len: Union[int, Literal[False]]
+    instance: Type[ClayAnalysisClass], check_len: Union[int, Literal[False]]
 ) -> None:
     """Check length of trajectory in analysis class instance.
     :param instance: analysis class instance
@@ -746,7 +745,7 @@ def select_cyzone(
     xy_rad: float,
     mask_array: MaskedArray,
     min_z_dist: float = 0.0,
-    absolute: bool = False,
+    absolute: bool = True,
 ) -> None:
     """
     Select all distances corresponding to atoms within a cylindrical volume
@@ -773,8 +772,6 @@ def select_cyzone(
         z_col.mask[:, :, np.newaxis], distances.shape
     )
     np.ma.sum(distances[:, :, [0, 1]].__pow__(2), axis=2, out=mask_array)
-    # print(np.min(mask_array))
-    # print(xy_rad.__pow__(2))
     mask_array.harden_mask()
     mask_array.mask = mask_array > xy_rad.__pow__(2)
     np.copyto(distances.mask, mask_array.mask[:, :, np.newaxis])
@@ -1138,7 +1135,6 @@ PRM_INFO_DICT = {
         ),
     ),
 }
-
 
 # def get_mol_prms(
 #     prm_str: str,

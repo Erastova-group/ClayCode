@@ -1247,7 +1247,7 @@ class TargetClayComposition:
     ) -> pd.DataFrame:  # , idx_sel=["T", "O"]):
         charge_substitutions = self.atom_types
         charge_substitutions["charge"] = charge_substitutions.groupby(
-            "sheet"
+            "sheet", group_keys=False
         ).apply(lambda x: x - self.uc_data.oxidation_numbers[x.name])
         charge_substitutions["at-type"] = np.NAN
         charge_substitutions["at-type"].update(sheet_df)
@@ -1269,8 +1269,9 @@ class TargetClayComposition:
                 columns=charge_substitutions.columns,
             )
             charge_substitutions = pd.concat(
-                [charge_substitutions, fe_row_no_charge, fe_row_charged]
+                [charge_substitutions, fe_row_no_charge, fe_row_charged],
             )
+            charge_substitutions.index.names = self.atom_types.index.names
         return charge_substitutions
 
     def __has_at_type(self, at_type):
@@ -1431,7 +1432,7 @@ class TargetClayComposition:
         check_occ.dropna(inplace=True)
         logger.finfo("Getting sheet occupancies:", initial_linebreak=True)
         if not np.isclose(check_occ.values, 0.0).all():
-            for sheet, occ in check_occ.iteritems():
+            for sheet, occ in check_occ.items():
                 logger.finfo(
                     f"\tFound {sheet!r} sheet occupancies of {input_uc_occ[sheet]:.4f}/{correct_uc_occ[sheet]:.4f} ({occ:+.4f})"
                 )
@@ -1440,7 +1441,7 @@ class TargetClayComposition:
                 initial_linebreak=True,
             )
             corrected_occupancies = self.occ_correction_df.groupby(
-                "sheet"
+                "sheet", group_keys=False
             ).apply(lambda x: x - check_occ.at[x.name] / x.count())
             sheet_df.update(corrected_occupancies)
             accept = None
@@ -1521,7 +1522,7 @@ class TargetClayComposition:
             logger.finfo(
                 "\tFound correct occupancies:\n" "\t\tsheet: occupancy"
             )
-            for sheet, occ in check_occ.iteritems():
+            for sheet, occ in check_occ.items():
                 logger.finfo(f"\t\t{sheet!r:^5}: {input_uc_occ[sheet]:>9.0f}")
 
     @staticmethod
@@ -1536,7 +1537,7 @@ class TargetClayComposition:
         sheet_df = sheet_df.loc[sheet_df > zero_threshold]
         for k, v in check_occ.items():
             if v != 0:
-                for atom, occ in sheet_df.loc[k, :].iteritems():
+                for atom, occ in sheet_df.loc[k, :].items():
                     accept_input = None
                     while accept_input is None:
                         new_occ = input(
@@ -1585,7 +1586,7 @@ class TargetClayComposition:
             logger.finfo(
                 f"{fill}\tsheet - atom type : {'occupancies':<16} (difference)"
             )
-        for idx, occ in sheet_df.iteritems():
+        for idx, occ in sheet_df.items():
             sheet, atom = idx
             try:
                 old_val = old_composition[idx]
@@ -1920,7 +1921,7 @@ class UCClayComposition(ClayComposition):
     ):
         super().__init__(uc_data=uc_data, sheet_n_ucs=sheet_n_ucs, name=name)
         logger.info(get_subheader("Manually specified unit cells"))
-        self.__uc_index_ratios = uc_index_ratios
+        self._uc_index_ratios = uc_index_ratios
         self.get_uc_group()
 
     @cached_property
@@ -1928,7 +1929,9 @@ class UCClayComposition(ClayComposition):
         return self._unique_uc_match_dict
 
     def get_atype_weights(self, uc_df, uc_ids, uc_weights):
-        atype_combinations = uc_df[[*list(uc_ids)]].astype(float).T.values
+        atype_combinations = (
+            uc_df[[*list(uc_ids.astype(np.int_))]].astype(float).T.values
+        )
         combinations_iter = np.nditer(
             [np.atleast_2d(uc_weights), atype_combinations, None],
             flags=["external_loop"],
@@ -1945,14 +1948,14 @@ class UCClayComposition(ClayComposition):
         uc_weights = []
         target_weights = []
         for entry_id, (uc_id, ratio) in enumerate(
-            self.__uc_index_ratios.items()
+            self._uc_index_ratios.items()
         ):
             uc_ids.append(uc_id)
-            n_ucs = ratio * self.sheet_n_ucs
+            n_ucs = ratio  # * self.sheet_n_ucs
             target_weights.append(n_ucs)
             uc_weights.append(np.rint(n_ucs).astype(int))
             if (
-                entry_id == len(self.__uc_index_ratios) - 1
+                entry_id == len(self._uc_index_ratios) - 1
                 and np.sum(uc_weights, dtype=int) != self.sheet_n_ucs
             ):
                 missing_ucs = self.sheet_n_ucs - np.sum(uc_weights).astype(int)
@@ -1988,7 +1991,7 @@ class UCClayComposition(ClayComposition):
         )
         diff_array = np.linalg.norm(diff_array.astype(np.float128), axis=1)
         dist = np.amin(diff_array)
-        match_dict["n_ucs"] = len(self.__uc_index_ratios)
+        match_dict["n_ucs"] = len(self._uc_index_ratios)
         match_dict["uc_ids"] = np.array(uc_ids)
         match_dict["uc_weights"] = np.array(uc_weights)
         match_dict["composition"] = np.squeeze(np.round(atype_weights.T, 4))
@@ -2046,7 +2049,7 @@ class UCClayComposition(ClayComposition):
             uc_groups_reversed.update({uc_id: group_id for uc_id in uc_ids})
         uc_ids = []
         try:
-            for uc_num, uc_ratio in self.__uc_index_ratios.items():
+            for uc_num, uc_ratio in self._uc_index_ratios.items():
                 uc_id = f"{uc_num:03d}"
                 uc_ids.append(uc_id)
                 if uc_group is None:

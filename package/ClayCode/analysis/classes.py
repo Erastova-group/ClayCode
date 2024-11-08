@@ -7,11 +7,11 @@ import re
 import sys
 from functools import cached_property
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 import pandas as pd
-from ClayCode.analysis.analysisbase import AnalysisData
+from ClayCode.analysis.analysisbase import AnalysisData, ClayAnalysisBase
 from ClayCode.analysis.consts import PE_DATA
 from ClayCode.analysis.utils import get_atom_type_group, make_1d, redirect_tqdm
 from ClayCode.core.classes import Dir, File, PathType
@@ -5119,3 +5119,6 @@ def get_edge_fname(
         indent="\t",
     )
     return Path(fname)
+
+
+ClayAnalysisClass = TypeVar("ClayAnalysisClass", bound=ClayAnalysisBase)

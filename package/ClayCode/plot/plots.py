@@ -6381,10 +6381,8 @@ class Data:
             if fname is not None:
                 break
 
-        if not fname.exists():
+        if fname is None or not fname.exists():
             logger.debug(f"No {atom_type} {clay_type} edge file found.")
-            # os.makedirs(fname.parent, exist_ok=True)
-            # logger.info(f"{fname.parent}")
             if skip is True:
                 logger.info(
                     f"Continuing without {atom_type} {clay_type} edges"
@@ -8023,6 +8021,7 @@ class AtomTypeData2D(Data2D, Data):
         new_cutoff=None,
         group_all=False,
         split=True,
+        edge_data=None,
     ):
         """Constructor method"""
         logger.info(f"Initialising {self.__class__.__name__}")
@@ -8042,6 +8041,7 @@ class AtomTypeData2D(Data2D, Data):
             zstem=namestem,
             zname=atomnames,
             atomname=False,
+            edge_data=edge_data,
         )
         self.atomnames = atomnames
         self.analysis = analysis
@@ -9310,33 +9310,31 @@ class Plot(ABC):
 
     def add_plot_labels(self, lines):
         handle_colours = np.squeeze(
-            np.unique(
-                list(
-                    map(
-                        lambda handle: list(
-                            map(lambda line: line._color, handle)
-                        ),
-                        self.handles.values(),
-                    )
-                ),
-                axis=0,
+            pd.DataFrame(
+                map(
+                    lambda handle: list(map(lambda line: line._color, handle)),
+                    self.handles.values(),
+                )
             )
+            .apply(pd.unique, axis=0)
+            .apply(pd.unique)
+            .values
         )
         handle_linestyles = np.squeeze(
-            np.unique(
-                list(
-                    map(
-                        lambda handle: list(
-                            map(lambda line: line._linestyle, handle)
-                        ),
-                        self.handles.values(),
-                    )
-                ),
-                axis=0,
+            pd.DataFrame(
+                map(
+                    lambda handle: list(
+                        map(lambda line: line._linestyle, handle)
+                    ),
+                    self.handles.values(),
+                )
             )
+            .apply(pd.unique, axis=0)
+            .apply(pd.unique)
+            .values
         )
-        unique_legends = np.squeeze(
-            np.unique(list(self.legends.values()), axis=0)
+        unique_legends = (
+            pd.DataFrame(self.legends.values()).apply(pd.unique, axis=0).values
         )
         for i in range(self.y.l):
             for j in range(self.x.l):
@@ -9860,7 +9858,7 @@ class LinePlot(Plot):
 
         sep = pd.Index(separate)
 
-        yid = np.ravel(np.where(np.array(idx) == self.y))[0]
+        yid = np.ravel(np.where(np.array(idx) == self.y.data))[0]
 
         if figsize is None:
             logger.info(f"{xmax}, {ymax} figsize")

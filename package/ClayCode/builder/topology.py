@@ -55,16 +55,15 @@ class TopologyConstructor:
             else:
                 logger.error(f"Invalid forcefield selection: {sel}")
 
-    @property
+    @cached_property
     def _ff_head(self):
-        if self._ff_head is None:
-            ff_head_str = "; selection FF params for clay, water and ions\n"
-            ff_itps = ITPList(
-                *[self.ff[sel].itp_filelist for sel in self.ff_sel]
-            )
-            for itp_file in ff_itps:
-                ff_head_str += f'#include "{itp_file}"\n'
-            return ff_head_str + "\n"
+        ff_head_str = "; selection FF params for clay, water and ions\n"
+        ff_itps = ITPList(
+            [*self.ff["clay"].itp_filelist, *self.ff["ions"].itp_filelist]
+        )
+        for itp_file in ff_itps:
+            ff_head_str += f'#include "{itp_file}"\n'
+        return ff_head_str + "\n"
 
     def generate_restraints(
         self,

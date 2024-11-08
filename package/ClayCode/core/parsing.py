@@ -1267,7 +1267,7 @@ class BuildArgs(_Args):
         from ClayCode.builder.claycomp import BulkIons
 
         self.bulk_ions = BulkIons(
-            self.bulk_ions, self._build_defaults["BULK_IONS"]
+            self.bulk_ions, self._arg_defaults["BULK_IONS"]
         )
 
     @property

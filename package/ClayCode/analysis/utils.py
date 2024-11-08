@@ -559,7 +559,7 @@ def get_paths(
                 f"{str(file.resolve())!r}", kwd_str=f"Found {file_type} file: "
             )
         except AttributeError:
-            logger.finfo(f"No file {str(file.resolve())!r} found.")
+            logger.finfo(f"No file {str(file_type)!r} file found.")
             sys.exit(1)
     return gro, trr, path
 
