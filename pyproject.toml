@@ -5,10 +5,10 @@ description = "A python package for building clay models and analysing MD simula
 authors = [{ name = "Hannah Pollak", email = "h.pollak@sms.ed.ac.uk" }]
 license = { file = "LICENSE" }
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = "==3.10"
 dependencies = ['matplotlib>=3.6.2',
-    'mdanalysis>=2.6',
-    'numpy>=1.23.5',
+    'mdanalysis>=2.5',
+    'numpy~=1.23.5',
     'pandas~=1.5.2',
     'pyyaml>=6',
     'scipy>=1.11',
