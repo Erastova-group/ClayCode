@@ -2,6 +2,10 @@
 # -*- coding: UTF-8 -*-
 from __future__ import annotations
 
+import MDAnalysis
+
+MDAnalysis.stop_logging()
+
 # from ClayCode.builder.assembly import Builder, Sheet, Solvent
 # from ClayCode.builder.claycomp import (
 #     BulkIons,

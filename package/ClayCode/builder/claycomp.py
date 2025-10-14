@@ -143,15 +143,15 @@ class UCData(Dir):
             self.uc_stem: str = uc_stem
         logger.info(get_subheader("Getting unit cell data"))
         self.ff: ForceField = ForceField(ff)
-        self.__uc_idxs: list = list(map(lambda x: str(x[-3:]), self.available))
-        self.uc_idxs = self.__uc_idxs.copy()
+        self._uc_idxs: list = list(map(lambda x: str(x[-3:]), self.available))
+        self.uc_idxs = self._uc_idxs.copy()
         self.atomtypes: pd.DataFrame = self.ff["atomtypes"].df
         self._full_df = None
         self._df = None
-        if self.__get_full_df(write=write, reset=reset) is False:
-            self.__get_full_df(write, reset=True)
-        self.__get_df()
-        self.__atomic_charges = None
+        if self._get_full_df(write=write, reset=reset) is False:
+            self._get_full_df(write, reset=True)
+        self._get_df()
+        self._atomic_charges = None
         self.group_id = None
         self.__gro_groups = None
         self.__itp_groups = None
@@ -394,7 +394,7 @@ class UCData(Dir):
 
     def reset_selection(self):
         self.group_id = None
-        self.uc_idxs = self.__uc_idxs.copy()
+        self.uc_idxs = self._uc_idxs.copy()
 
     def select_ucs(self, uc_ids: List[str]):
         assert np.isin(uc_ids, self.uc_idxs).all(), "Invalid selection"
@@ -425,7 +425,7 @@ class UCData(Dir):
             .sort_index(axis=1)
         )
 
-    def __get_full_df(self, write=True, reset=False):
+    def _get_full_df(self, write=True, reset=False):
         finished = False
         while finished is False:
             finished = True
@@ -464,7 +464,7 @@ class UCData(Dir):
                             try:
                                 remove = select_input_option(
                                     instance_or_manual_setup=True,
-                                    query=f"Remove invalid unit cell {uc.idx}? [y]es/[n]o (default y)\n",
+                                    query=f"Encountered invalid UC!\nRemove invalid unit cell {uc.idx}? [y]es/[n]o (default y)\n",
                                     options=["y", "n", ""],
                                     result=None,
                                     result_map={
@@ -525,7 +525,7 @@ class UCData(Dir):
         self._full_df["sheet"].update(new_index[0])
         self._full_df.loc["itp_charge", "sheet"] = "itp_charge"
 
-    def __get_df(self):
+    def _get_df(self):
         # self._df = dd.from_pandas(self._full_df, chunksize=1000)
         # self._df.reset_index('at-type', inplace=True)
         # self._df.filter(regex=r"^(?![X].*)", axis=0, inplace=True)
@@ -1921,6 +1921,8 @@ class UCClayComposition(ClayComposition):
     ):
         super().__init__(uc_data=uc_data, sheet_n_ucs=sheet_n_ucs, name=name)
         logger.info(get_subheader("Manually specified unit cells"))
+        if not isinstance(uc_index_ratios, dict) and len(uc_index_ratios) == 2:
+            uc_index_ratios = {uc_index_ratios[0]: float(uc_index_ratios[1])}
         self._uc_index_ratios = uc_index_ratios
         self.get_uc_group()
 

@@ -17,6 +17,7 @@ from functools import cached_property, partialmethod
 from pathlib import Path
 from typing import Any, Callable, List, Literal, Optional, Tuple, Type, Union
 
+import MDAnalysis
 import numpy as np
 import pandas as pd
 import unicodeit
@@ -42,6 +43,8 @@ from MDAnalysis import AtomGroup, Merge, ResidueGroup, Universe
 from MDAnalysis.lib.mdamath import triclinic_box, triclinic_vectors
 from MDAnalysis.units import constants
 from numpy._typing import NDArray
+
+MDAnalysis.stop_logging()
 
 __all__ = ["Builder", "Sheet", "Solvent"]
 
@@ -983,7 +986,10 @@ class Builder:
         :type property_name: str
         :return: Path to file.
         :rtype: GROFile"""
-        path = getattr(self, f"__{property_name}")
+        try:
+            path = getattr(self, f"__{property_name}")
+        except AttributeError:
+            path = None
         if path is not None:
             return path
         else:
@@ -1562,11 +1568,7 @@ class Sheet:
 
     def get_uc_sheet_array(self):
         pm = "\u00B1"
-        logdict = {
-            0: "right diagonal",
-            1: "left diagonal",
-            2: "columns",
-        }
+        logdict = {0: "right diagonal", 1: "left diagonal", 2: "columns"}
         # TODO: move counts to bottom and initialise with 0 for all
         max_dict = {self.x_cells: 0, self.y_cells: 1}
         max_ax_len = max(max_dict.keys())
@@ -1583,10 +1585,9 @@ class Sheet:
         symbols = itertools.cycle(symbols)
         symbol_arr = np.full((self.x_cells, self.y_cells), fill_value=" ")
         symbol_dict = {}
-        for charge_group_id, (
-            charge,
-            charge_group_n_ucs,
-            charge_group,
+        for (
+            charge_group_id,
+            (charge, charge_group_n_ucs, charge_group),
         ) in enumerate(self.get_charge_groups()):
             # if self.debug:
             symbol = next(symbols)
@@ -1661,10 +1662,7 @@ class Sheet:
                         axis=0,
                     )
                 )
-                free_cols = np.logical_and(
-                    free,
-                    combined_counts < n_col_ucs,
-                )
+                free_cols = np.logical_and(free, combined_counts < n_col_ucs)
                 init_i = np.array([0, 0, 0])
                 minmax = itertools.cycle([min, max])
                 cycle_count = 0
@@ -1947,11 +1945,7 @@ class Sheet:
         # if self.debug:
         logger.finfo("Occupancy deviations:")
         pm = "\u00B1"
-        logdict = {
-            0: "right diagonal",
-            1: "left diagonal",
-            2: "columns",
-        }
+        logdict = {0: "right diagonal", 1: "left diagonal", 2: "columns"}
         logstr = list(
             map(
                 lambda x, y, z: f"\t{logdict[x]:15}: {y:.1f} {pm} {z:.1f}",
@@ -1970,8 +1964,7 @@ class Sheet:
             np.array(
                 [
                     *np.fromiter(
-                        self.get_all_diagonals(occ_cols),
-                        dtype=np.ndarray,
+                        self.get_all_diagonals(occ_cols), dtype=np.ndarray
                     )
                 ]
             ),

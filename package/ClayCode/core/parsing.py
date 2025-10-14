@@ -1006,6 +1006,7 @@ class BuildArgs(_Args):
         self.em_n_runs = self._charge_occ_df.loc[
             pd.IndexSlice["T", self._uc_name], ["em_n_runs"]
         ].values[0]
+        self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         self._get_outpath()
         self._get_gmx_prms()
 
@@ -1023,7 +1024,6 @@ class BuildArgs(_Args):
         self.check()
         self.manual_setup = self.data["manual_setup"]
         self.backup = self.data["backup"]
-        self.filestem = f"{self.name}_{self.x_cells}_{self.y_cells}"
         # self.outpath = self.outpath / self.name
         os.makedirs(self.outpath, exist_ok=True)
         logger.set_file_name(

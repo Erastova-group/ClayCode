@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+r""":mod:`ClayCode.core.log` --- Logger for ClayCode
+===========================================
+"""
 
 from __future__ import annotations
 
@@ -31,9 +35,13 @@ class ClayCodeLogger(logging.Logger):
     )
     _name = __package__.split(".")[0]
 
-    def __init__(self, name, level=logging.INFO):
-        super().__init__(name, level=level)
-        self.logfilename = self.__class__._logfilename.with_suffix(".log")
+    def add_file_handler(self, level: int = logging.INFO) -> None:
+        """Add a file handler to the logger.
+        Parameters
+        ----------
+        level : int, optional
+            The logging level for the file handler, by default logging.INFO
+        """
         file_handler = logging.FileHandler(
             self.logfilename, "a", encoding="UTF-8"
         )
@@ -41,6 +49,10 @@ class ClayCodeLogger(logging.Logger):
         self.addHandler(file_handler)
         if self.name == "root":
             self.info(f"{self.__class__._name} - {exec_date} - {exec_time}")
+
+    def __init__(self, name: str, level: int = logging.INFO) -> None:
+        super().__init__(name, level=level)
+        self.logfilename = self.__class__._logfilename.with_suffix(".log")
 
     def set_file_name(self, new_filepath=None, new_filename=None, final=False):
         if new_filename is None:
@@ -110,33 +122,37 @@ class ClayCodeLogger(logging.Logger):
         ]
         for instance in [parent_instance, *child_loggers]:
             if instance.logfilename != new_filename:
+                if (
+                    len(instance.handlers) == 0
+                    and instance.name is parent_instance.name
+                ):
+                    instance.add_file_handler()
                 if len(instance.handlers) != 0:
                     for handler in instance.handlers:
                         if isinstance(handler, logging.FileHandler):
                             file_handler = handler
                             break
-                    if file_handler:
-                        file_handler.close()
+                    file_handler.close()
+                    try:
+                        with open(instance.logfilename, "r") as old_file:
+                            old_log = old_file.read()
+                        parent_instance.debug(
+                            f"{instance.name}: Moving {instance.logfilename.resolve()} to {new_filename.resolve()}"
+                        )
+                    except FileNotFoundError:
+                        pass
+                    else:
                         try:
-                            with open(instance.logfilename, "r") as old_file:
-                                old_log = old_file.read()
-                            parent_instance.debug(
-                                f"{instance.name}: Moving {instance.logfilename.resolve()} to {new_filename.resolve()}"
-                            )
+                            new_file = open(new_filename, "a")
                         except FileNotFoundError:
-                            pass
-                        else:
-                            try:
-                                new_file = open(new_filename, "a")
-                            except FileNotFoundError:
-                                os.makedirs(new_filename.parent, exist_ok=True)
-                                new_file = open(new_filename, "a")
-                            finally:
-                                new_file.write(old_log)
-                                new_file.close()
-                                os.unlink(instance.logfilename)
-                        instance.logfilename = new_filename
-                        instance.removeHandler(file_handler)
+                            os.makedirs(new_filename.parent, exist_ok=True)
+                            new_file = open(new_filename, "a")
+                        finally:
+                            new_file.write(old_log)
+                            new_file.close()
+                            os.unlink(instance.logfilename)
+                    instance.logfilename = new_filename
+                    instance.removeHandler(file_handler)
                 new_file_handler = logging.FileHandler(new_filename, "a")
                 # Set the same formatter and level as the old file handler
                 new_file_handler.setFormatter(file_handler.formatter)

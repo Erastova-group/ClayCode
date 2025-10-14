@@ -42,7 +42,10 @@ def run_builder(args: BuildArgs):
     #     solvent_rename_func=clay_builder.rename_il_solv,
     #     backup=clay_builder.args.backup,
     # )
-    logger.finfo(f"Wrote interlayer sheet to {clay_builder.il_solv.name!r}")
+    if clay_builder.il_solv is not None:
+        logger.finfo(
+            f"Wrote interlayer sheet to {clay_builder.il_solv.name!r}"
+        )
     completed = False
     while completed is False:
         clay_builder.write_sheet_crds(backup=clay_builder.args.backup)
@@ -243,6 +246,7 @@ def plot_data(args):
 
 def run():
     """Run ClayCode."""
+    logger.add_file_handler()
     args = parser.parse_args(sys.argv[1:])
     args_factory = ArgsFactory()
     args = args_factory.init_subclass(args)

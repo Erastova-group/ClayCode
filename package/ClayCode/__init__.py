@@ -8,8 +8,14 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from MDAnalysis.coordinates.TRJ import logger as amber_logger
+from MDAnalysis.core.universe import logger as mda_u_logger
 
 amber_logger.setLevel(logging.ERROR)
+mda_u_logger.setLevel(logging.ERROR)
+
+import MDAnalysis
+
+MDAnalysis.stop_logging()
 
 from ClayCode.core.cctypes import (
     AnyDict,

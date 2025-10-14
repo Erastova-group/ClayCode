@@ -861,7 +861,7 @@ class ParameterBase:
             header = "\t".join(new.columns)
             new_str = f"; {new_str}\n\n"
         elif new is None and read:
-            new_str = pd.read_csv(
+            new_df = pd.read_csv(
                 StringIO(self._string), sep="\s+", comment=";", header=None
             )
         else:
@@ -1330,6 +1330,7 @@ class ITPFile(File):
             self.__string = self.read_text()
         else:
             self.touch()
+            self._string = ""
         if self.parent.suffix == ".ff":
             self.ff = self.parent.name
         self.__reset()
@@ -1587,17 +1588,22 @@ class ITPFile(File):
             pd.DataFrame,
         ], f"Unexpected datatype ({type(value)}) for {key} value"
         if isinstance(value, str):
-            value = ParameterFactory(key, value, self._path).df
+            value: pd.DataFrame = ParameterFactory(key, value, self).df
         try:
-            if (value == self[key].df).all().all():
+            if value.equals(self[key].df):
                 return
         except ValueError:
             pass
         except AttributeError:
             pass
-        new_str = value.to_string(
-            index=False, float_format=lambda x: "{:.6f}".format(x)
-        )
+        if key == "moleculetype":
+            new_str = value.to_string(
+                index=False, float_format=lambda x: "{:.6f}".format(x)
+            )
+        else:
+            new_str = value.reset_index().to_string(
+                index=False, float_format=lambda x: "{:.6f}".format(x)
+            )
         new_str = f"; {new_str}\n\n"
         max_kwd_len = max([len(kwd) for kwd in value.columns])
         header = "\t".join(value.columns)
@@ -1627,33 +1633,37 @@ class ITPFile(File):
                     )
                     + " ]\s*\n"
                 )
+            except IndexError:
+                before = ""
             except TypeError:
                 before = ""
             try:
                 after = (
-                    "[ "
+                    ""
                     + get_match_pattern(
                         re.findall(get_match_pattern(list(self.kwds)), after)[
                             0
                         ]
                     )
-                    + " ]"
+                    + ""
                 )
+            except IndexError:
+                after = ""
             except TypeError:
                 after = ""
             if re.search(key, self.raw_string, flags=re.MULTILINE) is None:
-                logger.finfo("Adding {key} to {self.name}")
+                logger.finfo(f"Adding {key} to {self.name}")
                 repl_str = re.sub(
-                    rf"({before}({header})?[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*?)(;[\sa-zA-Z\d#_.\-()^%$'\[]*\n+)*({header})?({after})",
+                    rf"({before}({header})?[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*?)(;[\sa-zA-Z\d#_.\-()^%$'\[]*\n+)*({header})?((\[ {after} \])|($))",
                     r"\1" + f"\n\n[ {key} ]\n{new_str}" + r"\3\5",
                     self.raw_string,
                     flags=re.MULTILINE | re.DOTALL,
                 )
                 # repl_str = f"{self.raw_string}\n[ {key} ]\n{new_str}"
             else:
-                logger.finfor("Updating {key} in {self.name}")
+                logger.finfo(f"Updating {key} in {self.name}")
                 repl_str = re.sub(
-                    rf"({key} ]\s*\n)({header})?[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*?(;[\sa-zA-Z\d#_.\-()^%$'\[]*\n+)*({header})?({after})",
+                    rf"({key} ]\s*\n)({header})?[;\sa-zA-Z\d#_.\-\n()^%$'\[\]]*?(;[\sa-zA-Z\d#_.\-()^%$'\[]*\n+)*({header})?((\[ {after} \])|($))",
                     r"\1" + f"{new_str}" + r"\3\5",
                     self.raw_string,
                     flags=re.MULTILINE | re.DOTALL,
@@ -1671,10 +1681,10 @@ class ITPFile(File):
     def __setitem__(self, key: str, value: Union[pd.DataFrame, str]):
         if key in self._prm_types[0].kwd_list:
             self._set_prm_item(key, value)
-        # elif key in self._mol_types:
-        #     self._set_mol_item(key, value)
-        # elif key in self._sys_types:
-        #     self._set_sys_item(key, value)
+        elif key in self._mol_types[0].kwd_list:
+            self._set_mol_item(key, value)
+        elif key in self._sys_types[0].kwd_list:
+            self._set_sys_item(key, value)
 
     def __contains__(self, item: str):
         return item in self.kwds

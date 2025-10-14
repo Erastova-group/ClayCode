@@ -12,6 +12,7 @@ from ClayCode.core.utils import execute_shell_command
 from MDAnalysis import AtomGroup, ResidueGroup
 
 logger = logging.getLogger(__name__)
+MDAnalysis.stop_logging()
 
 
 class TopologyConstructor:

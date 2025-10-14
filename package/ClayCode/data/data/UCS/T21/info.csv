@@ -1,0 +1,11 @@
+uc_id,base_id,substitution_sheet,substitutions,substitution_loc,charge,n_substitutions
+001,000,T,ST1 -> AT1,t,-1.0,1
+002,000,T,ST3 -> AT3,t,-1.0,1
+003,000,T,ST5 -> AT5,b,-1.0,1
+004,000,T,ST7 -> AT7,b,-1.0,1
+005,000,T,ST1 -> AT1;ST3 -> AT3,t,-2.0,2
+006,000,T,ST1 -> AT1;ST5 -> AT5,b,-2.0,2
+007,000,T,ST1 -> AT1;ST7 -> AT7,b,-2.0,2
+008,000,T,ST3 -> AT3;ST5 -> AT5,b,-2.0,2
+009,000,T,ST3 -> AT3;ST7 -> AT7,b,-2.0,2
+010,000,T,ST5 -> AT5;ST7 -> AT7,b,-2.0,2

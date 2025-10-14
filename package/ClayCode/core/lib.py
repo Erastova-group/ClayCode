@@ -53,6 +53,8 @@ from ClayCode.data.lib import (
 )
 from MDAnalysis import Universe
 
+mda.stop_logging()
+
 # from ClayCode.core.lib import (
 # add_resnum,
 # get_ion_charges,
@@ -62,13 +64,12 @@ from MDAnalysis import Universe
 logging.getLogger("MDAnalysis.topology.TPRparser").setLevel(
     level=logging.WARNING
 )
+logging.getLogger("MDAnalysis.core.universe").setLevel(level=logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
 __name__ = "lib"
-__all__ = [
-    "select_solvent",
-]
+__all__ = ["select_solvent"]
 
 
 def fix_gro_residues(crdin: Union[Path, str], crdout: Union[Path, str]):

@@ -4,10 +4,12 @@ r""":mod:`ClayCode.core.consts` --- Constants
 ============================================
 """
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict
 
-from caseless_dictionary import CaselessDict
+# from typing import Any, Dict
+import shutil
+from datetime import datetime, timezone
+
+# from caseless_dictionary import CaselessDict
 
 __all__ = [
     "exec_time",
@@ -20,24 +22,24 @@ __all__ = [
     "ANGSTROM",
 ]
 
-from ClayCode.data.consts import MDP, MDP_DEFAULTS, TOP_KWDS
+# from ClayCode.data.consts import MDP, MDP_DEFAULTS, TOP_KWDS
 
-IONS = ["Cl", "Na", "Ca", "K", "Mg", "Cs"]
-SOL_DENSITY = 1000  # g L-1
-SOL = "SOL"
+IONS: list = ["Cl", "Na", "Ca", "K", "Mg", "Cs"]
+SOL_DENSITY: int = 1000  # g L-1
+SOL: str = "SOL"
 
 shandler = logging.StreamHandler()
 shandler.setLevel(logging.INFO)
 
-exec_datetime = datetime.now(timezone.utc).strftime("%y%m%d%H%M")
-exec_date = datetime.now(timezone.utc).strftime("%y/%m/%d")
-exec_time = datetime.now(timezone.utc).strftime("%H:%M")
+exec_datetime: str = datetime.now(timezone.utc).strftime("%y%m%d%H%M")
+exec_date: str = datetime.now(timezone.utc).strftime("%y/%m/%d")
+exec_time: str = datetime.now(timezone.utc).strftime("%H:%M")
 
 
-LINE_LENGTH: int = 100
+LINE_LENGTH: int = shutil.get_terminal_size().columns
 
-TABSIZE = 4
+TABSIZE: int = 4
 
-ANGSTROM = "\u212B"
-GREATER_EQUAL = "\u2265"
-LESS_EQUAL = "\u2264"
+ANGSTROM: str = "\u212B"
+GREATER_EQUAL: str = "\u2265"
+LESS_EQUAL: str = "\u2264"

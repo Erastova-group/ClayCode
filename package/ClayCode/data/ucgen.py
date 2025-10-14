@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 from collections import UserDict  # , UserList
 from functools import cached_property
 from typing import Dict, List, Literal, Optional, Tuple, Type, Union
@@ -221,10 +222,7 @@ class UCWriter:
                 ]
                 new_entry.loc[
                     pd.IndexSlice[["T", "O"], self.name], "charge"
-                ] = [
-                    charge["T"],
-                    charge["O"],
-                ]
+                ] = [charge["T"], charge["O"]]
                 new_entry.loc[
                     pd.IndexSlice[["T", "O"], self.name], "solv"
                 ] = self.default_solv
@@ -286,10 +284,12 @@ class UCWriter:
         itp_file = self.path / f"{uc_name}.itp"
         if itp_file.is_file():
             os.remove(itp_file)
-        itp_file.touch()
+        # itp_file.touch()
         itp_file = ITPFile(itp_file, check=False)
-        # itp_file.string = "[ moleculetype ]\n" "[ atoms ]\n" "[ bonds ]\n"
-        # itp_file.write()
+        itp_file.string = (
+            "[ moleculetype ]\nNAME\n" "[ atoms ]\n" "[ bonds ]\n"
+        )
+        itp_file.write()
         itp_file["moleculetype"] = re.sub(
             r"NAME", uc_name, "NAME\t1", flags=re.MULTILINE
         )
@@ -559,11 +559,7 @@ class UCWriter:
         info_dict.loc[len(info_dict) - 1, "n_substitutions"] = n_subs
         # print(n_subs, len(np.unique([info.split(' -> ') for info in info_dict.loc[len(info_dict) - 1, "substitutions"].split(";")])))
         if (
-            info_dict.duplicated(
-                subset=[
-                    "substitutions",
-                ]
-            ).any()
+            info_dict.duplicated(subset=["substitutions"]).any()
             or abs(float(info_dict.loc[len(info_dict) - 1, "charge"]))
             > max_charge + 0.1
             or len(
@@ -612,8 +608,8 @@ class UCWriter:
                 f"{self.uc_stem}{uc_id.split(' -> ')[1]} with {sub_atoms}"
             )
             logger.finfo(
-                "substitution/total UC charge = {sub_charge:.2f}/{float(uc_charge):.2f})",
-                initial_indent="\t",
+                f"substitution/total UC charge = {sub_charge:.2f}/{float(uc_charge):.2f})",
+                indent="\t",
             )
             return uc_id
 
@@ -690,7 +686,6 @@ class UCWriter:
         u = sheets.pop("u")
         # vdwradii = {at_name: 1 for at_name in u.atoms.types}
         vdwradii = tables.vdwradii.copy()
-        vdwradii["O"] = 2
         vdwradii.update(
             {at_name: 2 for at_name in np.unique(sheets["O"]["other"].types)}
         )
@@ -701,6 +696,9 @@ class UCWriter:
                 if at_name not in vdwradii
             }
         )
+        vdwradii["O"] = 2
+        vdwradii["A"] = vdwradii["AL"]
+        vdwradii["S"] = vdwradii["SI"]
         sheets["O"].pop("oh")
         sheets["O"].pop("ho")
         bonds = guess_bonds(
@@ -914,10 +912,10 @@ class UCWriter:
     def delete_uc_type(self):
         remove = select_input_option(
             instance_or_manual_setup=True,
-            query=f"Remove {self.name} unit cell type? [y]es/[n]o (default y)\n",
+            query=f"Remove {self.name} unit cell type? [y]es/[n]o (default n)\n",
             result=None,
             options=["y", "n"],
-            result_map={"y": True, "n": False, "": True},
+            result_map={"y": True, "n": False, "": False},
         )
         if remove:
             charge_occ_df = (
@@ -930,6 +928,8 @@ class UCWriter:
                 UCS / "charge_occ.csv", index=False
             )
             shutil.rmtree(self.path)
+        else:
+            sys.exit(-1)
 
     def remove_substituted_ucs(self):
         substituted_ucs = ...

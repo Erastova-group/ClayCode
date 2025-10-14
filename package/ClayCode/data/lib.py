@@ -10,10 +10,13 @@ from functools import partial
 from pathlib import Path
 from typing import Callable, Dict, List, Union, cast
 
+import MDAnalysis
 import numpy as np
 import pandas as pd
 from ClayCode import Dir
 from MDAnalysis import Universe
+
+MDAnalysis.stop_logging()
 
 logger = logging.getLogger(__name__)
 
@@ -294,17 +297,17 @@ def get_all_prms(
         try:
             for uc in clay_types:
                 if not uc.name.startswith("."):
-                    uc = uc.stem
+                    uc_name = uc.stem
                     clay_dict.update(
                         get_clay_prms(
                             prm_str=prm_str,
-                            uc_name=uc,
+                            uc_name=uc_name,
                             force_update=force_update,
                         )
                     )
         except Exception as e:
             logger.ferror(
-                f"{e}\nError getting {uc.name} unit cell parameters."
+                f"{e}\nError getting {uc.stem} unit cell parameters."
             )
             sys.exit(1)
         sol_dict = get_sol_prms(prm_str=prm_str, force_update=force_update)

@@ -74,11 +74,25 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-def progress_wrapper(f):
+def progress_wrapper(f) -> Callable:
     @wraps(f)
     def wrapper(
         instance, *args, load_progress=False, save_progress=False, **kwargs
-    ):
+    ) -> Any:
+        """Wrapper function to load and save progress of a function.
+        :param instance: instance of class
+        :type instance: object
+        :param args: arguments to pass to function
+        :type args: tuple, optional
+        :param load_progress: if True, load progress from file
+        :type load_progress: bool, optional, default=False
+        :param save_progress: if True, save progress to file
+        :type save_progress: bool, optional, default=False
+        :param kwargs: keyword arguments to pass to function
+        :type kwargs: dict, optional
+        :return: result of function
+        :rtype: Any
+        """
         instance.loaded_data = False
         if (load_progress or save_progress) and not hasattr(
             instance, "_progress"
@@ -99,7 +113,15 @@ def progress_wrapper(f):
     return wrapper
 
 
-def load_progress(instance, key):
+def load_progress(instance, key) -> Any:
+    """Load progress from file.
+    :param instance: instance of class
+    :type instance: object
+    :param key: key to load
+    :type key: str
+    :return: loaded progress
+    :rtype: Any or None
+    """
     if instance._progress.exists():
         with open(instance._progress, "rb") as file:
             progress_dict = pickle.load(file)
@@ -108,9 +130,21 @@ def load_progress(instance, key):
             return progress_dict[key]
         except KeyError:
             return None
+    else:
+        return None
 
 
-def save_progress(instance, key, debug=False):
+def save_progress(instance, key, debug=False) -> None:
+    """Save progress to file.
+    :param instance: instance of class
+    :type instance: object
+    :param key: key to save
+    :type key: str
+    :param debug: if True, print debug information
+    :type debug: bool, optional, default=False
+    :return: None
+    :rtype: None
+    """
     if instance._progress.exists():
         with open(instance._progress, "rb") as file:
             progress_dict = pickle.load(file)
@@ -122,7 +156,17 @@ def save_progress(instance, key, debug=False):
     logger.fdebug(debug, f"Saved progress to {instance._progress.name!r}.")
 
 
-def remove_files(path, searchstr, debug=False):
+def remove_files(path, searchstr, debug=False) -> bool:
+    """Remove files in `path` directory with filenames matching `searchstr`.
+    :param path: path to directory
+    :type path: Union[Path, str]
+    :param searchstr: string to search for in filename
+    :type searchstr: str
+    :param debug: if True, print debug information
+    :type debug: bool, optional, default=False
+    :return: True if files were removed, False otherwise
+    :rtype: bool
+    """
     backupfiles = list(path.glob(rf"{searchstr}"))
     removing = False
     for fname in backupfiles:
@@ -135,12 +179,27 @@ def remove_files(path, searchstr, debug=False):
     return removing
 
 
-def change_suffix(path: Path, new_suffix: str):
+def change_suffix(path: Path, new_suffix: str) -> Path:
+    """Change suffix of file.
+    :param path: path to file
+    :type path: Union[Path, str]
+    :param new_suffix: new suffix
+    :type new_suffix: str
+    :return: path to file with new suffix
+    :rtype: Path
+    """
     return path.parent / f'{path.stem}.{new_suffix.strip(".")}'
 
 
-def convert_num_to_int(f):
+def convert_num_to_int(f) -> Callable:
+    @wraps(f)
     def wrapper(number: Union[int, float]):
+        """Convert number to int and round if necessary.
+        :param number: number to convert
+        :type number: Union[int, float]
+        :return: converted number
+        :rtype: int
+        """
         if type(number) not in [float, int, np.int_, np.float_]:
             raise TypeError(
                 f"Expected float or int type, found {type(number)}!"
@@ -152,7 +211,14 @@ def convert_num_to_int(f):
 
 
 def get_sequence_element(f):
+    @wraps(f)
     def wrapper(seq, element_id=0, debug=False):
+        """Get element from sequence and apply function to it.
+        :param seq: sequence to get element from
+        :param element_id: index of element to get, by default 0
+        :param debug: if True, print debug information
+        :return: result of function applied to element
+        """
         try:
             if len(list(seq)) < 2:
                 pass
@@ -182,31 +248,57 @@ def get_sequence_element(f):
 @get_sequence_element
 @convert_num_to_int
 def get_first_item_as_int(seq):
+    """Get first item from sequence and convert to int.
+    :param seq: sequence to get first item from
+    :return: first item from sequence as int
+    """
     return seq
 
 
-def check_file_exists(tempdir: Union[Path, str], file: Union[Path, str]):
+def check_file_exists(
+    tempdir: Union[Path, str], file: Union[Path, str]
+) -> None:
+    """Check if file exists in temporary directory.
+    :param tempdir: path to temporary directory
+    :type tempdir: Union[Path, str]
+    :param file: path to file
+    :type file: Union[Path, str]
+    :raises FileNotFoundError: if file does not exist
+    """
     if not Path(file).exists():
         os.rmdir(tempdir)
         raise FileNotFoundError(f"{file!r} does not exist!")
 
 
 @singledispatch
-def str_to_int(str_obj):
+def str_to_int(str_obj) -> Union[int, List[int]]:
+    """Convert string or list of strings to int or list of ints.
+    :param str_obj: string or list of strings to convert
+    :type str_obj: Union[str, List[str]]
+    :return: int or list of ints
+    :rtype: Union[int, List[int]]
+    :raises TypeError: if str_obj is not a string or list of strings
+    """
     raise TypeError(f"Invalid type for str_obj: {type(str_obj)}")
 
 
 @str_to_int.register
-def _(str_obj: list):
+def _(str_obj: list) -> List[int]:
     return list(map(lambda str_item: int(str_item), str_obj))
 
 
 @str_to_int.register
-def _(str_obj: str):
+def _(str_obj: str) -> int:
     return int(str_obj)
 
 
-def execute_shell_command(command):
+def execute_shell_command(command) -> sp.CompletedProcess:
+    """Execute shell command and return output.
+    :param command: command to execute
+    :type command: str
+    :return: output of command
+    :rtype: subprocess.CompletedProcess
+    """
     try:
         output = sp.run(
             [command], shell=True, capture_output=True, text=True, check=True
@@ -241,8 +333,11 @@ def execute_shell_command(command):
 def get_file_diff(file_1: Union[Path, str], file_2: Union[Path, str]) -> str:
     """Get diff between two files.
     :param file_1: file 1
+    :type file_1: Union[Path, str]
     :param file_2: file 2
-    :return: diff between files"""
+    :type file_2: Union[Path, str]
+    :return: diff between files
+    :rtype: str"""
     diff = execute_shell_command(f"diff {file_1} {file_2}")
     return diff.stdout
 
@@ -250,8 +345,11 @@ def get_file_diff(file_1: Union[Path, str], file_2: Union[Path, str]) -> str:
 def grep_file(file, regex: str) -> str:
     """Get lines from file matching regex pattern.
     :param file: file to search
+    :type file: Union[Path, str]
     :param regex: regex pattern
-    :return: lines matching regex pattern"""
+    :type regex: str
+    :return: lines matching regex pattern
+    :rtype: str"""
     diff = execute_shell_command(f'grep -E "{regex}" {file}')
     return diff.stdout
 
@@ -261,9 +359,13 @@ def get_ls_files(
 ) -> List[Path]:
     """Get files in `path` directory with filenames matching `fname_regex`.
     :param path: path to directory
+    :type path: Union[Path, str]
     :param fname_regex: regex pattern for filename
+    :type fname_regex: str
     :param ls_flags: flags for `ls` command
-    :return: list of files"""
+    :type ls_flags: str, optional, default=""
+    :return: list of files
+    :rtype: List[Path]"""
     ls_path = Path(path) / fname_regex
     ls = execute_shell_command(f"ls {ls_flags} {ls_path} 2>/dev/null")
     files = re.findall(
@@ -279,6 +381,18 @@ def get_logfname(
     time: Union[Literal[exec_time], Literal[exec_date]] = exec_date,
     logpath=None,
 ) -> str:
+    """Get log filename.
+    :param logname: name of log file
+    :type logname: str
+    :param run_name: name of run, by default None
+    :type run_name: Optional[str], optional
+    :param time: time format, by default exec_date
+    :type time: Union[Literal[exec_time], Literal[exec_date]], optional
+    :param logpath: path to log file, by default None
+    :type logpath: Optional[Union[Path, str]], optional
+    :return: log filename
+    :rtype: str
+    """
     if logpath is None:
         logpath = Path().cwd() / "logs"
         if not logpath.is_dir():
@@ -293,6 +407,16 @@ def get_logfname(
 def substitute_kwds(
     string: str, substitutions: dict[str, str], flags: re.RegexFlag
 ) -> str:
+    """Substitute keywords in string.
+    :param string: string to substitute keywords in
+    :type string: str
+    :param substitutions: dictionary of keywords to substitute
+    :type substitutions: dict[str, str]
+    :param flags: regex flags
+    :type flags: re.RegexFlag
+    :return: string with substituted keywords
+    :rtype: str
+    """
     for key, value in substitutions.items():
         string = re.sub(key, f"{value}", string, flags=flags)
     return string
@@ -319,6 +443,12 @@ def _(match_obj: List[str]):
 def convert_str_list_to_arr(
     str_list: Union[List[str], List[List[str]]], debug=False
 ) -> np.array:
+    """Convert list of strings to numpy array.
+    :param str_list: list of strings
+    :param debug: if True, print debug information
+    :return: numpy array
+    :rtype: np.array
+    """
     array = np.array(list(map(lambda x: x.split(), str_list)), dtype=str)
     arr_strip = np.vectorize(lambda x: x.strip())
     try:
@@ -363,6 +493,7 @@ class SubprocessProgressBar:
             self.label = f"{label}".expandtabs(TABSIZE)
         self.delay = float(delay)
         self.running = True
+        self.t1 = time.time()
 
     def start(self) -> None:
         self.running = True
@@ -387,7 +518,13 @@ class SubprocessProgressBar:
     def time(self):
         return time.process_time()
 
-    def run_with_progress(self, f, *args, **kwargs):
+    def run_with_progress(self, f, *args, **kwargs) -> Any:
+        """Run function with progress bar.
+        :param f: function to run
+        :param args: arguments to pass to function
+        :param kwargs: keyword arguments to pass to function
+        :return: result of function
+        """
         self.start()
         try:
             result = f(*args, **kwargs)
@@ -482,6 +619,7 @@ def select_file(
     :param searchstr: string to search for in filename
     :param suffix: suffix of file to select
     :param how: how to select file
+    :param debug: if True, print debug information
     :return: selected file"""
     check_func_dict = {
         "latest": lambda x: x.st_mtime,
@@ -723,7 +861,7 @@ def property_exists_checker(instance, property_name, prop_type=None):
         raise AttributeError(
             f"{instance.__class__.name}.{property_name} not set!"
         )
-    if prop_type is not None and type(prop) != prop_type:
+    if prop_type is not None and type(prop) is not prop_type:
         setattr(instance, prop_type(prop))
 
 
@@ -734,6 +872,8 @@ def parse_yaml_with_duplicate_keys(yaml_source):
     """
 
     class DuplicateKeyLoader(yaml.loader.Loader):
+        """Custom yaml loader to handle duplicate keys."""
+
         pass
 
     def construct_mapping(loader, node, deep=False):
@@ -814,6 +954,8 @@ def get_checked_input(
     :type re_flags: int
     :param exit_val: Value to exit the program
     :type exit_val: str
+    :param default_val: Default value to use if no user input is given
+    :type default_val: Optional[Any]
     :param result_init_args: Arguments for result type initialization
     :type result_init_args: Any
     :param result_init_kwargs: Keyword arguments for result type initialization
@@ -899,6 +1041,14 @@ def init_temp_inout(
 ) -> Tuple[
     Union[str, Path], Union[str, Path], Dict[Literal["crd", "top"], bool]
 ]:
+    """Initialize temporary input and output files.
+    :param inf: input file
+    :param outf: output file
+    :param new_tmp_dict: dictionary to keep track of temporary files
+    :param which: which file type
+    :return: tuple of input file, output file, dictionary of temporary files, and temporary
+    output file if created
+    """
     inp = Path(inf)
     outp = Path(outf)
     if inp == outp:
@@ -913,8 +1063,8 @@ def init_temp_inout(
         )
     else:
         temp_outp = None
-    if type(inf) == str:
+    if type(inf) is str:
         inp = str(inp.resolve())
-    if type(outf) == str:
+    if type(outf) is str:
         temp_outp = str(outp.resolve())
     return inp, outp, new_tmp_dict, temp_outp

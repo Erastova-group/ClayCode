@@ -5424,19 +5424,25 @@ class Data:
 
     ions = ["Na", "K", "Ca", "Mg", "Ba"]
     atoms = [
-        "ions",
-        "OT",
-        "N",
-        "CA",
-        "NH",
-        "OH",
-        "CR",
-        "SR",
         "C",
+        "CA",
+        "CO",
+        "CR",
+        "N",
+        "NH",
         "NR",
-        "OR",
+        "NR1",
+        "NR2",
+        "NT",
         "O",
+        "OH",
+        "OR",
+        "OT",
+        "OW",
         "S",
+        "SH",
+        "SR",
+        "ions",
     ]
     clays = [
         "NAu-1",
@@ -5454,8 +5460,52 @@ class Data:
         cutoff: Union[int, float],
         bins: float,
         ions: List[Literal["Na", "K", "Ca", "Mg", "Ba"]] = None,
-        atoms: List[Literal["ions", "OT", "N", "CA", "OW"]] = None,
-        other: List[Literal["ions", "OT", "N", "CA", "OW"]] = None,
+        atoms: List[
+            Literal[
+                "C",
+                "CA",
+                "CO",
+                "CR",
+                "N",
+                "NH",
+                "NR",
+                "NR1",
+                "NR2",
+                "NT",
+                "O",
+                "OH",
+                "OR",
+                "OT",
+                "OW",
+                "S",
+                "SH",
+                "SR",
+                "ions",
+            ]
+        ] = None,
+        other: List[
+            Literal[
+                "C",
+                "CA",
+                "CO",
+                "CR",
+                "N",
+                "NH",
+                "NR",
+                "NR1",
+                "NR2",
+                "NT",
+                "O",
+                "OH",
+                "OR",
+                "OT",
+                "OW",
+                "S",
+                "SH",
+                "SR",
+                "ions",
+            ]
+        ] = None,
         clays: List[Literal["NAu-1", "NAu-2"]] = None,
         aas: List[
             Literal[
@@ -5491,6 +5541,7 @@ class Data:
         atomname=True,
         use_rel_data=False,
         group_all=False,
+        group_c=False,
         max_line_width=LINE_LENGTH,
         other_cutoff=None,
         edge_data=None,
@@ -5646,6 +5697,8 @@ class Data:
             self.df: pd.DataFrame = pd.DataFrame(index=idx, columns=cols)
 
             self._get_data(nameparts)
+        self.df.dropna(inplace=True, how="all", axis=0)
+        self.df.dropna(inplace=True, how="all", axis=1)
         try:
             below_zero = self.df.query(f"x < {self.bins.num}").copy()
             below_zero[below_zero == 0] = np.NaN
@@ -5667,26 +5720,43 @@ class Data:
             pass
         else:
             self.df.loc[below_zero.index] = below_zero
-        self.df.dropna(inplace=True, how="all", axis=0)
-        self.df.dropna(inplace=True, how="all", axis=1)
+
         # if np.all(np.equal(self.df.reset_index('x').query('x < 0').iloc[:, 1:].nunique().values, 1)):
         #
         # else:
         #     self._min = Cutoff(np.floor(self.df.index.get_level_values('x').min()))
         # self.not_ions = [atom for atom in self.df.index.get_level_values('atoms').unique() if (atom != 'ions' and atom not in self.df.index.get_level_values('ions').unique())]
+        mod_at = None
         if group_all is True:
-            mod_at = self.df.reset_index("atoms")["atoms"]
+            mod_at = self.df.reset_index("atoms", drop=False)["atoms"]
             if mod_at.unique().size > 1:
                 mod_at.update(
                     mod_at[mod_at != "ions"].apply(lambda x: x[0])
                 )  # groupby(self.df.index.drop('atoms').names)['atoms'].
+            self.name += "_grouped"
+            self.group_all = "_grouped"
+        elif group_c is True:
+            mod_at = self.df.reset_index(
+                "atoms", drop=False, allow_duplicates=True
+            ).set_index("atoms", append=True, drop=False)["atoms"]
+            c_atypes = re.findall(
+                r"(C[A-Z]+?[0-9]*?) ", " ".join(mod_at.unique()) + " "
+            )
+            if mod_at.unique().size > 1:
+                mod_at.update(
+                    mod_at[mod_at.isin(c_atypes)].apply(lambda x: x[0])
+                )
+            self.name += "_c_grouped"
+            self.group_all = "_c_grouped"
+        if mod_at is not None:
             self.df.reset_index("atoms", inplace=True)
-            self.df["atoms"].update(mod_at)
+            try:
+                self.df["atoms"].update(mod_at.reset_index("atoms", drop=True))
+            except KeyError:
+                self.df["atoms"].update(mod_at)
             self.df.set_index("atoms", append=True, inplace=True)
             self.df = self.df.reorder_levels(idx.names)
             self.df = self.df.groupby(self.df.index.names).sum()
-            self.name += "_grouped"
-            self.group_all = "_grouped"
         else:
             self.group_all = ""
         # self.df = self.df.groupby(self.df.index.names).sum()
@@ -6352,21 +6422,14 @@ class Data:
                 )  # plt.show()  # p.get_peaks(atom_type=atom_type)  # edges = self._read_edge_file(atom_type=atom_type, skip=False)  # self._edges[atom_type] = edges  # self._peaks[atom_type] = x_vals[peaks]  #
 
     def _read_edge_file(
-        self,
-        atom_type: str,
-        skip=True,
-        other=None,
-        clay_type="all",
+        self, atom_type: str, skip=True, other=None, clay_type="all"
     ):
         clay_sel = np.unique([clay_type, "all"])
         for clay_type in clay_sel:
             if other is not None and isinstance(other, list):
                 other = other[0]
             fname = self._get_edge_fname(
-                atom_type,
-                name="edges",
-                other=other,
-                clay_type=clay_type,
+                atom_type, name="edges", other=other, clay_type=clay_type
             )
             if fname.exists():
                 break
@@ -6450,8 +6513,7 @@ class Data:
             for atom_type in self._atoms:
                 self._edges[atom_type] = {}
                 self._edges[atom_type]["all"] = self._read_edge_file(
-                    atom_type,
-                    other=None,
+                    atom_type, other=None
                 )
                 if self.other is not None:
                     if isinstance(self.other, list):
@@ -8087,13 +8149,14 @@ class AtomTypeData2D(Data2D, Data):
             datfile = analysis.filename.with_suffix(".dat")
             yield group, datfile
 
-    def get_atom_id_groups(self, labels, ids):
+    def get_atom_id_groups(self, labels, ids, group_name):
         at_group_dict = {}
         vec_group = np.vectorize(
-            AtomHistPlot.get_atom_type_group, excluded=["group_all_atoms"]
+            AtomHistPlot.get_atom_type_group,
+            excluded=["group_name", "group_all_atoms"],
         )  # , signature='(m)->(m)', otypes=[str])
         labels = np.array(labels)
-        groups = vec_group(labels, group_all_atoms=True)
+        groups = vec_group(labels, group_name, group_all_atoms=True)
         at_types, groups = np.unique(groups, return_inverse=True)
         for group in np.unique(groups):
             at_group_dict[at_types[group]] = ids[groups == group]
@@ -8132,7 +8195,7 @@ class AtomTypeData2D(Data2D, Data):
             ids = np.arange(start=0, stop=len(labels), step=1)
             mol_atom_labels[group] = (labels, ids)
             atom_group_labels[group] = self.get_atom_id_groups(
-                labels=labels, ids=ids
+                labels=labels, ids=ids, group_name=group
             )
 
         # idx_arr = self.df.index.to_frame.to_numpy()
@@ -9221,21 +9284,42 @@ class Plot(ABC):
         return colour_dict
 
     @staticmethod
-    def get_atom_type_group(atom_name: str, group_all_atoms):
+    def get_atom_type_group(atom_name: str, group_name: str, group_all_atoms):
         if atom_name in ["O", "OT", "OXT"]:
             atom_name = "OT"
         if group_all_atoms is True:
-            if (
+            if atom_name == "C":
+                atom_name = "CO"
+            elif atom_name == "N":
+                atom_name = "NT"
+            elif (
                 len(atom_name) == 1
                 or atom_name == "CA"
                 or atom_name == "OT"
                 or atom_name[1].islower()
             ):
                 pass
+            elif group_name.lower() == "his" and atom_name[0] == "N":
+                if atom_name[:2] == "NE":
+                    atom_name = "NR1"
+                elif atom_name[:2] == "ND":
+                    atom_name = "NR2"
             elif atom_name[1] == "H" and atom_name[0] != "C":
                 atom_name = atom_name[:2]
             else:
                 atom_name = f"{atom_name[0]}R"
+            if group_name.lower() == "cys" and atom_name[0] == "S":
+                atom_name = "SH"
+            elif (
+                group_name.lower() in ["tyr", "ser", "thr"]
+                and atom_name == "OR"
+            ):
+                atom_name = "OH"
+            elif group_name.lower() == "arg" and atom_name in ["NH", "NR"]:
+                if atom_name == "NH":
+                    atom_name = "NR1"
+                elif atom_name == "NR":
+                    atom_name = "NR2"
         return atom_name
 
     def get_atom_colour_codes_from_names(self, atom_name):
@@ -9553,11 +9637,7 @@ class Plot(ABC):
         ):
             precision += 1
             print(
-                np.isclose(
-                    ticks.round(precision),
-                    ticks,
-                    atol=1e-5,
-                )
+                np.isclose(ticks.round(precision), ticks, atol=1e-5)
             )  # np.set_printoptions(floatmode="fixed", suppress=True, )
         if precision == 0:
             return ticks.astype(int), precision
@@ -13358,8 +13438,7 @@ class TablePlot(HistPlot):
             logger.info(odir / outname)
             with open(odir / outname, "wb") as pklfile:
                 pkl.dump(
-                    {"data": self.data.df, "plot_df": self.plot_df},
-                    pklfile,
+                    {"data": self.data.df, "plot_df": self.plot_df}, pklfile
                 )
 
 
@@ -14701,7 +14780,11 @@ class AtomHistPlot(Plot):
         # plot_df = plot_df.groupby(plot_df.index.names).sum()
         plot_df.reset_index("x", inplace=True)
         plot_df["x"] = plot_df["x"].apply(
-            lambda x: self.get_atom_type_group(x, group_all_atoms=group_atoms)
+            lambda x: self.get_atom_type_group(
+                x,
+                group_name=x.index.get_level_values("aas"),
+                group_all_atoms=group_atoms,
+            )
         )
         plot_df.set_index("x", append=True, inplace=True)
         plot_df = plot_df.groupby(plot_df.index.names).sum()
@@ -16301,8 +16384,9 @@ class Timeseries:
 
     def get_bin_hist(self, hist, h_edges, edges):
         hist = hist.T
-        z_edges, v_edges = HistData(edges=h_edges[0]), HistData(
-            edges=h_edges[1]
+        z_edges, v_edges = (
+            HistData(edges=h_edges[0]),
+            HistData(edges=h_edges[1]),
         )
         new_hist = np.ma.array(hist, fill_value=np.NaN, mask=np.isnan(hist))
         mask = new_hist.mask.copy()
@@ -16432,11 +16516,7 @@ if __name__ == "__main__":
     p.add_argument("-xmax", type=float, default=None, required=False)
     p.add_argument("-ylabel", type=str, default="y", required=False)
     p.add_argument("-xlabel", type=str, default="x", required=False)
-    p.add_argument(
-        "-cutoff",
-        type=int,
-        required=True,
-    )
+    p.add_argument("-cutoff", type=int, required=True)
     p.add_argument("-bins", type=float, required=True)
     p.add_argument(
         "--use_abs", action="store_false", dest="use_rel", default=True
@@ -16449,6 +16529,7 @@ if __name__ == "__main__":
     p.add_argument("-clays", nargs="+", type=str, default=None)
     p.add_argument("-other", nargs="+", type=str, default=False)
     p.add_argument("--grouped", action="store_true", default=False)
+    p.add_argument("--group_c", action="store_true", default=False)
     p.add_argument("--table", action="store_true", default=False)
     p.add_argument("--only_table", action="store_true", default=False)
     p.add_argument("--edges", action="store_true", default=False)
@@ -16583,6 +16664,7 @@ if __name__ == "__main__":
             aas=args.aas,
             clays=args.clays,
             group_all=args.grouped,
+            group_c=args.group_c,
             atoms=atoms,
             atomname=args.atomname,
             load=False,
