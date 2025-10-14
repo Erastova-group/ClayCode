@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import tempfile
 import warnings
@@ -93,8 +94,7 @@ class CrdDist(ClayAnalysisBase):
                 other = None
             else:
                 logger.finfo(
-                    "Setting up rdf edge data.",
-                    initial_linebreak=True,
+                    "Setting up rdf edge data.", initial_linebreak=True
                 )
                 cutoff = r_cutoff
                 n_bins = r_n_bins
@@ -163,7 +163,7 @@ class CrdDist(ClayAnalysisBase):
                             result=edge_file,
                             exit_val="e",
                             check_value="|".join(
-                                list(map(str, range(len(edge_files)))),
+                                list(map(str, range(len(edge_files))))
                             ),
                             query="\tSelect edge file\t",
                             default_val="0",
@@ -206,7 +206,7 @@ class CrdDist(ClayAnalysisBase):
                         result=edge_file,
                         exit_val="e",
                         check_value="|".join(
-                            list(map(str, range(len(options)))),
+                            list(map(str, range(len(options))))
                         ),
                         query="Select edge file",
                         default_val="0",
@@ -219,10 +219,7 @@ class CrdDist(ClayAnalysisBase):
             assert edge_file.is_file(), f"edge file {edge_file} does not exist"
             setattr(self, f"_{edge_type}_edges_file", edge_file)
             edges = read_edge_file(
-                edge_file,
-                cutoff,
-                skip=False,
-                edge_type=edge_type,
+                edge_file, cutoff, skip=False, edge_type=edge_type
             )
             if cutoff is None:
                 if edge_type == "z":
@@ -241,9 +238,7 @@ class CrdDist(ClayAnalysisBase):
                 f"Will use the following {edge_type}-cutoff and {edge_type}-edges:"
             )
             logger.finfo(
-                f"{cutoff:2.2f} {ANGSTROM}",
-                kwd_str=f"Cutoff: ",
-                indent="\t",
+                f"{cutoff:2.2f} {ANGSTROM}", kwd_str=f"Cutoff: ", indent="\t"
             )
             logger.finfo(
                 "["
@@ -363,10 +358,11 @@ class CrdDist(ClayAnalysisBase):
             savename = f"{self.sysname}_{self.sel.resnames[0]}_{self.other.atoms.names[0]}"
         else:
             savename = self.save
-        # self._temp_store_path = Path(savename).parent
+        self.savename = Path(savename)
+        os.makedirs(self.savename.parent.resolve(), exist_ok=True)
         self._temp_store_path = tempfile.TemporaryDirectory(
             prefix=Path(f".{savename}_temp").name,
-            dir=Path(savename).parent,
+            dir=self.savename.parent.resolve(),
         )
         self._temp_file = tempfile.NamedTemporaryFile(
             dir=self._temp_store_path.name, prefix="temp_file", delete=False
@@ -406,7 +402,7 @@ class CrdDist(ClayAnalysisBase):
                 run_analysis(
                     zdist, start=args.start, stop=args.stop, step=args.step
                 )
-                zdist = Path(zdist.write)
+                zdist = Path(zdist.npz_name)
             zdata = np.load(zdist)
             self.mask = zdata["mask"]
             self.mask = np.where(self.mask > self._z_cutoff, True, self.mask)
@@ -450,24 +446,18 @@ class CrdDist(ClayAnalysisBase):
         process_box(self)
 
         self._dist = np.empty(
-            (self.sel.n_atoms, self.other.n_atoms, 3),
-            dtype=np.float64,
+            (self.sel.n_atoms, self.other.n_atoms, 3), dtype=np.float64
         )
 
         self._dist_m = np.ma.array(
-            self._dist,
-            dtype=np.float64,
-            fill_value=np.nan,
+            self._dist, dtype=np.float64, fill_value=np.nan
         )
 
         self._rad = np.empty(
-            (self.sel.n_atoms, self.other.n_atoms),
-            dtype=np.float64,
+            (self.sel.n_atoms, self.other.n_atoms), dtype=np.float64
         )
         self._rad_m = np.ma.array(
-            self._rad,
-            fill_value=np.nan,
-            dtype=np.float64,
+            self._rad, fill_value=np.nan, dtype=np.float64
         )
         # self._z_dist = np.margs.empty(
         #     (self.sel.n_atoms, self.other.n_atoms), fill_value=np.nan, dtype=np.float64
@@ -650,8 +640,7 @@ class CrdDist(ClayAnalysisBase):
         #     chunks=(True, -1, -1),
         # )
         timeseries = self.get_ads_groups(
-            self.data["rdf"].timeseries,
-            self._r_edges,  # timeseries
+            self.data["rdf"].timeseries, self._r_edges  # timeseries
         )
         self._manual_conclude("crd_numbers", timeseries, use_abs=True)
         self.data["crd_numbers"].df["labels"] = [
@@ -731,16 +720,14 @@ class CrdDist(ClayAnalysisBase):
                 self.data["crd_numbers"].timeseries
             )
             result = dask.array.where(
-                dask.array.from_zarr(save) >= 0,
-                r_ts_data,
-                np.NaN,
+                dask.array.from_zarr(save) >= 0, r_ts_data, np.NaN
             )
             # r_timeseries[:] = result.compute()
             # print(r_save)
             result.to_zarr(r_save, overwrite=True, compute=True)
             r_group = AnalysisData(
                 name=f"z_group_{i}_crd_numbers",
-                min=0,
+                minimum=0,
                 cutoff=len(self._r_edges),
                 bin_step=1,
                 verbose=False,

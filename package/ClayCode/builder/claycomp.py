@@ -561,12 +561,7 @@ class UCData(Dir):
         total_charge.name = "charge"
         if total_charge.any() > 1.001:
             self._full_df = self._full_df[
-                total_charge[
-                    np.less(
-                        1.002,
-                        total_charge,
-                    )
-                ]
+                total_charge[np.less(1.002, total_charge)]
             ]
         return total_charge
 
@@ -1269,7 +1264,7 @@ class TargetClayComposition:
                 columns=charge_substitutions.columns,
             )
             charge_substitutions = pd.concat(
-                [charge_substitutions, fe_row_no_charge, fe_row_charged],
+                [charge_substitutions, fe_row_no_charge, fe_row_charged]
             )
             charge_substitutions.index.names = self.atom_types.index.names
         return charge_substitutions
@@ -1691,9 +1686,7 @@ class TargetClayComposition:
         """Read match DataFrame from csv file."""
 
         match_df: pd.DataFrame = pd.read_csv(
-            csv_file,
-            keep_default_na=True,
-            na_values=[" "],
+            csv_file, keep_default_na=True, na_values=[" "]
         )
         match_df.convert_dtypes()
         match_df["sheet"].ffill(inplace=True)

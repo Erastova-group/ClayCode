@@ -937,10 +937,7 @@ class Peaks:
         for ei, edge in enumerate(self.edges):
             plt.annotate(
                 rf"e{ei}:\newline{edge:.2f} \AA",
-                xy=(
-                    edge,
-                    0.75 * y_max,
-                ),
+                xy=(edge, 0.75 * y_max),
                 # 0.5 * np.max(y) + 0.25 * np.max(y) * ei),
                 xycoords="data",
                 xytext=(
@@ -975,22 +972,33 @@ class Peaks:
 
 if __name__ == "__main__":
     data = Data(
-        "/storage/bede_results/results/zdist_new",  # _c",
+        # "/storage/bede_results/results/zdist_new",
+        "/storage/new_NAu_AA_bede/results/complete/zdist/run_1",
         # "/media/hannahpollak/free/coordination",  # SWy-123_Ba_ctl_7_ions_OW_20_10_rdens",
         cutoff=50,
-        bins=0.10,
+        bins=0.02,
         odir="../data/peaks_new/",  # _plots",
-        namestem="zdens",
+        namestem="zdist",
         nameparts=1,
         analysis="zdens",
         atoms=["ions"],
-        ions=["Na"],
+        ions=["Ca"],
         # clays=["SWy-1-simplified", "SWy-123"],
         # clays = ['KGa-1']
-        clays=["SWy-123", "IMt-1", "KGa-1", "SWy-1-simplified"],
+        clays=[
+            "SWy-123",
+            "IMt-1",
+            "KGa-1",
+            "SWy-1-simplified",
+            "NAu-1-fe",
+            "NAu-2-fe",
+            "NAu-1",
+            "NAu-2",
+        ],
         # other=["OW"],
         # other_cutoff=5.85,
         edge_data="../data/peaks_new/",
+        aas=["ala", "ctl"],
     )
     # print(type(data))
     peaks = Peaks(data=data)
@@ -998,7 +1006,7 @@ if __name__ == "__main__":
         # interpolation=2,
         wlen_def=20,
         prominence_def=1e-6,  # 0.0001,
-        height_def=0.01,
+        height_def=0.002,
         wiener_def=1,
         overwrite=True,
         # other="OW",

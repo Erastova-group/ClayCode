@@ -129,9 +129,9 @@ import pickle as pkl
 import re
 from collections import UserDict
 from pathlib import Path
-from typing import List, Literal, Optional, Sequence, Type, TypeVar, Union
+from typing import List, Literal, Optional, Sequence, TypeVar, Union
 
-import dask
+import dask.array
 import numpy as np
 import pandas as pd
 import zarr
@@ -257,7 +257,7 @@ class AnalysisData(UserDict):
         bin size in data histogram
     n_bins : int, optional
         number of bins in data histogram
-    min : float, optional
+    minimum : float, optional
         minimum value for included raw data
 
     Attributes
@@ -288,6 +288,7 @@ class AnalysisData(UserDict):
     """
     _default_bin_step = 0.1
     _default_cutoff = 20
+    _default_min = 0.0
 
     # __slots__ = ['name', 'bins', 'timeseries', 'hist', 'ads_edges', '_n_bins', 'n_bins', 'cutoff', 'bin_step']
 
@@ -297,7 +298,7 @@ class AnalysisData(UserDict):
         cutoff=None,
         bin_step=None,
         n_bins=None,
-        min=0,
+        minimum=0.0,
         verbose=True,
         n_frames=None,
     ):
@@ -308,10 +309,10 @@ class AnalysisData(UserDict):
         self._cutoff = None
         self._bin_step = None
         self._n_bins = None
+        self._min = float(minimum)
         self.cutoff = cutoff
         self.bin_step = bin_step
         self.n_bins = n_bins
-        self._min = float(min)
         if self.cutoff is None:
             self.cutoff = self.__class__._default_cutoff
 
@@ -320,22 +321,24 @@ class AnalysisData(UserDict):
             self.bin_step = self.__class__._default_bin_step
         elif self.bin_step is None:
             # print('bin_step None')
-            self.bin_step = (self.cutoff + np.abs(self._min)) / (self.n_bins)
+            self.bin_step = (self.cutoff + np.abs(self.minimum)) / (
+                self.n_bins
+            )
         elif self.n_bins is None:
             # print('n_bins None')
             self.n_bins = np.rint(
-                (self.cutoff + np.abs(self._min)) / self.bin_step
+                (self.cutoff + np.abs(self.minimum)) / self.bin_step
             )
         if verbose:
             logger.info(get_subheader(f" Initialising {name!r} analysis"))
-            logger.finfo(f"{self._min:3.1f} {ANGSTROM}", kwd_str=f"min: ")
+            logger.finfo(f"{self.minimum:3.1f} {ANGSTROM}", kwd_str=f"min: ")
             logger.finfo(f"{self.cutoff:3.1f} {ANGSTROM}", kwd_str=f"cutoff: ")
             logger.finfo(f"{self.n_bins}", kwd_str=f"n_bins: ")
             logger.finfo(
                 f"{self.bin_step:1.2f} {ANGSTROM}", kwd_str=f"bin_step: "
             )
         hist, edges = np.histogram(
-            [-1], bins=self.n_bins, range=(self._min, self.cutoff)
+            [-1], bins=self.n_bins, range=(self.minimum, self.cutoff)
         )
         hist = hist.astype(np.float64)
         hist *= 0.0
@@ -350,6 +353,20 @@ class AnalysisData(UserDict):
         self.n_frames = n_frames
 
     @property
+    def minimum(self) -> float:
+        """Minimum value for included raw data"""
+        if self._min is not None:
+            return self._min
+        else:
+            return self.__class__._default_min
+
+    @minimum.setter
+    def minimum(self, minimum: Union[float, int, str]):
+        """Minimum value for included raw data"""
+        if minimum is not None:
+            self._min = float(minimum)
+
+    @property
     def n_bins(self) -> int:
         """Number of bins in data histogram"""
         return self._n_bins
@@ -360,9 +377,11 @@ class AnalysisData(UserDict):
         if n_bins is not None:
             self._n_bins = int(n_bins)
             if (
-                self.cutoff + np.abs(self._min)
+                self.cutoff + np.abs(self.minimum)
             ) / self.n_bins != self.bin_step:
-                self.bin_step = (self.cutoff + np.abs(self._min)) / self.n_bins
+                self.bin_step = (
+                    self.cutoff + np.abs(self.minimum)
+                ) / self.n_bins
 
     @property
     def cutoff(self) -> float:
@@ -441,11 +460,7 @@ class AnalysisData(UserDict):
         # )
         hist = hist.compute()
         hist = hist.astype(np.float64)
-        np.divide(
-            hist,
-            float(n_frames),
-            out=hist,
-        )
+        np.divide(hist, float(n_frames), out=hist)
         # dask.array.divide(hist, n_frames, out=hist)
         # hist = hist / len(self.timeseries)
         self.hist[:] = hist
@@ -517,7 +532,7 @@ class AnalysisData(UserDict):
         #             self.norm_hist[key] = self.norm_hist[key] / n_atoms[key]
         self.norm_hist = self.hist.copy()
         if type(n_atoms) in [int, float, np.float_]:
-            self.norm_hist = np.divide(self.norm_hist, np.float(n_atoms))
+            self.norm_hist = np.divide(self.norm_hist, np.float32(n_atoms))
         elif type(n_atoms) in [list, np.ndarray]:
             self.norm_hist = self.norm_hist / np.mean(n_atoms)
         else:
@@ -566,6 +581,7 @@ class AnalysisData(UserDict):
         return self.hist2d[other.name][0]
 
     def get_df(self):
+        """Create a pandas DataFrame from histogram data."""
         if not hasattr(self, "hist"):
             self.get_hist_data()
         self.df[self.name] = self.hist
@@ -618,6 +634,8 @@ class AnalysisData(UserDict):
 
 
 class ClayAnalysisBase(object):
+    save = True
+    _abs = True
     r"""Base class for defining multi-frame analysis
 
     The class is designed as a template for creating multi-frame analyses.
@@ -752,12 +770,18 @@ class ClayAnalysisBase(object):
         if len(data) == 0:
             data = [self.__class__.__name__.lower()]
         self.data = {}
+        data_dict = {}
+        for item, value in kwargs.items():
+            if not isinstance(value, dict):
+                data_dict[item] = value
         for item in data:
-            args = {}
+            args = data_dict
             for key, val in kwargs.items():
                 if isinstance(val, dict):
                     if item in val.keys():
                         args[key] = val[item]
+                    elif item == key:
+                        args.update(val)
                 else:
                     args[key] = val
             self.data[item] = AnalysisData(item, **args)
@@ -951,7 +975,10 @@ class ClayAnalysisBase(object):
 
         """
         if logger.__class__.__name__ == "ClayCodeLogger":
-            logger.set_file_name(new_filepath=self.write.parent)
+            logger.set_file_name(
+                new_filepath=Path(self.save).parent,
+                new_filename=f"{self.savename}.log",
+            )
         if self._get_new_data is False:
             logger.finfo(
                 "Not running new analysis. Output file exists and overwrite not selected."

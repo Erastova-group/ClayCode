@@ -3,11 +3,7 @@ from pathlib import Path
 import yaml
 from importlib_resources import files
 
-__all__ = [
-    "ANALYSIS_DEFAULTS",
-    "PE_DATA",
-    "ANALYSIS_DATA",
-]
+__all__ = ["ANALYSIS_DEFAULTS", "PE_DATA", "ANALYSIS_DATA"]
 ANALYSIS_DATA = files("ClayCode.analysis.data")
 PE_DATA: Path = ANALYSIS_DATA / "peaks_edges"
 

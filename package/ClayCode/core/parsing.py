@@ -1387,7 +1387,7 @@ class AnalysisArgs(_Args):
                 for parameter, parameter_value in prms:
                     try:
                         kwargs[parameter] = self._yaml_args.pop(
-                            parameter.upper(),
+                            parameter.upper()
                         )
                     except KeyError:
                         if (

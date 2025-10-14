@@ -987,10 +987,7 @@ def center_clay(u: Universe, crdout: Union[Path, str], uc_name: Optional[str]):
 
 @update_universe
 def _remove_excess_gro_ions(
-    u: Universe,
-    crdout: Union[Path, str],
-    n_ions: int,
-    ion_type: str,
+    u: Universe, crdout: Union[Path, str], n_ions: int, ion_type: str
 ) -> None:
     last_sol_id = u.select_atoms("resname SOL")[-1].index
     ions = u.select_atoms(f"resname {ion_type}")

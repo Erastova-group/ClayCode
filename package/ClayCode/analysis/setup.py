@@ -14,6 +14,7 @@ import ClayCode.analysis.ph as ph
 import ClayCode.core.gmx as gmx
 import ClayCode.core.lib as lib
 import ClayCode.core.utils as ut
+import ClayCode.data.lib
 import MDAnalysis as mda
 import numpy as np
 from ClayCode.core.classes import SimDir
@@ -301,7 +302,9 @@ def add_aa(
                         f"specified number of amino acid conformations {len(conc_dict[aa_species])}."
                     )
                 insert_charges = 0
-                aa_charge_dict = lib.get_aa_charges(aa_name=aa_species)
+                aa_charge_dict = ClayCode.data.lib.get_aa_charges(
+                    aa_name=aa_species
+                )
                 # add all AA species
                 for prot_id, prot_species in enumerate(conc_dict[aa_species]):
                     prot_species = int(prot_species)

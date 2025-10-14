@@ -11,9 +11,7 @@ from pathlib import Path
 import yaml
 from importlib_resources import files
 
-__all__ = [
-    "BUILD_DEFAULTS",
-]
+__all__ = ["BUILD_DEFAULTS"]
 
 # BUILD_DEFAULTS: default parameters for model setup from 'defaults.yaml'
 defaults_file = Path(__file__).parent / "config/defaults.yaml"

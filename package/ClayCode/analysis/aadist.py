@@ -30,6 +30,230 @@ __all__ = ["AADist"]
 logger = logging.getLogger(Path(__file__).stem)
 
 
+class AADistNumpy(ClayAnalysisBase):
+    _attrs = ["aadens", "atype"]
+
+    def __init__(
+        self,
+        sysname: str,
+        clay: MDAnalysis.AtomGroup,
+        n_bins: Optional[int] = None,
+        bin_step: Optional[Union[int, float]] = None,
+        xy_rad: Union[float, int] = 4.0,
+        cutoff: Optional[Union[float, int]] = 50.0,
+        save: Union[bool, str] = True,
+        write: Union[bool, str] = True,
+        check_traj_len: Union[Literal[False], int] = False,
+        extra_sel: Optional[Union[str, List[str]]] = None,
+        aas: List[str] = None,
+        **basekwargs: Any,
+    ) -> NoReturn:
+        logger.info(clay.universe.trajectory)
+        super(AADistNumpy, self).__init__(
+            clay.universe.trajectory, **basekwargs
+        )
+
+        self.sysname = sysname
+        self.cutoff = float(cutoff)
+        self.xy_rad = float(xy_rad)
+        self.clay = clay
+
+        if aas is None:
+            aas = np.loadtxt(
+                AA / "aa.csv", delimiter=",", dtype=str, usecols=0
+            )
+            aas = np.char.upper(aas)
+        else:
+            aas = np.array(aas)
+        if extra_sel is not None:
+            aas = np.append(aas, extra_sel)
+        aas_str = " ".join(aas)
+
+        sel = clay.universe.select_atoms(f"resname {aas_str} and not type H*")
+        self.sel = sel
+        self._ags = [sel]
+
+        self._universe = self._ags[0].universe
+        self.sel_n_atoms = self.sel.residues.n_residues
+        self._unique_res_group = self.sel.groupby("resnames")
+        self._sel_atoms = {
+            x: y.groupby("resnums") for x, y in self._unique_res_group.items()
+        }
+
+        self.atypes = {}
+        amax = 0
+        self.acodes = {}
+        pos_idx = []
+        self.atypes_flat = []
+        self.acodes_flat = []
+        for res_type, atom_groups in self._sel_atoms.items():
+            self.atypes[res_type] = [
+                atom.name for atom in list(atom_groups.values())[0]
+            ]
+            self.acodes[res_type] = amax + np.arange(
+                len(np.unique(self.atypes[res_type]))
+            )
+            amax = np.max(self.acodes[res_type]) + 1
+            pos_idx.append(
+                np.array(
+                    [
+                        [res_type, atom_group[0].residue.resnum, code]
+                        for atom_group in list(atom_groups.values())
+                        for code in self.acodes[res_type]
+                    ]
+                )
+            )
+            self.atypes_flat.append(self.atypes[res_type])
+            self.acodes_flat.append(self.acodes[res_type])
+        self.acodes_flat = np.concatenate(self.acodes_flat)
+        self.atypes_flat = np.concatenate(self.atypes_flat)
+        pos_idx = np.concatenate(pos_idx)
+
+        self.pos_idx = pos_idx
+        self._init_data(
+            aadens={
+                "n_bins": n_bins,
+                "bin_step": bin_step,
+                "cutoff": cutoff,
+                "minimum": 0,
+                "n_frames": self._trajectory.n_frames,
+            },
+            atype={
+                "minimum": 0,
+                "bin_step": 1,
+                "n_bins": len(self.acodes_flat),
+                "cutoff": len(self.acodes_flat),
+                "n_frames": self._trajectory.n_frames,
+            },
+        )
+        self.savename = f"{self.__class__.__name__.lower()}_{self.sysname}"
+        try:
+            self.save = Path(save)
+        except TypeError:
+            self.save = self.savename
+        if self.save.name != self.savename:
+            self.save = self.save / self.savename
+        self.write = write
+        check_traj(self, check_traj_len)
+
+    def _prepare(self):
+        self._abs = [True, False]
+        process_box(self)
+        logger.info(
+            f"Starting run:\n"
+            f"Frames start: {self.start}, "
+            f"stop: {self.stop}, "
+            f"step: {self.step}\n"
+        )
+        self._sel_array = np.array(
+            [
+                (resnum, mol, ag, 0, np.nan)
+                for mol, res_dict in self._sel_atoms.items()
+                for resnum, ag in res_dict.items()
+            ],
+            dtype=[
+                ("resnum", int),
+                ("mol", "U10"),
+                ("ag", object),
+                ("atype", int),
+                ("z", float),
+            ],
+        )
+        self._dist_array = np.full(
+            (len(self.pos_idx), 1), np.nan, dtype=[("z", float)]
+        )
+        dist_dict = {
+            resname: np.ma.empty(
+                (list(res_atoms.values())[0].n_atoms, self.clay.n_atoms, 3),
+                dtype=np.float64,
+                fill_value=np.nan,
+            )
+            for resname, res_atoms in self._sel_atoms.items()
+        }
+        setattr(self, "_dist_dict", dist_dict)
+        sel_dict = {
+            resname: np.ma.empty_like(d_arr[:, :, 0], dtype=np.float64)
+            for resname, d_arr in self._dist_dict.items()
+        }
+        setattr(self, "_sel_dict", sel_dict)
+        self.clay_pos = np.empty((self.clay.n_atoms, 3), dtype=np.float64)
+        self._count_array = np.zeros(len(self._sel_array), dtype=np.int16)
+
+    def get_pos(self, group):
+        pos = group["ag"].positions
+        pos = apply_PBC(pos, self._ts.dimensions)
+        return pos
+
+    def get_distances(self, group):
+        resnum = group["resnum"]
+        ag = group["ag"]
+        mol = group["mol"]
+        sel_pos = apply_PBC(ag.positions, self._ts.dimensions)
+        arr = self._dist_dict[mol].copy()
+        mask = self._sel_dict[mol].copy()
+        atypes = self.acodes[mol]
+        arr.fill(0)
+        arr.soften_mask()
+        arr.mask = False
+        mask.fill(0)
+        mask.mask = False
+        get_dist(sel_pos, self.clay_pos, arr, self._ts.dimensions)
+        self._process_distances(arr, self._ts.dimensions)
+        select_cyzone(
+            distances=arr,
+            xy_rad=self.xy_rad,
+            max_z_dist=self.data["aadens"].cutoff,
+            mask_array=mask,
+            absolute=True,
+        )
+        indexer = (mol, resnum, atypes)
+        # indexer = (mol, resnum, slice(None))
+        indexer = (
+            (self.pos_idx[:, 0] == mol)
+            & (self.pos_idx[:, 1] == str(resnum))
+            & np.isin(self.pos_idx[:, 2], atypes.astype(str))
+        )
+        df_slice = self._dist_array[indexer]
+        df_slice["z"] = np.broadcast_to(
+            np.min(np.abs(arr[:, :, 2]), axis=1)[:, np.newaxis],
+            df_slice["z"].shape,
+        )
+        min_index = np.argmin(df_slice["z"])
+        if not type(min_index) == np.int_:
+            logger.info(f"Found {len(df_slice)} equal distances!")
+            min_index = np.random.choice(min_index)
+        group["atype"] = np.ravel(self.pos_idx[indexer][min_index, 2])
+        group["z"] = df_slice["z"][min_index]
+        # return group
+
+    def _single_frame(self):
+        self._dist_array["z"][:] = 0
+        self.clay_pos[:] = apply_PBC(self.clay.positions, self._ts.dimensions)
+        for group in self._sel_array:
+            self.get_distances(group)
+        # list(map(lambda group: self.get_distances(group),  self._sel_array))
+        self.data["aadens"].timeseries.append(self._sel_array["z"])
+        self.data["atype"].timeseries.append(self._sel_array["atype"])
+
+    def _save(self) -> NoReturn:
+        if self.save is False:
+            pass
+        else:
+            for v in self.data.values():
+                logger.info(f"value: {v}")
+                v.save(
+                    self.save,
+                    sel_names=np.unique(self.sel.names),
+                    sel_n_atoms=self.sel_n_atoms,
+                    atypes_flat=self.atypes_flat,
+                    acodes_flat=self.acodes_flat,
+                    atypes=self.atypes,
+                    acodes=self.acodes,
+                    n_frames=self._trajectory.n_frames,
+                )
+        logger.info("Done!\n")
+
+
 class AADist(ClayAnalysisBase):
     _attrs = ["aadens", "atype"]
 
@@ -121,33 +345,29 @@ class AADist(ClayAnalysisBase):
                 "n_bins": n_bins,
                 "bin_step": bin_step,
                 "cutoff": cutoff,
-                "min": 0,
+                "minimum": 0,
                 "n_frames": self._trajectory.n_frames,
             },
             atype={
-                "min": 0,
+                "minimum": 0,
                 "bin_step": 1,
                 "n_bins": len(self.acodes_flat),
                 "cutoff": len(self.acodes_flat),
                 "n_frames": self._trajectory.n_frames,
             },
         )
-        self.save = save
-        if self.save is False:
-            pass
-        else:
-            if type(self.save) == bool:
-                self.save = (
-                    f"{self.__class__.__name__.lower()}_"
-                    f"{self.sysname}_{self.sel.resnames[0]}"
-                )
-
+        self.savename = f"{self.__class__.__name__.lower()}_" f"{self.sysname}"
+        try:
+            self.save = Path(save)
+        except TypeError:
+            self.save = self.savename
+        if self.save.name != self.savename:
+            self.save = self.save / self.savename
         self.write = write
         check_traj(self, check_traj_len)
 
     def _prepare(self):
         self._abs = [True, False]
-        idsl = pd.IndexSlice
         process_box(self)
         logger.info(
             f"Starting run:\n"
@@ -161,6 +381,7 @@ class AADist(ClayAnalysisBase):
         self._sel_df = pd.DataFrame(
             {"ag": self._sel_df, "atype": 0, "z": np.NaN}
         )
+        self._sel_df["z"] = self._sel_df["z"].astype(np.float64)
         self._sel_df.index = self._sel_df.index.reorder_levels([1, 0])
         self._dist_df = pd.DataFrame(
             index=self.pos_idx, columns=["z"], dtype=np.float64
@@ -176,7 +397,7 @@ class AADist(ClayAnalysisBase):
         }
         setattr(self, "_dist_dict", dist_dict)
         sel_dict = {
-            resname: np.ma.empty_like(d_arr[:, :, 0], dtype=np.float32)
+            resname: np.ma.empty_like(d_arr[:, :, 0], dtype=np.float64)
             for resname, d_arr in self._dist_dict.items()
         }
         setattr(self, "_sel_dict", sel_dict)
@@ -193,7 +414,7 @@ class AADist(ClayAnalysisBase):
         pos = apply_PBC(pos, self._ts.dimensions)
         return pos
 
-    def get_distances(self, group):
+    def get_distances(self, group: pd.DataFrame) -> pd.DataFrame:
         resnum = group.name
         ag = group["ag"]
         mol = group["mol"]
@@ -202,6 +423,7 @@ class AADist(ClayAnalysisBase):
         mask = self._sel_dict[mol].copy()
         atypes = self.acodes[mol]
         arr.fill(0)
+        arr.soften_mask()
         arr.mask = False
         mask.fill(0)
         mask.mask = False
@@ -210,19 +432,28 @@ class AADist(ClayAnalysisBase):
         select_cyzone(
             distances=arr,
             xy_rad=self.xy_rad,
-            z_dist=self.data["aadens"].cutoff,
+            max_z_dist=self.data["aadens"].cutoff,
             mask_array=mask,
+            absolute=True,
         )
         indexer = pd.IndexSlice[mol, resnum, atypes]
         df_slice = self._dist_df.loc[indexer]
         df_slice["z"] = np.min(np.abs(arr[:, :, 2]), axis=1)
         df_slice = df_slice[df_slice["z"] == np.min(df_slice["z"])]
-        if len(df_slice) != 1:
+        if len(df_slice) > 1:
             logger.info(f"Found {len(df_slice)} equal distances!")
-        group["atype"] = np.ravel(
-            df_slice.index.get_level_values("atype").values
-        )[0]
-        group["z"] = np.ravel(df_slice.values)[0]
+            df_slice = df_slice.xs(
+                np.random.choice(df_slice.index),
+                drop_level=False,
+                level=(df_slice.index.names),
+            )
+        #     group['atype'] = df_slice["atype"].values[0]
+        #     group['z'] = df_slice["z"].values[0]
+        elif len(df_slice) == 1:
+            group["atype"] = np.ravel(
+                df_slice.index.get_level_values("atype").values
+            )[0]
+            group["z"] = np.ravel(df_slice.values)[0]
         return group
 
     def _single_frame(self):
@@ -324,10 +555,16 @@ if __name__ == "__main__":
         "-cutoff",
         type=float,
         default=None,
-        help="cutoff in x,x2,z-direction",
+        help="cutoff in z-direction",
         dest="cutoff",
     )
-
+    parser.add_argument(
+        "-xy_rad",
+        type=float,
+        default=4.0,
+        help="xy radius for selection",
+        dest="xy_rad",
+    )
     parser.add_argument(
         "-start",
         type=int,
@@ -423,15 +660,27 @@ if __name__ == "__main__":
     coords = gro
     traj = trr
     logger.info(f"Using {coords.name} and {traj.name}.")
-    u = MDAnalysis.Universe(
-        str(coords), str(traj), format="TRR", in_memory=True
-    )
+    u = MDAnalysis.Universe(str(coords), str(traj), in_memory=False)
     clay = u.select_atoms(f"resname {args.clay_type}* and name OB* o*")
 
     if args.save == "True":
         args.save = True
     elif args.save == "False":
         args.save = False
+    # dist = AADistNumpy(
+    #     sysname=args.sysname,
+    #     clay=clay,
+    #     n_bins=args.n_bins,
+    #     bin_step=args.bin_step,
+    #     cutoff=args.cutoff,
+    #     save=args.save,
+    #     check_traj_len=args.check_traj_len,
+    #     extra_sel=args.extra_sel,
+    #     aas=args.sel,
+    #     xy_rad=args.xy_rad,
+    # )
+    # run_analysis(dist, start=args.start, stop=args.stop, step=args.step)
+
     dist = AADist(
         sysname=args.sysname,
         clay=clay,
@@ -442,5 +691,6 @@ if __name__ == "__main__":
         check_traj_len=args.check_traj_len,
         extra_sel=args.extra_sel,
         aas=args.sel,
+        xy_rad=args.xy_rad,
     )
     run_analysis(dist, start=args.start, stop=args.stop, step=args.step)

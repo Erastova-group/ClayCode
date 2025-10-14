@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+r""":mod:`ClayCode.analysis.zdist` --- Z-distance analysis module
+==================================================================
+This module provides the main entry point for z-distance analysis.
+"""
 import logging
 import pathlib as pl
 import re
 import sys
 import warnings
 from argparse import ArgumentParser
-from typing import Any, List, Literal, NoReturn, Optional, Union
+from os import PathLike
+from typing import Any, Literal, NoReturn, Optional, Union
 
 import MDAnalysis as mda
 import numpy as np
+import numpy.typing
 from ClayCode.analysis.analysisbase import ClayAnalysisBase
 from ClayCode.analysis.lib import (
     check_traj,
@@ -23,15 +30,7 @@ from ClayCode.core.classes import Dir
 from ClayCode.core.utils import get_subheader
 from MDAnalysis import Universe
 from MDAnalysis.lib.distances import apply_PBC
-from numpy._typing import NDArray
 
-# from ClayCode.core.lib import (
-#     get_dist,
-#     get_selections,
-#     process_box,
-#     run_analysis,
-#     select_cyzone,
-# )
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 __all__ = ["ZDens"]
@@ -57,10 +56,10 @@ class ZDens(ClayAnalysisBase):
         dist_selection: Literal[
             "smaller", "larger", "gt_zero", "lt_zero"
         ] = "gt_zero",
-        upper_clay_sheet_idxs: Optional[NDArray] = None,
+        upper_clay_sheet_idxs: Optional[numpy.typing.NDArray] = None,
         n_bins: Optional[int] = None,
         bin_step: Optional[Union[int, float]] = None,
-        xy_rad: Union[float, int] = 3.0,
+        xy_rad: Union[float, int] = 4.0,
         cutoff: Union[float, int] = 20.0,
         # min_cutoff: Union[float, int] = 0,
         save: Union[bool, str] = True,
@@ -110,10 +109,10 @@ class ZDens(ClayAnalysisBase):
         #     _min = min_cutoff
         if self.dist_selection == "gt_zero":
             self.symmetrical = True
-            min = 0
+            minimum = 0
         elif self.dist_selection == "lt_zero":
             self.symmetrical = True
-            min = -int(uc_height)
+            minimum = -int(uc_height)
             self._clay_sheet_ids = np.isin(
                 clay_type.atoms.resids,
                 upper_clay_sheet_idxs,
@@ -122,11 +121,11 @@ class ZDens(ClayAnalysisBase):
             )
         else:
             self.symmetrical = False
-            min = (
+            minimum = (
                 0  # -int(uc_height)  # {"zdens": -int(cutoff), "zdens_abs": 0}
             )
         self._init_data(
-            n_bins=n_bins, bin_step=bin_step, cutoff=cutoff, min=min
+            n_bins=n_bins, bin_step=bin_step, cutoff=cutoff, minimum=minimum
         )
         self._process_distances = None
         self.sysname = sysname
@@ -140,7 +139,8 @@ class ZDens(ClayAnalysisBase):
         self.write = write
         if self.symmetrical is False:
             name_ext = (
-                re.search(
+                "_"
+                + re.search(
                     "OH|OB",
                     "".join(clay_type.atoms.names),
                     flags=re.IGNORECASE,
@@ -149,45 +149,34 @@ class ZDens(ClayAnalysisBase):
             )
         else:
             name_ext = ""
-        if self.save is False:
-            pass
-        else:
-            try:
-                self.save = Dir(self.save)
-            except TypeError:
-                pass
-            if type(self.save) in [bool, Dir]:
-                savename = (
-                    f"{name_ext}{self.__class__.__name__.lower()}_"
-                    f"{self.sysname}"
+        self.savename = (
+            f"{self.__class__.__name__.lower()}_" f"{self.sysname}{name_ext}"
+        )
+        try:
+            self.save = Dir(save)
+        except TypeError:
+            self.save = pl.Path(self.savename)
+        if self.save.name != self.savename:
+            self.save = self.save / self.savename
+        self.save = self.save.resolve()
+        self.write = write
+
+        self.npz_name = self.save.with_suffix(".npz")
+        if self.write is True and (
+            self.npz_name.is_file()
+            or self.npz_name.with_suffix(".dat").is_file()
+        ):
+            if overwrite is False:
+                logger.finfo(
+                    f"Done!\n{str(self.npz_name.stem)!r} already exists and overwrite not selected."
                 )
-                try:
-                    self.save = self.save / savename
-                except TypeError:
-                    self.save = savename
-        if self.write is not False:
-            if self.save is False:
-                savename = (
-                    f"{name_ext}{self.__class__.__name__.lower()}_"
-                    f"{self.sysname}"
-                )
-                try:
-                    self.write = self.write / savename
-                except TypeError:
-                    self.write = savename
-                self.write = pl.Path(self.write).with_suffix(".npz")
-            elif type(self.write) == bool:
-                self.write = pl.Path(self.save).with_suffix(".npz")
+                self._get_new_data = False
+                return
             else:
-                logger.error("Should not get here!")
-                sys.exit(1)
-            if pl.Path(self.write).is_file():
-                if overwrite is False:
-                    logger.finfo(
-                        f"Done!\n{str(self.write)!r} already exists and overwrite not selected."
-                    )
-                    self._get_new_data = False
-                    return  # raise FileExistsError(f"{self.write!r} already exists.")
+                self._get_new_data = True
+                logger.finfo(
+                    f"{str(self.npz_name.stem)!r} exists.\nWill overwrite existing data."
+                )
         check_traj(self, check_traj_len)
 
     def _prepare(self) -> NoReturn:
@@ -276,9 +265,7 @@ class ZDens(ClayAnalysisBase):
             np.take_along_axis(
                 self._dist_array[:, :, 2],
                 np.argmin(
-                    np.abs(self._dist_array[:, :, 2]),
-                    axis=1,
-                    keepdims=True,
+                    np.abs(self._dist_array[:, :, 2]), axis=1, keepdims=True
                 ),
                 axis=1,
             ).flatten()
@@ -324,9 +311,7 @@ class ZDens(ClayAnalysisBase):
             np.take_along_axis(
                 self._dist_array[:, :, 2],
                 np.argmin(
-                    np.abs(self._dist_array[:, :, 2]),
-                    axis=1,
-                    keepdims=True,
+                    np.abs(self._dist_array[:, :, 2]), axis=1, keepdims=True
                 ),
                 axis=1,
             ).flatten()
@@ -354,8 +339,7 @@ class ZDens(ClayAnalysisBase):
         self._sel_mask.fill(0)
         self._sel_mask.soften_mask()
         self._sel_mask.mask = False
-        self._sel_mask.soften_mask()
-        # Wrap coordinates back into simulation box (use mda apply_PBC)
+        # Wrap coordinates back into the simulation box (use mda apply_PBC)
         sel_pos = apply_PBC(self.sel.positions, self._ts.dimensions)
         clay_pos = apply_PBC(self.clay.positions, self._ts.dimensions)
         # get minimum x, y, z distances between sel and clay in box
@@ -383,7 +367,7 @@ class ZDens(ClayAnalysisBase):
         self.mask.append(self._sel.copy())
 
     def _save(self) -> NoReturn:
-        if self.save is False:
+        if self.write is False:
             pass
         else:
             for v in self.data.values():
@@ -393,8 +377,7 @@ class ZDens(ClayAnalysisBase):
                     n_atoms=self.sel.n_atoms,
                     n_frames=self.n_frames,
                 )
-        if self.write is not False:
-            with open(self.write, "wb") as outfile:
+            with open(self.npz_name, "wb") as outfile:
                 np.savez(
                     outfile,
                     zdist=np.array(self.data["zdens"].timeseries),
@@ -411,11 +394,10 @@ class ZDens(ClayAnalysisBase):
             ) == len(
                 self.data["zdens"].timeseries
             ), "Length of timeseries does not conform to selected start, stop and step!"
-            # logger.info(f"{self.start}, {self.stop}, {self.step}")
 
             logger.finfo(
-                f"Wrote z-dist array to {str(self.write)!r}"
-            )  # outsel = self.sel + self.clay  # ocoords = str(change_suffix(self.save, "pdbqt"))  # otraj = str(change_suffix(self.save, "traj"))  # outsel.write(  #     otraj, frames=self._trajectory[self.start : self.stop : self.step]  # )  # outsel.write(  #     ocoords, frames=self._trajectory[self.start : self.stop : self.step][-1]  # )  # logger.info(  #     f"Wrote final coordinates to {ocoords.name} and trajectory to {otraj.name}"  # )
+                f"Wrote z-dist array to {str(self.npz_name.name)!r}"
+            )  # outsel = self.sel + self.clay  # coords = str(change_suffix(self.save, "pdbqt"))  # otraj = str(change_suffix(self.save, "traj"))  # outsel.write(  #     otraj, frames=self._trajectory[self.start : self.stop : self.step]  # )  # outsel.write(  #     ocoords, frames=self._trajectory[self.start : self.stop : self.step][-1]  # )  # logger.info(  #     f"Wrote final coordinates to {ocoords.name} and trajectory to {otraj.name}"  # )
 
 
 parser = ArgumentParser(
@@ -491,11 +473,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "-min",
-    type=float,
-    default=0,
-    help="minimum in z-direction",
-    dest="_min",
+    "-min", type=float, default=0, help="minimum in z-direction", dest="_min"
 )
 parser.add_argument(
     "--not_abs",
